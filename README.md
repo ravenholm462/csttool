@@ -1,9 +1,5 @@
-# Notes on the SW setup
-
 ## Purpose
 `csttool` is a Python-based command-line tool for automated assessment of the **corticospinal tract (CST)** using diffusion-weighted MRI (DW-MRI) data. It is designed to be simple, modular, and easily portable to different computing environments.
-
----
 
 ## Core ideas
 
@@ -19,6 +15,7 @@ Modularity implies the ability to expand the tool with more functionality as is 
 
 v0.0.1
 
+```
 csttool/
 ├─ pyproject.toml
 ├─ README.md
@@ -33,7 +30,7 @@ csttool/
 │     └─ metrics/             # extraction of desired metrics
 └─ tests/
    └─ __init__.py
-
+```
 
 ## Config file
 
