@@ -5,11 +5,9 @@
 
 The core ideas behind `csttool` are:
 
-1. Simplicity
-Simplicity is achieved through using already existing Python libraries to create the tool. It should be installable anywhere, be easy to use, and its results should be easy to read and interpret.
+1. Simplicity - achieved through using already existing Python libraries to create the tool. It should be installable anywhere, be easy to use, and its results should be easy to read and interpret.
 
-2. Modularity
-Modularity implies the ability to expand the tool with more functionality as is necessary.
+2. Modularity - ability to expand the tool with more functionality as is necessary.
 
 ## Structure
 
