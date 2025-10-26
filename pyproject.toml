@@ -1,0 +1,18 @@
+[build-system]
+requires = ["hatchling>=1.21"]
+build-backend = "hatchling.build"
+
+[project]
+name = "csttool"
+version = "0.0.1"
+description = "Simple, modular CST assessment tool (DW-MRI), WIP"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "Alem Nalo" }]
+license = { text = "MIT" }
+dependencies = [
+    # define dependencies when needed
+]
+
+[project.scripts]
+csttool = "csttool.cli:main"
