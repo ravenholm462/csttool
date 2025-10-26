@@ -55,7 +55,7 @@ The skeleton consists of two files:
 The following codeblock sets up and runs `csttool` in a Linux shell:
 
 ```
-git clone https://github.com/ravenholm462/csttool.git
+git clone git@github.com:ravenholm462/csttool.git
 cd csttool
 python -m venv .venv
 source .venv/bin/activate
