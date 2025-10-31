@@ -57,7 +57,7 @@ The following codeblock sets up and runs `csttool` in a Linux shell:
 ```
 git clone git@github.com:ravenholm462/csttool.git
 cd csttool
-python -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
 pip install -e .  # install in editable mode
@@ -67,6 +67,8 @@ csttool check
 ```
 
 For Windows, replace `source .venv/bin/activate` with `.venv\Scripts\Activate.ps1`
+
+For Debian/Ubuntu-based Linux systems, ensure that the `python3-venv` package is installed via `apt install python3.12-venv`.
 
 ## Testing
 
