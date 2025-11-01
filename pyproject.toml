@@ -11,7 +11,13 @@ requires-python = ">=3.10"
 authors = [{ name = "Alem Nalo" }]
 license = { text = "MIT" }
 dependencies = [
-    # define dependencies when needed
+    "numpy",
+    "scipy",
+    "cython",
+    "dipy",
+    "matplotlib",
+    "nibabel",
+    "dicom2nifti"
 ]
 
 [project.scripts]
