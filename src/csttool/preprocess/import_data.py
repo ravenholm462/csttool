@@ -91,7 +91,7 @@ def load_data(nifti_path, bval_path=None, bvec_path=None, b0_threshold=50):
 
     gtab = None
     bvals, bvecs = read_bvals_bvecs(str(bval_path), str(bvec_path))
-    gtab = gradient_table(bvals, bvecs, b0_threshold=b0_threshold)
+    gtab = gradient_table(bvals=bvals, bvecs=bvecs, b0_threshold=b0_threshold)
 
     return data, affine, hdr, gtab
 

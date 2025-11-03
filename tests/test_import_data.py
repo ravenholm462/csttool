@@ -9,3 +9,4 @@ data, affine, hdr, gtab = load_data(nii, bval, bvec)
 
 print("Data shape:", data.shape)
 print("Gradients:", len(gtab.bvals))
+print(is_dicom_dir(dicom_dir))
