@@ -5,7 +5,11 @@ from . import __version__
 from csttool.preprocess.import_data import is_dicom_dir, convert_to_nifti, load_data
 
 def main() -> None:
-    
+    """Entrypoint for the csttool CLI.
+
+       Returns:
+           None.
+    """    
     # Main parser
     parser = argparse.ArgumentParser(
         prog="csttool",
@@ -43,14 +47,35 @@ def main() -> None:
         parser.print_help()
         
 def cmd_check(args: argparse.Namespace) -> None:
-    """Check if env ok."""
+    """Runs environment checks
+
+    Args:
+        args (argparse.Namespace): Parsed command-line arguments.
+    """    
     import sys
     print("csttool environment OK")
     print(f"Python: {sys.version.split()[0]}")
     print(f"Version: {__version__}")
 
 def cmd_import(args: argparse.Namespace) -> None:
-    """Import DICOMs or load an existing NIfTI dataset."""
+    """Import DICOM data or load an existing NIfTI dataset.
+
+    This command checks whether the provided input directory contains DICOM files.
+    If valid, it converts the DICOMs to NIfTI format using ``dicom2nifti`` and then
+    loads the resulting dataset. If the directory is not valid or a NIfTI path is
+    provided, the command loads the existing NIfTI dataset directly.
+
+    Args:
+        args (argparse.Namespace): Parsed command-line arguments containing:
+            - dicom (Path | None): Path to DICOM directory (optional).
+            - nifti (Path | None): Path to NIfTI file (optional).
+            - bval (Path | None): Path to .bval file (optional).
+            - bvec (Path | None): Path to .bvec file (optional).
+            - out (Path): Output directory where data will be written.
+
+    Returns:
+        None. Prints dataset information (shape, gradients, voxel size) to stdout.
+    """
 
     nii = None
     bval = None
