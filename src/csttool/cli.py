@@ -1,6 +1,8 @@
 from __future__ import annotations
 import argparse
+from pathlib import Path
 from . import __version__
+from csttool.preprocess.import_data import is_dicom_dir, convert_to_nifti, load_data
 
 def main() -> None:
     
@@ -20,9 +22,18 @@ def main() -> None:
     # Defines an environment to add "subtools" to 
     subparsers = parser.add_subparsers(dest="command")
     
-    # Dummy subtool to test functionality
+    # check subtool
     p_check = subparsers.add_parser("check", help="Run environment checks")
     p_check.set_defaults(func=cmd_check)
+
+    # import subtool
+    p_import = subparsers.add_parser("import", help="Import DICOMs or load NIfTI data")
+    p_import.add_argument("--dicom", type=Path, help="Path to DICOM directory.")
+    p_import.add_argument("--nifti", type=Path, help="Path to NIfTI file (.nii or .nii.gz).")
+    p_import.add_argument("--bval", type=Path, help="Optional path to .bval (used with --nifti).")
+    p_import.add_argument("--bvec", type=Path, help="Optional path to .bvec (used with --nifti).")
+    p_import.add_argument("--out",  type=Path, required=True, help="Output directory.")
+    p_import.set_defaults(func=cmd_import)
     
     args = parser.parse_args()    
     
@@ -32,11 +43,42 @@ def main() -> None:
         parser.print_help()
         
 def cmd_check(args: argparse.Namespace) -> None:
-    """Lightweight health check to confirm the CLI is wired correctly."""
+    """Check if env ok."""
     import sys
     print("csttool environment OK")
     print(f"Python: {sys.version.split()[0]}")
     print(f"Version: {__version__}")
-        
+
+def cmd_import(args: argparse.Namespace) -> None:
+    """Import DICOMs or load an existing NIfTI dataset."""
+    if args.dicom:
+        if not is_dicom_dir(args.dicom):
+            print("Not a valid DICOM directory.")
+            return
+        print(f"Converting DICOMs in {args.dicom}...")
+        nii, bval, bvec = convert_to_nifti(args.dicom, args.out)
+
+    elif args.nifti:
+        nii = args.nifti
+        if not nii.exists():
+            print(f"NIfTI file not found: {nii}")
+            return
+        # derive sidecars next to the NIfTI if not provided
+        stem = nii.name.replace(".nii.gz", "").replace(".nii", "")
+        bval = args.bval or nii.with_name(f"{stem}.bval")
+        bvec = args.bvec or nii.with_name(f"{stem}.bvec")
+        if not bval.exists() or not bvec.exists():
+            print("Warning: missing .bval or .bvec — attempting to continue.")
+    else:
+        print("Please provide either --dicom or --nifti input.")
+        return
+
+    # Load and report
+    data, _affine, _hdr, gtab = load_data(nii, bval, bvec)
+    print(f"Data shape: {data.shape}")
+    print(f"Gradient directions: {len(gtab.bvals)}")
+    voxel_size = _hdr.get_zooms()[:3]
+    print(f"Voxel size (mm): {voxel_size}")
+
 if __name__ == "__main__":
     main()

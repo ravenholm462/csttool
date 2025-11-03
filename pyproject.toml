@@ -22,3 +22,6 @@ dependencies = [
 
 [project.scripts]
 csttool = "csttool.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/csttool"]
