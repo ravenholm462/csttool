@@ -22,7 +22,8 @@ csttool/
 │     ├─ __init__.py
 │     ├─ cli.py
 │     ├─ preprocess/          # dataset preparation
-│     │  └─ __init__.py
+│     │  ├─ __init__.py
+|     |  └─ import_data.py
 │     ├─ tracking/            # tracking algorithms
 │     │  └─ __init__.py
 │     └─ metrics/             # extraction of desired metrics
