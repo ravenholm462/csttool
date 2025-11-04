@@ -1,14 +1,14 @@
 import nibabel as nib
 import numpy as np
-import os
-
 from pathlib import Path
+
 from dipy.align.reslice import reslice
-# from dipy.align import motion_correction
-from multiprocessing import cpu_count
+from dipy.align import motion_correction        # << re-enable this
 from dipy.io.image import save_nifti
+from dipy.segment.mask import median_otsu       # << keep for masking
+
 from .import_data import load_data
-from dipy.segment.mask import median_otsu
+
 
 
 def check_voxel_size(voxel_size: tuple[float, float, float], tol: float = 1e-3) -> bool:
@@ -48,74 +48,93 @@ def reslice_data(
     data_resliced, affine_resliced = reslice(data, affine, voxel_size, new_zoom)
     return data_resliced, affine_resliced, new_zoom
 
-def motion_correct_data(
-    nifti_path: str | Path,
-    bval_path: str | Path,
-    bvec_path: str | Path,
-    out_path: str | Path,
-    n_jobs: int | None = None,
-    omp_nthreads: int | None = None,
-    seed: int = 42
-) -> Path:
-    """Between volumes motion correction using nifreeze.
+def compute_brain_mask(
+    data: np.ndarray,
+    affine: np.ndarray,
+    gtab,
+    mask_path: str | Path,
+    median_radius: int = 2,
+    numpass: int = 1,
+) -> np.ndarray:
+    """Compute a brain mask from the mean b0 image and save as NIfTI.
 
     Args:
-        nifti_path: Path to input NIfTI file
-        bval_path: Path to b-values file
-        bvec_path: Path to b-vectors file
-        out_path: Path for output corrected NIfTI
-        n_jobs: Number of parallel jobs
-        omp_nthreads: Number of OpenMP threads
-        seed: Random seed for reproducibility
+        data: 4D DWI array (x, y, z, n_volumes).
+        affine: 4x4 affine matrix.
+        gtab: DIPY GradientTable for the dataset.
+        mask_path: Where to save the binary mask NIfTI.
+        median_radius: Radius for median_otsu.
+        numpass: Number of passes for median_otsu.
 
     Returns:
-        Path: Path to the saved motion-corrected NIfTI file
+        mask: 3D boolean array (x, y, z) with brain voxels = True.
     """
-    from nifreeze.model import DTIModel
-    from nifreeze.estimator import Estimator
-    from nifreeze.data import dmri
-    os.environ["OMP_NUM_THREADS"] = "1"
+    mask_path = Path(mask_path)
 
-    nifti_path = Path(nifti_path)
-    bval_path = Path(bval_path)
-    bvec_path = Path(bvec_path)
-    out_path = Path(out_path)
+    # Use all b0 volumes to form a higher SNR reference
+    b0_idx = np.where(gtab.b0s_mask)[0]
+    if b0_idx.size == 0:
+        raise ValueError("No b0 volumes found in gradient table – cannot build brain mask.")
 
-    # 1) Build NiFreeze DWI dataset from disk
-    # NiFreeze handles bvals/bvecs internally; no DIPY GradientTable needed.
-    dataset = dmri.from_nii(
-        str(nifti_path),
-        bval_file=str(bval_path),
-        bvec_file=str(bvec_path),
+    mean_b0 = np.mean(data[..., b0_idx], axis=-1)
+
+    # DIPY's median_otsu: returns (segmented_image, mask)
+    _, mask = median_otsu(mean_b0, median_radius=median_radius, numpass=numpass)
+
+    # Save mask as NIfTI (float32 or uint8 – here float32 like DIPY examples)
+    save_nifti(str(mask_path), mask.astype(np.float32), affine)
+    print(f"Brain mask saved → {mask_path}")
+
+    return mask
+
+def motion_correct_data(
+    data: np.ndarray,
+    affine: np.ndarray,
+    gtab,
+    static_mask: np.ndarray | None = None,
+    b0_ref: int = 0,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Between-volumes motion correction using DIPY.
+
+    Args:
+        data: 4D DWI array (x, y, z, n_volumes).
+        affine: 4x4 affine matrix.
+        gtab: DIPY GradientTable.
+        static_mask: 3D brain mask (x, y, z). If provided, used as static_mask.
+        b0_ref: Index of b0 volume to use as reference. Defaults to 0.
+
+    Returns:
+        data_mc: motion-corrected 4D DWI array.
+        affine_mc: affine of the corrected image.
+    """
+    if static_mask is not None:
+        # Ensure mask is 3D and matches the spatial shape of data
+        if static_mask.ndim != 3:
+            raise ValueError(
+                f"static_mask must be 3D, got shape {static_mask.shape}"
+            )
+        if static_mask.shape != data.shape[:3]:
+            raise ValueError(
+                f"static_mask shape {static_mask.shape} does not match "
+                f"data spatial shape {data.shape[:3]}"
+            )
+        # DIPY's affine map code expects float arrays, not bool
+        static_mask = static_mask.astype(np.float32)
+
+    print("Running DIPY motion correction...")
+    mc_img, affines = motion_correction(
+        data,
+        gtab,
+        affine=affine,
+        b0_ref=b0_ref,
+        pipeline=['center_of_mass', 'translation'],
+        static_mask=static_mask,
     )
 
-    # Create model instance with the dataset
-    model = DTIModel(dataset)
-    
-    # Load estimator with the model
-    estimator = Estimator(
-        model=model,
-        strategy="random",
-    )
-    
-    # Multithreading options
-    if omp_nthreads is None:
-        omp_nthreads = cpu_count()
-    if n_jobs is None:
-        n_jobs = 1
-    
-    # Run the estimator
-    _ = estimator.run(
-        dataset,
-        omp_nthreads=omp_nthreads,
-        n_jobs=n_jobs,
-        seed=seed,
-    )
-    
-    # Save corrected data as NIfTI
-    dataset.to_nifti(str(out_path))
-    
-    return out_path
+    data_mc = mc_img.get_fdata(dtype=np.float32)
+    affine_mc = mc_img.affine
+    print("Motion correction done.")
+    return data_mc, affine_mc
 
 def process_and_save(
     nifti_path: str | Path,
@@ -123,113 +142,57 @@ def process_and_save(
     bvec_path: str | Path,
     output_path: str | Path,
     target_voxel_size: float = 2.0,
-    use_mask: bool = True,
     b0_threshold: int = 50,
-    n_jobs: int | None = None,
-    omp_nthreads: int | None = None,
-    seed: int = 42,
 ) -> None:
-    """Implements the preprocessing pipeline.
+    """Preprocessing pipeline: load → reslice → skull strip → motion correct → save."""
 
-    Args:
-        nifti_path: Path to input NIfTI (.nii or .nii.gz)
-        bval_path: Path to b-values file
-        bvec_path: Path to b-vectors file
-        output_path: Path where the preprocessed NIfTI is saved
-        target_voxel_size: Desired isotropic voxel size in mm. Defaults to 2.0
-        b0_threshold: Maximum b-value considered a b0 image. Defaults to 50
-        n_jobs: Number of parallel jobs for motion correction
-        omp_nthreads: Number of OpenMP threads for motion correction
-        seed: Random seed for reproducibility
-
-    Returns:
-        None
-    """    
     nifti_path = Path(nifti_path)
     bval_path = Path(bval_path)
     bvec_path = Path(bvec_path)
     output_path = Path(output_path)
-    
-    # 1) Load data + gradient table using your existing helper
+
+    # 1) Load data + gradient table
     data, affine, hdr, gtab = load_data(
         nifti_path,
         bval_path=bval_path,
         bvec_path=bvec_path,
         b0_threshold=b0_threshold,
     )
-    
     voxel_size = hdr.get_zooms()[:3]
-    
-    # Default: no change
-    data_rs = data
-    affine_rs = affine
-    new_vox = voxel_size
-    
-    # 2) Check voxel size and reslice if needed
+    print(f"Loaded data: shape={data.shape}, voxel_size={voxel_size}, "
+          f"n_gradients={len(gtab.bvals)}")
+
+    # 2) Reslice if needed
+    data_rs, affine_rs = data, affine
     if not check_voxel_size(voxel_size):
         print(f"Voxel sizes not isotropic ({voxel_size}). Reslicing...")
         data_rs, affine_rs, new_vox = reslice_data(
-            data_rs, affine_rs, voxel_size, target_voxel_size
+            data, affine, voxel_size, target_voxel_size
         )
-        print(f"Resliced to {new_vox} mm voxels")
-        
-        # Save resliced data to temporary file for motion correction
-        temp_resliced_path = output_path.parent / f"{output_path.stem}_temp_resliced.nii.gz"
-        save_nifti(str(temp_resliced_path), data_rs, affine_rs)
-        input_for_mc = temp_resliced_path
+        print(f"Resliced to {new_vox} mm voxels.")
     else:
-        print(f"Voxel sizes already isotropic: {voxel_size}")
-        input_for_mc = nifti_path
-    
-    # Apply brain mask
-    static_mask = None
-    if use_mask:
-        # Quick brain mask from mean b0
-        b0_indices = np.where(gtab.b0s_mask)[0]
-        mean_b0 = np.mean(data[..., b0_indices], axis=-1)
-        
-        # Fast mask using median_otsu
-        _, static_mask = median_otsu(mean_b0, median_radius=2, numpass=1)
+        print("Voxel sizes already isotropic.")
 
-    mask_path = output_path.parent / "brainmask.nii.gz"
-    nib.save(nib.Nifti1Image(static_mask.astype(np.uint8), img.affine), str(mask_path))
+    # 3) Brain segmentation / skull stripping (on resliced data)
+    mask_path = output_path.with_name(output_path.stem + "_mask.nii.gz")
+    print("Computing brain mask...")
+    brain_mask = compute_brain_mask(data_rs, affine_rs, gtab, mask_path)
 
-    # 3) Motion correction
-    print("Starting motion correction...")
-    mc_output_path = output_path.parent / f"{output_path.stem}_mc.nii.gz"
-    
-    motion_correct_data(
-        nifti_path=input_for_mc,
-        bval_path=bval_path,
-        bvec_path=bvec_path,
-        out_path=mc_output_path,
-        
-        n_jobs=n_jobs,
-        omp_nthreads=omp_nthreads,
-        seed=seed,
+    # 4) Motion correction using that mask
+    data_mc, affine_mc = motion_correct_data(
+        data_rs,
+        affine_rs,
+        gtab,
+        static_mask=brain_mask,
     )
-    print("Motion correction complete.")
-    
-    # 4) Load the motion-corrected data for final save
-    data_mc, affine_mc, hdr_mc, _ = load_data(
-        mc_output_path,
-        bval_path=bval_path,
-        bvec_path=bvec_path,
-        b0_threshold=b0_threshold,
-    )
-    
+
+
     # TODO: Denoise
 
-    # TODO: Brain segmentation
+    # TODO: Brain segmentation refinement (if needed)
 
     # TODO: Suppress Gibbs oscillations
-    
+
     # 5) Save final preprocessed data
     save_nifti(str(output_path), data_mc, affine_mc)
     print(f"Preprocessing complete → {output_path}")
-    
-    # Clean up temporary files if created
-    if input_for_mc != nifti_path:
-        temp_resliced_path.unlink(missing_ok=True)
-    mc_output_path.unlink(missing_ok=True)
-
