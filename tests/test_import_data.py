@@ -5,14 +5,14 @@ from csttool.preprocess.preparation import process_and_save
 
 def main():
     # debian
-    # dicom_dir = Path("/home/alem/Documents/thesis/data/anom/cmrr_mbep2d_diff_AP_TDI_Series0017/")
-    # out_dir = Path("/home/alem/Documents/thesis/data/nifti/")
-    # preproc_dir = Path("/home/alem/Documents/thesis/data/preproc/")
+    dicom_dir = Path("/home/alem/Documents/thesis/data/anom/cmrr_mbep2d_diff_AP_TDI_Series0017/")
+    out_dir = Path("/home/alem/Documents/thesis/data/nifti/")
+    preproc_dir = Path("/home/alem/Documents/thesis/data/preproc/")
 
     # ubuntu
-    dicom_dir = Path("/home/alemnalo/anom/cmrr_mbep2d_diff_AP_TDI_Series0017")
-    out_dir = Path("/home/alemnalo/anom/outtest")
-    preproc_dir = Path("/home/alemnalo/anom/preproc")
+    # dicom_dir = Path("/home/alemnalo/anom/cmrr_mbep2d_diff_AP_TDI_Series0017")
+    # out_dir = Path("/home/alemnalo/anom/outtest")
+    # preproc_dir = Path("/home/alemnalo/anom/preproc")
 
     out_dir.mkdir(parents=True, exist_ok=True)
     preproc_dir.mkdir(parents=True, exist_ok=True)

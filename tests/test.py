@@ -28,17 +28,22 @@ from dipy.core.histeq import histeq
 from dipy.align import motion_correction
 
 # Define paths
-dicom_path = "/home/alemnalo/anom/cmrr_mbep2d_diff_AP_TDI_Series0017/"
-nifti_path = "/home/alemnalo/anom/nifti"
+#dicom_path = "/home/alemnalo/anom/cmrr_mbep2d_diff_AP_TDI_Series0017/"
+dicom_path = "/home/alem/Documents/thesis/data/anom/"
+#nifti_path = "/home/alemnalo/anom/nifti"
+nifti_path = "/home/alem/Documents/thesis/data/nifti"
+
+out_path = "/home/alem/Documents/thesis/data/nifti/out"
+
 fname = "17_cmrr_mbep2d_diff_ap_tdi"
 fdwi = join(nifti_path, fname + ".nii.gz")
-#print(fdwi)
+print(fdwi)
 
 fbval = join(nifti_path, fname + ".bval")
-#print(fbval)
+print(fbval)
 
 fbvec = join(nifti_path, fname + ".bvec")
-#print(fbvec)
+print(fbvec)
 
 # Load dataset, show shape and voxel size
 data, affine, img = load_nifti(fdwi, return_img=True)
@@ -156,7 +161,7 @@ plt.title("b0 slice")
 plt.subplot(1, 2, 2).set_axis_off()
 plt.imshow(histeq(b0_masked_vol0.astype(float)).T, cmap="gray", origin="lower")
 plt.title("Median Otsu brain-masked b0")
-plt.savefig(f"{fname}_median_otsu.png", bbox_inches="tight")
+#plt.savefig(f"{fname}_median_otsu.png", bbox_inches="tight")
 plt.show()
 
 print("\n" + "="*70)
@@ -168,3 +173,7 @@ data = b0_data_masked
 data_corrected, reg_affines = motion_correction(data, gtab, affine=affine)
 
 print("Motion correction complete.. Total time elapsed:", time() - t)
+
+output = join(out_path, fname + "_preproc.nii.gz")
+save_nifti(output, data_corrected.get_fdata(), data_corrected.affine)
+print(f"Saved output to {output}")
