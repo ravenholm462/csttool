@@ -1,7 +1,7 @@
 """
 funcs.py
 
-Utility functions for a simple DWI preprocessing pipeline:
+Utility functions for csttool's preprocessing pipeline.
 
 1. Load NIfTI + bvals/bvecs and build a gradient table
 2. Estimate noise and denoise with NLMEANS

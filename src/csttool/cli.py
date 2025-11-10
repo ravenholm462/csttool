@@ -5,6 +5,11 @@ from pathlib import Path
 
 from . import __version__
 import csttool.preprocess.funcs as preproc
+import csttool.tracking.funcs as trk
+
+from dipy.io import read_bvals_bvecs
+from dipy.core.gradients import gradient_table
+from dipy.io.image import load_nifti
 
 
 def main() -> None:
@@ -57,6 +62,54 @@ def main() -> None:
         help="Skip between volume motion correction."
     )
     p_preproc.set_defaults(func=cmd_preprocess)
+
+    # track subtool
+    p_track = subparsers.add_parser(
+        "track",
+        help="Run deterministic tractography on preprocessed data"
+    )
+    p_track.add_argument(
+        "--nifti",
+        type=Path,
+        required=True,
+        help="Path to preprocessed NIfTI (.nii or .nii.gz).",
+    )
+    p_track.add_argument(
+        "--fa-thr",
+        type=float,
+        default=0.2,
+        help="FA threshold for stopping and seeding (default 0.2).",
+    )
+    p_track.add_argument(
+        "--seed-density",
+        type=int,
+        default=1,
+        help="Seeds per voxel in the seed mask (default 1).",
+    )
+    p_track.add_argument(
+        "--step-size",
+        type=float,
+        default=0.5,
+        help="Tracking step size in millimetres (default 0.5).",
+    )
+    p_track.add_argument(
+        "--sh-order",
+        type=int,
+        default=6,
+        help="Maximum spherical harmonic order for CSA ODF model (default 6).",
+    )
+    p_track.add_argument(
+        "--show-plots",
+        action="store_true",
+        help="Enable QC plots used by background segmentation.",
+    )
+    p_track.add_argument(
+        "--out",
+        type=Path,
+        required=True,
+        help="Output directory for tractogram.",
+    )
+    p_track.set_defaults(func=cmd_track)
 
     args = parser.parse_args()
 
@@ -147,6 +200,43 @@ def load_with_preproc(nii: Path):
     return data, affine, hdr, gtab
 
 
+def get_gtab_for_preproc(preproc_nii: Path):
+    """
+    Given a preprocessed NIfTI path like <stem>_preproc.nii.gz,
+    find the original .bval and .bvec next to it and build gtab.
+    """
+    name = preproc_nii.name
+
+    if name.endswith(".nii.gz"):
+        stem = name[:-7]
+    elif name.endswith(".nii"):
+        stem = name[:-4]
+    else:
+        raise ValueError("Preprocessed NIfTI must end with .nii or .nii.gz")
+
+    if stem.endswith("_preproc"):
+        orig_stem = stem[:-8]
+    else:
+        # If user gives a non preproc name, assume sidecars match it
+        orig_stem = stem
+
+    bval = preproc_nii.with_name(f"{orig_stem}.bval")
+    bvec = preproc_nii.with_name(f"{orig_stem}.bvec")
+
+    print(f"Using .bval: {bval}")
+    print(f"Using .bvec: {bvec}")
+
+    if not bval.exists() or not bvec.exists():
+        raise FileNotFoundError(
+            f"Missing .bval or .bvec for {orig_stem}. "
+            "Expected them next to the NIfTI file."
+        )
+
+    bvals, bvecs = read_bvals_bvecs(str(bval), str(bvec))
+    gtab = gradient_table(bvals, bvecs=bvecs)
+    return gtab
+
+
 def cmd_import(args: argparse.Namespace) -> None:
     """Import DICOM data or load an existing NIfTI dataset and print basic info."""
     try:
@@ -213,6 +303,79 @@ def cmd_preprocess(args: argparse.Namespace) -> None:
         stem,
     )
     print(f"Preprocessing complete. Output: {output_path}")
+
+def cmd_track(args: argparse.Namespace) -> None:
+    """
+    Run deterministic tractography on a preprocessed NIfTI dataset.
+
+    Expected workflow:
+      1) Run `csttool preprocess` to create <stem>_preproc.nii.gz
+      2) Run `csttool track --nifti <stem>_preproc.nii.gz --out <dir>`
+    """
+    preproc_nii = args.nifti
+    if not preproc_nii.exists():
+        print(f"Error: preprocessed NIfTI not found: {preproc_nii}")
+        return
+
+    args.out.mkdir(parents=True, exist_ok=True)
+
+    print(f"Loading preprocessed data from {preproc_nii}")
+    data, affine, img = load_nifti(str(preproc_nii), return_img=True)
+
+    print("Building gradient table for preprocessed data")
+    try:
+        gtab = get_gtab_for_preproc(preproc_nii)
+    except FileNotFoundError as e:
+        print(f"Error: {e}")
+        return
+
+    print("Step 1: Brain masking with median Otsu")
+    # Reuse segmentation on the preprocessed data
+    masked_data, brain_mask = preproc.background_segmentation(
+        data,
+        gtab,
+        visualize=args.show_plots,
+    )
+
+    print("Step 2: Tensor fit and scalar measures")
+    tenfit = trk.fit_tensor(masked_data, gtab, brain_mask=brain_mask)
+    fa, md = trk.compute_measures(tenfit)
+
+    print("Step 3: Direction field estimation")
+    peaks = trk.get_directions(
+        masked_data,
+        gtab,
+        mask=brain_mask,
+        sh_order_max=args.sh_order,
+    )
+
+    print("Step 4: Stopping criterion and seeds")
+    stopping_criterion, seeds, seed_mask = trk.terminate_and_seed(
+        fa,
+        affine,
+        fa_thr=args.fa_thr,
+        seed_density=args.seed_density,
+    )
+
+    print("Step 5: Deterministic tracking")
+    streamlines = trk.run_deterministic_tracking(
+        peaks,
+        stopping_criterion,
+        seeds,
+        affine,
+        step_size=args.step_size,
+    )
+
+    # Save tractogram
+    stem = preproc_nii.name.replace(".nii.gz", "").replace(".nii", "")
+    tract_name = f"{stem}_det"
+    print("Step 6: Saving tractogram")
+    trk.save_tractogram_trk(
+        streamlines,
+        img,
+        args.out,
+        fname=tract_name,
+    )
 
 
 if __name__ == "__main__":
