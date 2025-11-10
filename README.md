@@ -14,21 +14,26 @@ The core ideas behind `csttool` are:
 v0.0.1
 
 ```
-csttool/
-├─ pyproject.toml
-├─ README.md
-├─ src/
-│  └─ csttool/
-│     ├─ __init__.py
-│     ├─ cli.py
-│     ├─ preprocess/          # dataset preparation
-│     │  ├─ __init__.py
-|     |  └─ import_data.py
-│     ├─ tracking/            # tracking algorithms
-│     │  └─ __init__.py
-│     └─ metrics/             # extraction of desired metrics
-└─ tests/
-   └─ __init__.py
+├── LICENSE
+├── pyproject.toml
+├── README.md
+├── src
+│   └── csttool
+│       ├── cli.py
+│       ├── __init__.py
+│       ├── metrics
+│       │   └── __init__.py
+│       ├── preprocess
+│       │   ├── funcs.py
+│       │   ├── __init__.py
+│       │   └── tests
+│       │       └── pipeline_test.py
+│       └── tracking
+│           ├── funcs.py
+│           ├── __init__.py
+└── tests
+    ├── cli_test.sh
+    ├── __init__.py
 ```
 
 ## Config file
@@ -50,6 +55,30 @@ The skeleton consists of two files:
    - Defines the main entry point for the command line interface
    - Python's built-in `argparse` module to handle commands and arguments
    - Uses subparsers to create modular commands within the main parser, each bound to its own Python function. Each command implements one workflow step (e.g. `check`, `preprocess`, `track`, `metrics`).
+
+## Preprocessing
+
+The preprocessing pipeline performs the following steps:
+
+1. Load NIfTI + bvals/bvecs and build a gradient table
+2. Estimate noise and denoise with NLMEANS
+3. Compute a brain mask with median Otsu on b0 volumes
+4. Perform between volume motion correction
+5. Save the preprocessed data to disk
+
+## Tracking
+
+The tracking pipeline performs the following steps:
+
+1. Tensor fitting and scalar measures (FA, MD)
+2. Direction field estimation with a CSA ODF model
+3. FA based stopping criterion and seed generation
+4. Deterministic local tracking
+5. Tractogram saving helper
+
+## Analysis
+
+Coming soon.
 
 ## How to run
 
@@ -73,8 +102,25 @@ For Debian/Ubuntu-based Linux systems, ensure that the `python3-venv` package is
 
 ## Testing
 
-The `/tests` directory is meant for unit and integration tests for each submodule. The goal is to ensure reproducibility and to support future deployment via e.g. Docker.
+Each submodule will have its own `/test` folder. The root level `/test` folder houses the CLI `.sh` test script.
 
+## Usage examples
+
+### Preprocess data
+
+## Example usage
+
+### Preprocess data
+
+```bash
+csttool preprocess --nifti /data/sub01_dwi.nii.gz --out /data/output
+```
+
+### Run deterministic tracking
+
+```
+csttool track --nifti /data/output/sub01_dwi_preproc.nii.gz --out /data/output
+```
 
 
 
