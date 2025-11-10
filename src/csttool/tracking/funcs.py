@@ -129,7 +129,7 @@ def get_directions(
         This object can be passed directly to LocalTracking.
     """
     print("Estimating direction field with CSA ODF model")
-    sphere = get_sphere(sphere_name)
+    sphere = get_sphere(name=sphere_name)
 
     csa_model = CsaOdfModel(gtab, sh_order_max)
     peaks = peaks_from_model(
