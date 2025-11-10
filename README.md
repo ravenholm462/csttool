@@ -108,10 +108,6 @@ Each submodule will have its own `/test` folder. The root level `/test` folder h
 
 ### Preprocess data
 
-## Example usage
-
-### Preprocess data
-
 ```bash
 csttool preprocess --nifti /data/sub01_dwi.nii.gz --out /data/output
 ```
