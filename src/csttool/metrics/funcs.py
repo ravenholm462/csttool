@@ -5,7 +5,12 @@ Utility functions for csttool's metric analysis pipeline.
 
 """
 
-# Imports
+# General imports
+import numpy as np
+
+# Analysis imports
+from dipy.tracking.streamline import length, Streamlines
+from dipy.tracking.utils import density_map
 
 def analyze_cst_bundle(
         streamlines,
@@ -27,7 +32,7 @@ def analyze_cst_bundle(
     # Morphology of the CST
     metrics["morphology"] = {
         "n_streamlines": len(streamlines),
-        "mean_length": mean_streamline_length(streamlines),  # TO-DO
+        "mean_length": compute_streamline_length(streamlines)["mean_length"],
         "tract_volume": compute_tract_volume(streamlines)  # TO-DO
     }
 
@@ -47,14 +52,49 @@ def analyze_cst_bundle(
     return metrics
 
 
-def mean_streamline_length(streamlines):
+def compute_streamline_length(streamlines):
+    """Computes streamline length values
 
-    pass
+    Args:
+        streamlines (Streamlines): input streamlines
+
+    Returns:
+        dict: Dictionary of length statistics and streamlines.
+    """
+
+    vals = {}
+
+    if len(streamlines) == 0:
+        vals
+
+    length_array = np.array([len(s) for s in streamlines])
+
+    vals["mean_length"] = float(np.mean(length_array))
+    vals["std_length"] = float(np.std(length_array))
+    vals["min_length"] = float(np.min(length_array))
+    vals["max_length"] = float(np.max(length_array))
+    vals["n_streamlines"] = len(length_array)
+    vals["lengths"] = length_array
+
+    return vals
 
 
-def compute_tract_volume(streamlines):
+def compute_tract_volume(streamlines, affine, voxel_size=None):
 
-    pass
+    # If no voxel size is given, compute
+    if voxel_size is None:
+        voxel_size = np.sqrt(np.sum(affine[:3, :3]**2, axis=0))
+
+    density = density_map(
+        streamlines=streamlines,
+        affine=affine,
+        shape=shape
+    )
+
+    voxel_volume = np.prod(voxel_size)
+    volume = np.sum(density>0)*voxel_volume
+
+    return density, volume
 
 
 def mean_fa_along_tract(streamline, fa_map):
