@@ -111,6 +111,24 @@ def main() -> None:
     )
     p_track.set_defaults(func=cmd_track)
 
+    # Metrics subtool
+    p_metrics = subparsers.add_parser(
+        "metrics",
+        help="Compute metrics on tractography results"
+    )
+    p_metrics.add_argument(
+        "--tractogram",
+        type=Path,
+        required=True,
+        help="Path to .trk tractogram"
+    )
+    p_metrics.add_argument(
+        "--fa",
+        type=Path,
+        help="FA map for scalar analysis"
+    )
+    p_metrics.set_defaults(func=cmd_metrics)
+
     args = parser.parse_args()
 
     if hasattr(args, "func"):
@@ -377,6 +395,11 @@ def cmd_track(args: argparse.Namespace) -> None:
         fname=tract_name,
     )
 
+def cmd_metrics(args: argparse.Namespace) -> None:
+    """
+    Compute DTI metrics on tractogram
+    """
+    pass
 
 if __name__ == "__main__":
     main()

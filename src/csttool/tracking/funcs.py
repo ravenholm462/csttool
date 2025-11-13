@@ -84,6 +84,9 @@ def compute_measures(tenfit):
 
     md = dti.mean_diffusivity(tenfit.evals)
 
+    fa = np.nan_to_num(tenfit.fa, nan=0.0, posinf=0.0, neginf=0.0)
+    md = np.nan_to_num(dti.mean_diffusivity(tenfit.evals), nan=0.0, posinf=0.0, neginf=0.0)
+
     if np.any(fa > 0):
         fa_nonzero = fa[fa > 0]
         print(f"FA: min {fa_nonzero.min():.3f}, "
