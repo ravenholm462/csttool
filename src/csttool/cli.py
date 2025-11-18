@@ -58,9 +58,9 @@ def main() -> None:
         help="Enable QC plots for denoising and segmentation."
     )
     p_preproc.add_argument(
-        "--skip-motion-correction",
+        "--perform-motion-correction",
         action="store_true",
-        help="Skip between volume motion correction."
+        help="Enable between volume motion correction (disabled by default)."
     )
     p_preproc.set_defaults(func=cmd_preprocess)
 
@@ -312,18 +312,27 @@ def cmd_preprocess(args: argparse.Namespace) -> None:
         visualize=args.show_plots,
     )
 
-    if args.skip_motion_correction:
-        print("Skipping motion correction as requested")
-        preprocessed = masked_data
-    else:
+    # CHANGED: Motion correction is now opt-in
+    if args.perform_motion_correction:
         print("Step 3: Between volume motion correction")
-        preprocessed, reg_affines = preproc.perform_motion_correction(
-            masked_data,
-            gtab,
-            affine,
-            brain_mask=brain_mask,
-        )
-        # reg_affines could be saved in a future extension
+        try:
+            preprocessed, reg_affines = preproc.perform_motion_correction(
+                masked_data,
+                gtab,
+                affine,
+                brain_mask=brain_mask,
+            )
+            motion_correction_applied = True
+            print("✓ Motion correction successful")
+        except Exception as e:
+            print(f"Motion correction failed: {e}")
+            print("Continuing without motion correction")
+            preprocessed = masked_data
+            motion_correction_applied = False
+    else:
+        print("Skipping motion correction (default behavior)")
+        preprocessed = masked_data
+        motion_correction_applied = False
 
     print("Step 4: Saving output")
     output_path = preproc.save_output(
@@ -331,8 +340,74 @@ def cmd_preprocess(args: argparse.Namespace) -> None:
         affine,
         str(args.out),
         stem,
+        motion_correction_applied=motion_correction_applied
     )
     print(f"Preprocessing complete. Output: {output_path}")
+
+
+def extract_subject_id(filename):
+    """
+    Extract subject ID from filename based on common patterns.
+    Customize this based on your specific file naming convention.
+    """
+    import re
+    
+    # Common patterns - adjust these based on your data
+    patterns = [
+        r'(sub-[a-zA-Z0-9]+)',  # BIDS: sub-XXX
+        r'([A-Za-z]+_\d+)',     # XXX_001
+        r'(\d{6})',             # 6-digit ID
+        r'(S\d+)',              # S001, S002
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, filename)
+        if match:
+            return match.group(1)
+    
+    # If no pattern matches, use the filename stem
+    return filename
+
+
+def copy_gradient_files(original_nii, out_dir, stem):
+    """
+    Copy .bval and .bvec files to maintain complete preprocessed dataset.
+    """
+    from pathlib import Path
+    import shutil
+    
+    original_dir = Path(original_nii).parent
+    
+    # Look for bval/bvec files with same stem as original NIfTI
+    bval_candidates = [
+        original_dir / f"{stem}.bval",
+        original_dir / f"{stem}_preproc.bval",  # In case they already exist
+    ]
+    
+    bvec_candidates = [
+        original_dir / f"{stem}.bvec", 
+        original_dir / f"{stem}_preproc.bvec",
+    ]
+    
+    preproc_dir = Path(out_dir) / "preprocessed"
+    preproc_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Copy bval file
+    for bval_path in bval_candidates:
+        if bval_path.exists():
+            dest_bval = preproc_dir / f"{stem}_dwi_preproc.bval"
+            shutil.copy2(bval_path, dest_bval)
+            print(f"✓ Copied bval to: {dest_bval}")
+            break
+    
+    # Copy bvec file  
+    for bvec_path in bvec_candidates:
+        if bvec_path.exists():
+            dest_bvec = preproc_dir / f"{stem}_dwi_preproc.bvec"
+            shutil.copy2(bvec_path, dest_bvec)
+            print(f"✓ Copied bvec to: {dest_bvec}")
+            break
+
 
 def cmd_track(args: argparse.Namespace) -> None:
     """

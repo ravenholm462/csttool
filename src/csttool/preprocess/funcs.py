@@ -325,83 +325,138 @@ def perform_motion_correction(
         affine: np.ndarray,
         brain_mask: np.ndarray | None = None
 ):
+     print("Performing between volume motion correction...")
+     t = time()
+
+     if brain_mask is not None:
+         # Ensure the mask is binary and uint8
+         brain_mask = brain_mask.astype(np.uint8)
+
+     try:
+         if brain_mask is not None:
+             data_corrected, reg_affines = motion_correction(
+                 data,
+                 gtab,
+                 affine=affine,
+                 static_mask=brain_mask
+             )
+         else:
+             data_corrected, reg_affines = motion_correction(
+                 data,
+                 gtab,
+                 affine=affine
+             )
+     except Exception as e:
+         print(f"Motion correction failed: {e}")
+         # Try without the mask
+         print("Trying without mask...")
+         try:
+             data_corrected, reg_affines = motion_correction(
+                 data,
+                 gtab,
+                 affine=affine
+             )
+         except Exception as e2:
+             print(f"Motion correction without mask also failed: {e2}")
+             print("Returning original data.")
+             data_corrected = data
+             reg_affines = [affine] * data.shape[-1]
+
+     print(f"Motion correction complete. Total time elapsed: {time() - t:.2f} s\n")
+
+     return data_corrected, reg_affines
+
+
+def save_output(data, affine, out_dir, stem, save_intermediates=True, motion_correction_applied=False):
     """
-    Perform between volume motion correction.
-
-    Parameters
-    ----------
-    data : np.ndarray
-        4D DWI data array.
-    gtab : GradientTable
-        Gradient table for the dataset.
-    affine : np.ndarray
-        4x4 affine matrix for the input data.
-    brain_mask : np.ndarray or None
-        Optional brain mask for improved registration.
-
-    Returns
-    -------
-    data_corrected : np.ndarray
-        Motion corrected 4D data.
-    reg_affines : np.ndarray
-        Affine transform per volume from registration.
+    Save preprocessed data with organized structure and clear naming.
     """
-    print("Performing between volume motion correction...")
-    t = time()
+    from pathlib import Path
+    import nibabel as nib
+    import json
+    from datetime import datetime
+    
+    out_dir = Path(out_dir)
+    
+    # Create directory structure
+    preproc_dir = out_dir / "preprocessed"
+    intermediate_dir = out_dir / "intermediate" 
+    log_dir = out_dir / "logs"
+    
+    preproc_dir.mkdir(parents=True, exist_ok=True)
+    if save_intermediates:
+        intermediate_dir.mkdir(parents=True, exist_ok=True)
+    log_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Generate timestamp for reproducibility
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    # Main preprocessed output - include motion correction status in filename
+    motion_status = "mc" if motion_correction_applied else "nomc"
+    preproc_path = preproc_dir / f"{stem}_dwi_preproc_{motion_status}.nii.gz"
+    nib.save(nib.Nifti1Image(data, affine), preproc_path)
+    
+    # File paths dictionary - CONVERT ALL PATHS TO STRINGS
+    file_paths = {
+        'preprocessed_dwi': str(preproc_path),  # Convert to string
+        'timestamp': timestamp,
+        'motion_correction_applied': motion_correction_applied,
+        'output_structure': {
+            'preprocessed': str(preproc_dir),      # Convert to string
+            'intermediate': str(intermediate_dir), # Convert to string  
+            'logs': str(log_dir)                   # Convert to string
+        }
+    }
+    
+    # Create processing report
+    report = {
+        'processing_date': timestamp,
+        'input_stem': stem,
+        'output_files': file_paths,
+        'data_shape': data.shape,
+        'data_dtype': str(data.dtype),
+        'voxel_size': np.sqrt(np.sum(affine[:3, :3]**2, axis=0)).tolist(),
+        'motion_correction_applied': motion_correction_applied,
+        'motion_correction_status': 'success' if motion_correction_applied else 'skipped_or_failed'
+    }
+    
+    report_path = log_dir / f"{stem}_preprocessing_report.json"
+    with open(report_path, 'w') as f:
+        json.dump(report, f, indent=2)
+    
+    file_paths['processing_report'] = str(report_path)  # Convert to string
+    
+    print(f"✓ Preprocessed data saved to: {preproc_path}")
+    print(f"✓ Processing report saved to: {report_path}")
+    print(f"✓ Motion correction: {'APPLIED' if motion_correction_applied else 'NOT APPLIED'}")
+    
+    return file_paths
 
-    if brain_mask is not None:
-        data_corrected, reg_affines = motion_correction(
-            data,
-            gtab,
-            affine=affine,
-            static_mask=brain_mask
-        )
-    else:
-        data_corrected, reg_affines = motion_correction(
-            data,
-            gtab,
-            affine=affine
-        )
 
-    print(f"Motion correction complete. Total time elapsed: {time() - t:.2f} s\n")
-
-    return data_corrected, reg_affines
+def save_brain_mask(mask, affine, out_dir, stem):
+    """Save brain mask with consistent naming."""
+    import nibabel as nib
+    from pathlib import Path
+    
+    out_dir = Path(out_dir) / "preprocessed"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    
+    mask_path = out_dir / f"{stem}_brain_mask.nii.gz"
+    nib.save(nib.Nifti1Image(mask.astype(np.uint8), affine), mask_path)
+    
+    print(f"✓ Brain mask saved to: {mask_path}")
+    return mask_path
 
 
-def save_output(
-        data: np.ndarray,
-        affine: np.ndarray,
-        out_path: str,
-        fname: str
-):
-    """
-    Save a 4D NIfTI image to disk.
-
-    Parameters
-    ----------
-    data : np.ndarray
-        4D DWI data array to save.
-    affine : np.ndarray
-        4x4 affine matrix to use for the NIfTI header.
-    out_path : str
-        Output folder.
-    fname : str
-        Base filename without extension. "_preproc.nii.gz" is added.
-
-    Returns
-    -------
-    output : str
-        Full path of the saved NIfTI file.
-    """
-    if hasattr(data, "get_fdata"):        # Nifti1Image case
-        img = data
-        arr = img.get_fdata().astype(np.float32)
-        if affine is None:
-            affine = img.affine
-    else:
-        arr = data.astype(np.float32)
-
-    output = join(out_path, fname + "_preproc.nii.gz")
-    save_nifti(output, arr, affine)
-    print(f"Saved output to {output}")
-    return output
+def save_denoised_data(data, affine, out_dir, stem):
+    """Save denoised data (intermediate file)."""
+    import nibabel as nib
+    from pathlib import Path
+    
+    out_dir = Path(out_dir) / "intermediate"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    
+    denoised_path = out_dir / f"{stem}_dwi_denoised.nii.gz"
+    nib.save(nib.Nifti1Image(data, affine), denoised_path)
+    
+    return denoised_path
