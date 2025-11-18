@@ -375,6 +375,14 @@ def save_output(data, affine, out_dir, stem, save_intermediates=True, motion_cor
     import nibabel as nib
     import json
     from datetime import datetime
+
+     # SAFETY CHECK: Ensure data is a numpy array, not a Nifti1Image
+    if hasattr(data, 'get_fdata'):
+        print("Converting Nifti1Image to numpy array for saving...")
+        data = data.get_fdata()
+    
+    if not isinstance(data, np.ndarray):
+        raise ValueError(f"Data must be a numpy array, got {type(data)}")
     
     out_dir = Path(out_dir)
     
