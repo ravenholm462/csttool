@@ -312,7 +312,6 @@ def cmd_preprocess(args: argparse.Namespace) -> None:
         visualize=args.show_plots,
     )
 
-    # CHANGED: Motion correction is now opt-in
     if args.perform_motion_correction:
         print("Step 3: Between volume motion correction")
         try:
@@ -342,17 +341,22 @@ def cmd_preprocess(args: argparse.Namespace) -> None:
         stem,
         motion_correction_applied=motion_correction_applied
     )
+
+    print("Step 5: Copying gradient files")
+    preproc.copy_gradient_files(
+        nii, str(args.out), stem, motion_correction_applied
+    )
+
     print(f"Preprocessing complete. Output: {output_path}")
 
 
 def extract_subject_id(filename):
     """
     Extract subject ID from filename based on common patterns.
-    Customize this based on your specific file naming convention.
     """
     import re
     
-    # Common patterns - adjust these based on your data
+    # Common patterns - adjust these if needed
     patterns = [
         r'(sub-[a-zA-Z0-9]+)',  # BIDS: sub-XXX
         r'([A-Za-z]+_\d+)',     # XXX_001
@@ -411,11 +415,7 @@ def copy_gradient_files(original_nii, out_dir, stem):
 
 def cmd_track(args: argparse.Namespace) -> None:
     """
-    Run deterministic tractography on a preprocessed NIfTI dataset.
-
-    Expected workflow:
-      1) Run `csttool preprocess` to create <stem>_preproc.nii.gz
-      2) Run `csttool track --nifti <stem>_preproc.nii.gz --out <dir>`
+    Run deterministic tractography on preprocessed data with organized output.
     """
     preproc_nii = args.nifti
     if not preproc_nii.exists():
@@ -471,16 +471,35 @@ def cmd_track(args: argparse.Namespace) -> None:
         step_size=args.step_size,
     )
 
+    # Create organized output structure for tracking
+    stem = preproc_nii.stem.replace('_dwi_preproc_nomc', '').replace('_dwi_preproc_mc', '')
+    
+    # Save tractogram with organized structure
+    tract_name = f"{stem}_cst_det"
+    print("Step 6: Saving tractogram and outputs")
+    
     # Save tractogram
-    stem = preproc_nii.name.replace(".nii.gz", "").replace(".nii", "")
-    tract_name = f"{stem}_det"
-    print("Step 6: Saving tractogram")
-    trk.save_tractogram_trk(
+    tract_path = trk.save_tractogram_trk(
         streamlines,
         img,
         args.out,
         fname=tract_name,
     )
+    
+    # Save scalar maps (FA, MD) for later analysis
+    scalar_outputs = trk.save_scalar_maps(
+        fa, md, affine, args.out, stem
+    )
+    
+    # Save processing report
+    report_path = trk.save_tracking_report(
+        streamlines, args.out, stem, tract_path, scalar_outputs
+    )
+    
+    print(f"✓ Tracking complete for {stem}")
+    print(f"✓ Tractogram: {tract_path}")
+    print(f"✓ Scalar maps: {scalar_outputs}")
+    print(f"✓ Report: {report_path}")
 
 def cmd_metrics(args):
     """Compute CST metrics from tractography results."""

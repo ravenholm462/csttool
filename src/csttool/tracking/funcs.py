@@ -267,3 +267,62 @@ def save_tractogram_trk(
     print(f"Saved tractogram to {out_path}")
 
     return out_path
+
+
+def save_scalar_maps(fa, md, affine, out_dir, stem):
+    """
+    Save FA and MD maps for later analysis.
+    """
+    import nibabel as nib
+    from pathlib import Path
+    import json
+    
+    out_dir = Path(out_dir)
+    scalar_dir = out_dir / "scalar_maps"
+    scalar_dir.mkdir(parents=True, exist_ok=True)
+    
+    outputs = {}
+    
+    # Save FA map
+    if fa is not None:
+        fa_path = scalar_dir / f"{stem}_fa.nii.gz"
+        nib.save(nib.Nifti1Image(fa.astype(np.float32), affine), fa_path)
+        outputs['fa_map'] = str(fa_path)
+        print(f"✓ FA map saved: {fa_path}")
+    
+    # Save MD map  
+    if md is not None:
+        md_path = scalar_dir / f"{stem}_md.nii.gz"
+        nib.save(nib.Nifti1Image(md.astype(np.float32), affine), md_path)
+        outputs['md_map'] = str(md_path)
+        print(f"✓ MD map saved: {md_path}")
+    
+    return outputs
+
+def save_tracking_report(streamlines, out_dir, stem, tract_path, scalar_outputs):
+    """
+    Save tracking processing report.
+    """
+    from pathlib import Path
+    import json
+    from datetime import datetime
+    
+    out_dir = Path(out_dir)
+    log_dir = out_dir / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    
+    report = {
+        'processing_date': datetime.now().strftime("%Y%m%d_%H%M%S"),
+        'subject_stem': stem,
+        'streamline_count': len(streamlines),
+        'output_files': {
+            'tractogram': str(tract_path),
+            **scalar_outputs
+        }
+    }
+    
+    report_path = log_dir / f"{stem}_tracking_report.json"
+    with open(report_path, 'w') as f:
+        json.dump(report, f, indent=2)
+    
+    return report_path

@@ -441,6 +441,31 @@ def save_output(data, affine, out_dir, stem, save_intermediates=True, motion_cor
     return file_paths
 
 
+def copy_gradient_files(original_nii_path, out_dir, stem, motion_correction_applied=False):
+    """Simply copy .bval and .bvec files to output directory."""
+    from pathlib import Path
+    import shutil
+    
+    original_dir = Path(original_nii_path).parent
+    out_dir = Path(out_dir) / "preprocessed"
+    
+    motion_status = "mc" if motion_correction_applied else "nomc"
+    
+    # Copy .bval
+    bval_src = original_dir / f"{stem}.bval"
+    bval_dest = out_dir / f"{stem}_dwi_preproc_{motion_status}.bval"
+    if bval_src.exists():
+        shutil.copy2(bval_src, bval_dest)
+        print(f"✓ Copied .bval to: {bval_dest}")
+    
+    # Copy .bvec
+    bvec_src = original_dir / f"{stem}.bvec"
+    bvec_dest = out_dir / f"{stem}_dwi_preproc_{motion_status}.bvec"
+    if bvec_src.exists():
+        shutil.copy2(bvec_src, bvec_dest)
+        print(f"✓ Copied .bvec to: {bvec_dest}")
+
+
 def save_brain_mask(mask, affine, out_dir, stem):
     """Save brain mask with consistent naming."""
     import nibabel as nib
