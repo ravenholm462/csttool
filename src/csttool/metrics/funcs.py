@@ -12,6 +12,28 @@ import numpy as np
 from dipy.tracking.streamline import length, Streamlines
 from dipy.tracking.utils import density_map
 
+def world_to_voxel(world_point, affine):
+    """Convert world coordinates (mm) to voxel coordinates using affine.
+    Performs the following transform:
+
+    voxel_coords = affine_matrix x world_coords
+
+    [ voxel_x ]   [ r11 r12 r13 t1 ]   [ world_x ]
+    [ voxel_y ] = [ r21 r22 r23 t2 ] X [ world_y ] 
+    [ voxel_z ]   [ r31 r32 r33 t3 ]   [ world_z ]
+    [    1    ]   [  0   0   0  1  ]   [    1    ]
+    
+    """
+    # Add homogeneous coordinate
+    world_point_homogeneous = np.append(world_point, 1.0)
+    
+    # Apply inverse affine transformation
+    voxel_coord_homogeneous = np.linalg.inv(affine) @ world_point_homogeneous
+    
+    # Convert back to 3D coordinates and round
+    voxel_coord = np.round(voxel_coord_homogeneous[:3]).astype(int)
+    return voxel_coord
+
 def analyze_cst_bundle(
         streamlines,
         fa_map=None,
@@ -33,7 +55,7 @@ def analyze_cst_bundle(
     metrics["morphology"] = {
         "n_streamlines": len(streamlines),
         "mean_length": compute_streamline_length(streamlines)["mean_length"],
-        "tract_volume": compute_tract_volume(streamlines)
+        "tract_volume": compute_tract_volume(streamlines, affine)[1]
     }
 
     # FA analysis
@@ -80,7 +102,14 @@ def compute_streamline_length(streamlines):
     vals = {}
 
     if len(streamlines) == 0:
-        vals
+        return {
+            "mean_length": 0.0,
+            "std_length": 0.0,
+            "min_length": 0.0,
+            "max_length": 0.0,
+            "n_streamlines": 0,
+            "lengths": np.array([])
+        }
 
     length_array = np.array([length(s) for s in streamlines])
     valid_lengths = length_array[length_array > 0]
@@ -113,7 +142,7 @@ def compute_tract_volume(streamlines, affine, voxel_size=None):
     density = density_map(
         streamlines=streamlines,
         affine=affine,
-        voxel_size=voxel_size
+        voxel_sizes=voxel_size
     )
 
     voxel_volume = np.prod(voxel_size)
@@ -138,7 +167,7 @@ def sample_scalar_along_tract(streamlines, scalar_map, affine):
     for s in streamlines:
         for point in s:
 
-            voxel_coord = np.round(point).astype(int)  # Convert coords
+            voxel_coord = world_to_voxel(point, affine)
 
             # Check if voxel coords withing scalar map bounds
             if (voxel_coord[0] >= 0 and voxel_coord[0] < scalar_map.shape[0] and
@@ -194,7 +223,7 @@ def mean_md_along_tract(streamlines, md_map, affine):
 
     Args:
         streamlines (Streamlines): Input streamlines
-        fa_map (np.array): 3D MD map
+        md_map (np.array): 3D MD map
         affine (np.array): 3D affine transformation matrix
 
     Returns:
@@ -208,7 +237,7 @@ def mean_md_along_tract(streamlines, md_map, affine):
         return 0.0
 
 def compute_tract_profile(streamlines, scalar_map, affine, n_points=20):
-    """Compute normalized tract profile (average scalar along tract length).
+    """Compute normalized tract profile (average scalar along tract length). This is meant to show where the damage is along the CST.
     
     Args:
         streamlines: Input streamlines
@@ -217,12 +246,52 @@ def compute_tract_profile(streamlines, scalar_map, affine, n_points=20):
         n_points: Number of points in the profile
         
     Returns:
-        ndarray: Average scalar values at normalized positions
+        ndarray: Average scalar values at normalized positions of length n_points
     """
     
-    # TO-DO
+    if len(streamlines) == 0:
+        return np.zeros(n_points)
+    
+    all_profiles = []
 
-    return np.zeros(n_points)
+    for s in streamlines:
+        if len(s) < 2:  # Need at least 2 points
+            continue
+
+        streamline_scalars = []
+        for point in s:
+            voxel_coord = world_to_voxel(point, affine=affine)  # Convert to voxel coords
+            
+            # Check if within scalar map bounds
+            if (0 <= voxel_coord[0] < scalar_map.shape[0] and 
+                0 <= voxel_coord[1] < scalar_map.shape[1] and 
+                0 <= voxel_coord[2] < scalar_map.shape[2]):
+                
+                scalar_value = scalar_map[voxel_coord[0], voxel_coord[1], voxel_coord[2]]
+                streamline_scalars.append(scalar_value)
+
+
+        if len(streamline_scalars) >= 5:  # If we have at least 5 sampled points
+            # And if we have more than the desired num of points
+            if len(streamline_scalars) >= n_points:
+                # Downsample to size 20 with equally spaced values
+                indices = np.linspace(0, len(streamline_scalars)-1, n_points).astype(int)
+                normalized_profile = np.array(streamline_scalars)[indices]
+            else:
+                # Upsample up to n_points using interpolation
+                x_original = np.linspace(0, 1, len(streamline_scalars))
+                x_target = np.linspace(0, 1, n_points)
+                normalized_profile = np.interp(x_target, x_original, streamline_scalars)
+
+            all_profiles.append(normalized_profile)
+
+    if len(all_profiles) == 0:
+        return np.zeros(n_points)
+
+    # Average across all streamlines to get final tract profile
+    final_profile = np.mean(all_profiles, axis=0)
+    
+    return final_profile
 
 
 def compare_bilateral_cst(left_streamlines, right_streamlines, fa_map=None, md_map=None, affine=None):
