@@ -33,7 +33,7 @@ def analyze_cst_bundle(
     metrics["morphology"] = {
         "n_streamlines": len(streamlines),
         "mean_length": compute_streamline_length(streamlines)["mean_length"],
-        "tract_volume": compute_tract_volume(streamlines)  # TO-DO
+        "tract_volume": compute_tract_volume(streamlines)
     }
 
     # FA analysis
@@ -46,7 +46,7 @@ def analyze_cst_bundle(
             "mean": float(np.mean(fa_values)),
             "std": float(np.std(fa_values)),
             "median": float(np.median(fa_values)),
-            "profile": compute_tract_profile(streamlines, fa_map, affine),  # Will implement
+            "profile": compute_tract_profile(streamlines, fa_map, affine),  # TO-DO
             "values": fa_values.tolist()  # All sampled FA values
         }
 
@@ -60,7 +60,7 @@ def analyze_cst_bundle(
             "mean": float(np.mean(md_values)),
             "std": float(np.std(md_values)),
             "median": float(np.median(md_values)),
-            "profile": compute_tract_profile(streamlines, md_map, affine),  # Will implement
+            "profile": compute_tract_profile(streamlines, md_map, affine),  # TO-DO
             "values": md_values.tolist()
         }
 
