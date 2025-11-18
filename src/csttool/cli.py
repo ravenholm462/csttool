@@ -6,6 +6,7 @@ from pathlib import Path
 from . import __version__
 import csttool.preprocess.funcs as preproc
 import csttool.tracking.funcs as trk
+import csttool.metrics.funcs as metr
 
 from dipy.io import read_bvals_bvecs
 from dipy.core.gradients import gradient_table
@@ -120,12 +121,23 @@ def main() -> None:
         "--tractogram",
         type=Path,
         required=True,
-        help="Path to .trk tractogram"
+        help="Path to .trk tractogram file"
     )
     p_metrics.add_argument(
         "--fa",
         type=Path,
-        help="FA map for scalar analysis"
+        help="FA map for microstructural analysis"
+    )
+    p_metrics.add_argument(
+        "--md", 
+        type=Path,
+        help="MD map for microstructural analysis"
+    )
+    p_metrics.add_argument(
+        "--out",
+        type=Path,
+        required=True,
+        help="Output directory for metrics"
     )
     p_metrics.set_defaults(func=cmd_metrics)
 
@@ -395,11 +407,40 @@ def cmd_track(args: argparse.Namespace) -> None:
         fname=tract_name,
     )
 
-def cmd_metrics(args: argparse.Namespace) -> None:
-    """
-    Compute DTI metrics on tractogram
-    """
-    pass
+def cmd_metrics(args):
+    """Compute CST metrics from tractography results."""
+    from dipy.io.streamline import load_tractogram
+    from dipy.io.image import load_nifti
+    
+    # Load tractogram
+    print(f"Loading tractogram: {args.tractogram}")
+    sft = load_tractogram(str(args.tractogram), 'same')
+    streamlines = sft.streamlines
+    
+    # Load scalar maps
+    fa_map, fa_affine = load_nifti(str(args.fa)) if args.fa else (None, None)
+    md_map, md_affine = load_nifti(str(args.md)) if args.md else (None, None)
+    
+    # Use tractogram affine
+    affine = sft.affine
+    
+    print(f"Analyzing {len(streamlines)} streamlines...")
+    
+    # Compute metrics
+    metrics = metr.analyze_cst_bundle(streamlines, fa_map, md_map, affine)
+    
+    # Save results
+    args.out.mkdir(parents=True, exist_ok=True)
+    output_file = args.out / "cst_metrics.json"
+    
+    import json
+    with open(output_file, 'w') as f:
+        json.dump(metrics, f, indent=2)
+    
+    print(f"✓ Metrics saved to {output_file}")
+    
+    # Print summary
+    metr.print_metrics_summary(metrics)
 
 if __name__ == "__main__":
     main()

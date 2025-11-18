@@ -318,3 +318,25 @@ def compare_bilateral_cst(left_streamlines, right_streamlines, fa_map=None, md_m
             comparison['asymmetry']['fa_laterality'] = (left_fa - right_fa) / (left_fa + right_fa)
     
     return comparison
+
+
+def print_metrics_summary(metrics):
+    """Print human-readable summary of CST metrics."""
+    print("\n" + "="*50)
+    print("CST ANALYSIS SUMMARY")
+    print("="*50)
+    
+    morph = metrics['morphology']
+    print(f"Streamline Count: {morph['n_streamlines']}")
+    print(f"Mean Length: {morph['mean_length']:.1f} mm")
+    print(f"Tract Volume: {morph['tract_volume']:.0f} mm³")
+    
+    if 'fa' in metrics:
+        fa = metrics['fa']
+        print(f"Mean FA: {fa['mean']:.3f} ± {fa['std']:.3f}")
+        
+    if 'md' in metrics:
+        md = metrics['md']
+        print(f"Mean MD: {md['mean']:.3e} ± {md['std']:.3e}")
+    
+    print("="*50)
