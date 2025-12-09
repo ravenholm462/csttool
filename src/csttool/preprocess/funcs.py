@@ -10,6 +10,7 @@ Utility functions for csttool's preprocessing pipeline.
 5. Save the preprocessed data to disk
 """
 
+import os
 from os.path import join
 from pathlib import Path
 from time import time
@@ -50,33 +51,48 @@ def convert_to_nifti(dicom_dir, out_dir):
     """Convert a directory of DICOM files to NIfTI format using dicom2nifti.
 
     Args:
-        dicom_dir (Path): Path to the input DICOM directory.
-        out_dir (Path): Path to the output directory where NIfTI and sidecar files will be saved.
+        dicom_dir (str): str to the input DICOM directory.
+        out_dir (str): str to the output directory where NIfTI and sidecar files will be saved.
 
     Returns:
-        tuple[Path, Path, Path]: Paths to the generated .nii(.gz), .bval, and .bvec files.
+        tuple[str, str, str]: Paths to the generated .nii(.gz), .bval, and .bvec files.
     """
-  
-    out_dir.mkdir(parents=True, exist_ok=True)
 
-    # Let dicom2nifti choose filenames, but restrict to this series
+    nifti_dir = os.path.join(out_dir, "nifti")
+    os.makedirs(nifti_dir, exist_ok=True)
+
+    # Convert inputs to strings for dicom2nifti
+    dicom_dir_str = str(dicom_dir)
+    study_name = os.path.basename(dicom_dir_str)
+    output_nii = os.path.join(nifti_dir, study_name + ".nii.gz")
+    
     result = convert_dicom.dicom_series_to_nifti(
-        str(dicom_dir),
-        output_file=str(out_dir / "csttool_dwi.nii.gz"),
-        reorient_nifti=True,
+        dicom_dir_str,
+        output_file=output_nii,
+        reorient_nifti=True
     )
+    
+    nii = result["NII_FILE"]
+    
+    # Get bval and bvec paths if they exist
+    bval = result.get("BVAL_FILE")
+    bvec = result.get("BVEC_FILE")
 
-    nii = Path(result["NII_FILE"])
-    bval = Path(result.get("BVAL_FILE")) if "BVAL_FILE" in result else None
-    bvec = Path(result.get("BVEC_FILE")) if "BVEC_FILE" in result else None
-
-    if bval is not None and not bval.exists():
+    # Check if files actually exist
+    if bval is not None and not os.path.exists(bval):
+        print(f"Warning: bval file doesn't exist: {bval}")
         bval = None
-    if bvec is not None and not bvec.exists():
+    if bvec is not None and not os.path.exists(bvec):
+        print(f"Warning: bvec file doesn't exist: {bvec}")
         bvec = None
 
     if bval is None or bvec is None:
         print("Warning: dicom2nifti did not create .bval/.bvec for this series.")
+        print(f"Generated NIfTI: {nii}")
+        if bval:
+            print(f"bval: {bval}")
+        if bvec:
+            print(f"bvec: {bvec}")
 
     return nii, bval, bvec
 
@@ -104,7 +120,7 @@ def load_dataset(
     affine : np.ndarray
         4x4 affine matrix from the NIfTI header.
     img : nibabel.Nifti1Image
-        NIfTI image object.
+        NIfTI image object. Contains NIfTI object metadata.
     gtab : dipy.core.gradients.GradientTable
         Gradient table built from bvals and bvecs.
     bvals : np.ndarray
