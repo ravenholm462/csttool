@@ -100,6 +100,12 @@ def main() -> None:
         help="Maximum spherical harmonic order for CSA ODF model (default 6).",
     )
     p_track.add_argument(
+        "--fss-radius",
+        type=float,
+        default=7.0,
+        help="Radius for Fast Streamline Search in mm (default: 7.0)"
+    )
+    p_track.add_argument(
         "--show-plots",
         action="store_true",
         help="Enable QC plots used by background segmentation.",
@@ -413,6 +419,35 @@ def copy_gradient_files(original_nii, out_dir, stem):
             break
 
 
+def extract_stem_from_filename(filename):
+    """Extract clean stem from filename."""
+    from pathlib import Path
+    
+    path = Path(filename)
+    stem = path.stem  # Removes .gz if present
+    
+    # Remove common suffixes
+    suffixes_to_remove = [
+        '_dwi_preproc_nomc',
+        '_dwi_preproc_mc', 
+        '_preproc_nomc',
+        '_preproc_mc',
+        '_preproc',
+        '.nii',  # In case .nii.gz wasn't fully stripped
+        '_dwi'
+    ]
+    
+    for suffix in suffixes_to_remove:
+        if stem.endswith(suffix):
+            stem = stem[:-len(suffix)]
+    
+    # If stem is empty or very short, use original name
+    if len(stem) < 3:
+        stem = path.stem.replace('.nii.gz', '').replace('.nii', '')
+    
+    return stem
+
+
 def cmd_track(args: argparse.Namespace) -> None:
     """
     Run deterministic tractography on preprocessed data with organized output.
@@ -471,20 +506,45 @@ def cmd_track(args: argparse.Namespace) -> None:
         step_size=args.step_size,
     )
 
+    print("Step 6: Atlas-based CST extraction using Fast Streamline Search")
+    cst_streamlines, atlas_cst = trk.extract_cst_using_fss(
+        streamlines, affine, radius=args.fss_radius
+        )
+    
+    print(f"CST extraction complete. Streamline reduction: {len(streamlines)} → {len(cst_streamlines)}")
+    
     # Create organized output structure for tracking
-    stem = preproc_nii.stem.replace('_dwi_preproc_nomc', '').replace('_dwi_preproc_mc', '')
+    stem = extract_stem_from_filename(str(preproc_nii))
     
-    # Save tractogram with organized structure
-    tract_name = f"{stem}_cst_det"
-    print("Step 6: Saving tractogram and outputs")
+    print("Step 7: Saving tractograms and outputs")
     
-    # Save tractogram
-    tract_path = trk.save_tractogram_trk(
+    # 1. Save FULL whole-brain tractogram (for reference)
+    full_tract_name = f"{stem}_whole_brain"
+    full_tract_path = trk.save_tractogram_trk(
         streamlines,
         img,
         args.out,
-        fname=tract_name,
+        fname=full_tract_name,
     )
+    print(f"✓ Full whole-brain tractogram: {full_tract_path}")
+    
+    # 2. Save CST-only tractogram (for analysis) - ONLY if we have CST streamlines
+    if len(cst_streamlines) > 0:
+        cst_tract_name = f"{stem}_cst_extracted"
+        cst_tract_path = trk.save_tractogram_trk(
+            cst_streamlines,
+            img,
+            args.out,
+            fname=cst_tract_name,
+        )
+        print(f"✓ CST-only tractogram: {cst_tract_path}")
+    else:
+        print("⚠️  No CST streamlines to save")
+        cst_tract_path = None
+    
+    # 3. DON'T save atlas streamlines - they're in different space
+    # Instead, just note that atlas was used for reference
+    print("✓ Atlas used as reference (not saved due to space mismatch)")
     
     # Save scalar maps (FA, MD) for later analysis
     scalar_outputs = trk.save_scalar_maps(
@@ -493,13 +553,40 @@ def cmd_track(args: argparse.Namespace) -> None:
     
     # Save processing report
     report_path = trk.save_tracking_report(
-        streamlines, args.out, stem, tract_path, scalar_outputs
+        streamlines, 
+        args.out, 
+        stem, 
+        {
+            'full_tractogram': full_tract_path,
+            'cst_tractogram': cst_tract_path,
+            'atlas_reference': 'Used for FSS matching (not saved)'
+        }, 
+        scalar_outputs,
+        cst_streamlines_count=len(cst_streamlines)
     )
     
-    print(f"✓ Tracking complete for {stem}")
-    print(f"✓ Tractogram: {tract_path}")
-    print(f"✓ Scalar maps: {scalar_outputs}")
-    print(f"✓ Report: {report_path}")
+    # Create comparison visualization (only if we have CST streamlines)
+    if len(cst_streamlines) > 0:
+        print("Step 8: Creating comparison visualizations")
+        comparison_path = trk.visualize_cst_comparison(
+            streamlines,
+            cst_streamlines,
+            atlas_cst,  # Still pass for visualization (will show mismatch)
+            fa,
+            affine,
+            args.out,
+            stem
+        )
+        print(f"✓ Comparison visualization: {comparison_path}")
+    else:
+        print("Skipping visualization (no CST streamlines)")
+    
+    # Print summary
+    print(f"\n{'='*50}")
+    print(f"TRACKING SUMMARY FOR {stem}")
+    print(f"{'='*50}")
+    print(f"Whole-brain streamlines: {len(streamlines)}")
+    print(f"CST streamlines extracted: {len(cst_streamlines)}")
 
 def cmd_metrics(args):
     """Compute CST metrics from tractography results."""

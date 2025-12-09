@@ -231,6 +231,56 @@ def run_deterministic_tracking(
     return streamlines
 
 
+def extract_cst_using_fss(streamlines, affine, radius=15.0):
+    """Use DIPY's Fast Streamline Search with HCP CST atlas to extract only the CST streamlines.
+
+    Args:
+        streamlines (Streamlines): All generated streamlines
+        affine (ndarray): Subject's affine transformation matrix
+        radius (float, optional): Radius parameter for FSS. Defaults to 7.0.
+
+    Returns:
+        tuple: (cst_streamlines, atlas_cst)
+    """
+    from dipy.data import fetch_bundle_atlas_hcp842, get_two_hcp842_bundles
+    from dipy.segment.fss import FastStreamlineSearch
+    from dipy.io.streamline import load_trk
+    
+    print("Loading HCP CST atlas...")
+    # 1. Fetch HCP atlas with CST bundle
+    fetch_bundle_atlas_hcp842()
+    _, model_cst_l_file = get_two_hcp842_bundles()
+    
+    # 2. Load atlas CST - IMPORTANT: Use "same" to load in scanner space
+    sft_cst_atlas = load_trk(model_cst_l_file, "same", bbox_valid_check=False)
+    atlas_cst = sft_cst_atlas.streamlines
+    
+    print(f"Atlas loaded: {len(atlas_cst)} streamlines")
+    print(f"Subject streamlines: {len(streamlines)}")
+    
+    # 3. Fast Streamline Search
+    print(f"Running Fast Streamline Search with radius={radius}mm...")
+    fss = FastStreamlineSearch(ref_streamlines=atlas_cst, max_radius=radius)
+    distance_matrix = fss.radius_search(streamlines, radius=radius)
+    
+    # 4. Extract recognized CST
+    recognized_indices = np.unique(distance_matrix.row)
+    
+    if len(recognized_indices) == 0:
+        print("No CST streamlines found! Possible reasons:")
+        print(f"   - Radius ({radius}mm) might be too small")
+        print(f"   - Subject and atlas may be in different spaces")
+        print(f"   - Try increasing --fss-radius (e.g., 15.0)")
+        
+        # Return empty CST but keep atlas for reference
+        return Streamlines(), atlas_cst
+    
+    cst_streamlines = streamlines[recognized_indices]
+    print(f"CST extraction: {len(streamlines)} → {len(cst_streamlines)} streamlines")
+    
+    return cst_streamlines, atlas_cst
+
+
 def save_tractogram_trk(
         streamlines,
         img,
@@ -299,9 +349,10 @@ def save_scalar_maps(fa, md, affine, out_dir, stem):
     
     return outputs
 
-def save_tracking_report(streamlines, out_dir, stem, tract_path, scalar_outputs):
+def save_tracking_report(streamlines, out_dir, stem, tractogram_paths, 
+                        scalar_outputs, cst_streamlines_count=None):
     """
-    Save tracking processing report.
+    Save tracking processing report with comparison data.
     """
     from pathlib import Path
     import json
@@ -314,9 +365,15 @@ def save_tracking_report(streamlines, out_dir, stem, tract_path, scalar_outputs)
     report = {
         'processing_date': datetime.now().strftime("%Y%m%d_%H%M%S"),
         'subject_stem': stem,
-        'streamline_count': len(streamlines),
+        'streamline_counts': {
+            'whole_brain': len(streamlines),
+            'cst_extracted': cst_streamlines_count if cst_streamlines_count else 0,
+            'reduction_percentage': (1 - cst_streamlines_count/len(streamlines))*100 if cst_streamlines_count and len(streamlines) > 0 else 0
+        },
         'output_files': {
-            'tractogram': str(tract_path),
+            'whole_brain_tractogram': str(tractogram_paths['full_tractogram']),
+            'cst_tractogram': str(tractogram_paths['cst_tractogram']),
+            'atlas_reference': str(tractogram_paths['atlas_reference']),
             **scalar_outputs
         }
     }
@@ -326,3 +383,71 @@ def save_tracking_report(streamlines, out_dir, stem, tract_path, scalar_outputs)
         json.dump(report, f, indent=2)
     
     return report_path
+
+
+def visualize_cst_comparison(whole_brain_streamlines, cst_streamlines, 
+                           atlas_streamlines, fa_map, affine, 
+                           output_dir, subject_id):
+    """
+    Create comparison visualization showing whole brain vs extracted CST vs atlas.
+    """
+    import matplotlib.pyplot as plt
+    from dipy.viz import window, actor
+    from pathlib import Path
+    
+    output_dir = Path(output_dir) / "visualizations"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    # 1. Create side-by-side comparison figure
+    fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+    fig.suptitle(f'CST Extraction Results - {subject_id}', fontsize=16)
+    
+    titles = ['Whole Brain', 'Extracted CST', 'Atlas Reference']
+    streamline_sets = [whole_brain_streamlines, cst_streamlines, atlas_streamlines]
+    colors = [(0.8, 0.8, 0.8), (0, 0, 1), (0, 1, 0)]
+    
+    for ax, title, streamlines_set, color in zip(axes, titles, streamline_sets, colors):
+        # Simple 2D projection visualization
+        if len(streamlines_set) > 0:
+            # Get all points
+            all_points = np.vstack(streamlines_set)
+            ax.scatter(all_points[:, 0], all_points[:, 1], 
+                      alpha=0.1, s=1, color=color)
+        ax.set_title(f'{title}\n({len(streamlines_set)} streamlines)')
+        ax.set_xlabel('X (mm)')
+        ax.set_ylabel('Y (mm)')
+        ax.grid(True, alpha=0.3)
+        ax.set_aspect('equal')
+    
+    plt.tight_layout()
+    scatter_path = output_dir / f"{subject_id}_cst_comparison_scatter.png"
+    plt.savefig(scatter_path, dpi=150, bbox_inches='tight')
+    plt.close()
+    
+    # 2. Create 3D rendering
+    try:
+        renderer = window.Renderer()
+        renderer.SetBackground(1, 1, 1)
+        
+        # Whole brain in light gray (transparent)
+        renderer.add(actor.line(whole_brain_streamlines, 
+                              colors=(0.8, 0.8, 0.8), opacity=0.2))
+        
+        # Extracted CST in blue
+        renderer.add(actor.line(cst_streamlines, 
+                              colors=(0, 0, 1), linewidth=2, opacity=0.8))
+        
+        # Atlas reference in green
+        renderer.add(actor.line(atlas_streamlines, 
+                              colors=(0, 1, 0), linewidth=1, opacity=0.6))
+        
+        renderer.set_camera(position=(200, 200, 200))
+        render_path = output_dir / f"{subject_id}_cst_comparison_3d.png"
+        window.record(renderer, out_path=str(render_path), size=(800, 600))
+        
+    except Exception as e:
+        print(f"⚠️  3D visualization failed: {e}")
+        render_path = None
+    
+    print(f"✓ Comparison visualization saved to: {scatter_path}")
+    return scatter_path
