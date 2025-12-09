@@ -5,28 +5,31 @@ import csttool.tracking.funcs as trk
 
 # Paths
 
-dicom_dir = "/home/alemnalo/anom/cmrr_mbep2d_diff_AP_TDI_Series0017"
-out_dir = "/home/alemnalo/anom/out/"
+# dicom_dir = "/home/alemnalo/anom/cmrr_mbep2d_diff_AP_TDI_Series0017"
+# out_dir = "/home/alemnalo/anom/out/"
+
+dicom_dir = "/home/alem/Documents/thesis/data/anom/cmrr_mbep2d_diff_AP_TDI_Series0017"
+out_dir = "/home/alem/Documents/thesis/data/out/"
 
 ######################### LOAD DATA #########################
 
 nii, bval, bvec = preproc.convert_to_nifti(dicom_dir, out_dir)
-#print(nii)
+print(nii)
 
 nii_dirname = os.path.dirname(nii)
 nii_fname = os.path.basename(nii).split('.')[0]  # .split removes .nii.gz, is reappended in 'load_dataset'
-# print(nii_fname)
-# print(nii_dirname)
+print(nii_fname)
+print(nii_dirname)
 
 data, affine, img, gtab = preproc.load_dataset(
     nifti_path=nii_dirname,
     fname=nii_fname,
-    visualize=False
+    visualize=True
 )
 
-#print(affine)
-# print(img)
-# print(gtab)
+print(affine)
+print(img)
+print(gtab)
 
 ######################### CREATE MASK #########################
 
@@ -63,7 +66,14 @@ white_matter = fa > 0.15
 from scipy.ndimage import binary_dilation
 
 white_matter = white_matter & brain_mask
+
+# Store count before dilation
+wm_before_dilation = white_matter.sum()
+
 white_matter = binary_dilation(white_matter, iterations=1)  # Dilate to reach grey matter
+
+# Store count after dilation
+wm_after_dilation = white_matter.sum()
 
 # SIMPLE VISUALIZATION
 fig, axes = plt.subplots(2, 3, figsize=(10, 6))
@@ -92,12 +102,12 @@ axes[1, 0].set_title('FA Map')
 axes[1, 0].axis('off')
 
 axes[1, 1].imshow(white_matter[:, :, mid_slice].T, cmap='gray', origin='lower')
-axes[1, 1].set_title(f'White Matter (FA > 0.2)\n({white_matter.sum():,} voxels)')
+axes[1, 1].set_title(f'White Matter (FA > 0.15)\n({wm_before_dilation:,} voxels)')
 axes[1, 1].axis('off')
 
 axes[1, 2].imshow(b0_slice.T, cmap='gray', origin='lower')
 axes[1, 2].imshow(white_matter[:, :, mid_slice].T, cmap='Blues', alpha=0.5, origin='lower')
-axes[1, 2].set_title(f'Dilated for Tracking\n(+{white_matter.sum()-white_matter.sum():,} voxels)')
+axes[1, 2].set_title(f'Dilated for Tracking\n(+{wm_after_dilation - wm_before_dilation:,} voxels)')
 axes[1, 2].axis('off')
 
 plt.tight_layout()
@@ -105,8 +115,8 @@ plt.show()
 
 # Simple statistics
 print(f"\nBrain mask: {brain_mask.sum():,} voxels")
-print(f"White matter: {white_matter.sum():,} voxels ({white_matter.sum()/brain_mask.sum()*100:.1f}% of brain)")
-print(f"Dilated WM: {white_matter.sum():,} voxels")
+print(f"White matter: {wm_before_dilation:,} voxels ({wm_before_dilation/brain_mask.sum()*100:.1f}% of brain)")
+print(f"Dilated WM: {wm_after_dilation:,} voxels")
 
 
 ######################### CREATE STREAMLINES #########################
@@ -114,28 +124,33 @@ print(f"Dilated WM: {white_matter.sum():,} voxels")
 from dipy.reconst import shm
 from dipy.direction import peaks
 from dipy.tracking import utils
+from dipy.tracking.stopping_criterion import BinaryStoppingCriterion
+from dipy.tracking.local_tracking import LocalTracking
+from dipy.tracking.streamline import Streamlines
 
 # Code adapted from https://docs.dipy.org/dev/examples_built/streamline_analysis/streamline_tools.html
-# white_matter = binary_dilation((labels == 1) | (labels == 2))
-# csamodel = shm.CsaOdfModel(gtab, 6)
-# csapeaks = peaks.peaks_from_model(
-#     model=csamodel,
-#     data=data,
-#     sphere=peaks.default_sphere,
-#     relative_peak_threshold=0.8,
-#     min_separation_angle=45,
-#     mask=white_matter,
-# )
+csamodel = shm.CsaOdfModel(gtab, 6)
+csapeaks = peaks.peaks_from_model(
+    model=csamodel,
+    data=data,
+    sphere=peaks.default_sphere,
+    relative_peak_threshold=0.8,
+    min_separation_angle=45,
+    mask=white_matter,
+)
 
-# affine = np.eye(4)
-# seeds = utils.seeds_from_mask(white_matter, affine, density=1)
-# stopping_criterion = BinaryStoppingCriterion(white_matter)
+seeds = utils.seeds_from_mask(white_matter, affine, density=1)
+stopping_criterion = BinaryStoppingCriterion(white_matter)
 
-# streamline_generator = LocalTracking(
-#     csapeaks, stopping_criterion, seeds, affine=affine, step_size=0.5
-# )
-# streamlines = Streamlines(streamline_generator)
+streamline_generator = LocalTracking(
+    csapeaks, stopping_criterion, seeds, affine=affine, step_size=0.5
+)
+streamlines = Streamlines(streamline_generator)
 
 
+# Source on registration: https://docs.dipy.org/stable/interfaces/registration_flow.html
 
+# Solution 1: Register a whole brain tractogram to a whole brain atlas. This is also called streamline based registration.
+# See here: https://docs.dipy.org/stable/interfaces/bundle_segmentation_flow.html
 
+# Solution 2: Image based registration
