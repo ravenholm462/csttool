@@ -32,14 +32,14 @@ VISUALIZE = True
 if args.dicom_dir:
     dicom_dir = args.dicom_dir
 else:
-    #dicom_dir = "/home/alemnalo/anom/cmrr_mbep2d_diff_AP_TDI_Series0017"
-    dicom_dir = "/home/alem/Documents/thesis/data/anom/cmrr_mbep2d_diff_AP_TDI_Series0017"
+    dicom_dir = "/home/alemnalo/anom/cmrr_mbep2d_diff_AP_TDI_Series0017"
+    #dicom_dir = "/home/alem/Documents/thesis/data/anom/cmrr_mbep2d_diff_AP_TDI_Series0017"
 
 if args.out_dir:
     out_dir = args.out_dir
 else:
-    #out_dir = "/home/alemnalo/anom/out/"
-    out_dir = "/home/alem/Documents/thesis/data/out/"
+    out_dir = "/home/alemnalo/anom/out/"
+    #out_dir = "/home/alem/Documents/thesis/data/out/"
 
 # Create output directories
 os.makedirs(out_dir, exist_ok=True)
@@ -96,7 +96,8 @@ fa = tenfit.fa
 fa = np.nan_to_num(fa, nan=0.0)
 
 # Create white matter mask
-white_matter = fa > 0.2
+fa_thresh = 0.2
+white_matter = fa > fa_thresh
 white_matter = white_matter & brain_mask
 
 # Dilate to reach grey matter
@@ -106,7 +107,7 @@ white_matter = binary_dilation(white_matter, iterations=1)
 wm_after_dilation = white_matter.sum()
 
 print(f"Brain mask: {brain_mask.sum():,} voxels")
-print(f"White matter (FA > 0.15): {wm_before_dilation:,} voxels")
+print(f"White matter (FA > {fa_thresh}): {wm_before_dilation:,} voxels")
 print(f"Dilated WM: {wm_after_dilation:,} voxels")
 
 # Visualization: Masks
@@ -510,135 +511,3 @@ if VISUALIZE:
     plt.savefig(os.path.join(vis_dir, "06_streamlines_mni.png"), dpi=150, bbox_inches='tight')
     plt.show()
 
-######################### CST EXTRACTION IN MNI SPACE #########################
-
-print("\n" + "=" * 70)
-print("STEP 6: CST EXTRACTION USING FSS")
-print("=" * 70)
-
-from dipy.data import fetch_bundle_atlas_hcp842, get_two_hcp842_bundles
-from dipy.segment.fss import FastStreamlineSearch
-from dipy.io.streamline import load_trk
-
-# Load atlas
-print("Loading atlas...")
-fetch_bundle_atlas_hcp842()  # ONLY FOR TESTING, CHANGE THIS ATLAS
-_, model_cst_l_file = get_two_hcp842_bundles() 
-
-# Load atlas in MNI space (using the MNI template as reference)
-sft_cst_atlas = load_trk(model_cst_l_file, img_t2_mni, bbox_valid_check=False)
-# atlas_cst = sft_cst_atlas.streamlines
-
-# print(f"Atlas CST streamlines: {len(atlas_cst)}")
-# print(f"Subject streamlines (in MNI): {len(streamlines_mni)}")
-
-# # Fast Streamline Search
-# radius = 7.0
-# print(f"\nRunning FSS with radius={radius}mm...")
-
-# fss = FastStreamlineSearch(ref_streamlines=atlas_cst, max_radius=radius)
-# distance_matrix = fss.radius_search(streamlines_mni, radius=radius)
-
-# # Extract matched streamlines
-# recognized_indices = np.unique(distance_matrix.row)
-# print(f"Recognized {len(recognized_indices)} CST streamlines")
-
-# if len(recognized_indices) > 0:
-#     cst_streamlines_mni = Streamlines([streamlines_mni[i] for i in recognized_indices])
-#     print(f"CST extraction: {len(streamlines_mni)} → {len(cst_streamlines_mni)}")
-#     extraction_success = True
-# else:
-#     print("WARNING: No CST streamlines found!")
-#     print("Try increasing the FSS radius or check registration quality.")
-#     cst_streamlines_mni = Streamlines()
-#     extraction_success = False
-
-# # Visualization: CST comparison
-# if VISUALIZE:
-#     fig, axes = plt.subplots(2, 3, figsize=(15, 10))
-#     fig.suptitle("CST Extraction Results (MNI Space)", fontsize=14)
-    
-#     # Row 1: All three datasets side by side
-#     datasets = [
-#         (streamlines_mni, 'Whole Brain\n(Subject)', 'gray', 0.05),
-#         (atlas_cst, 'Atlas CST\n(HCP842)', 'green', 0.3),
-#         (cst_streamlines_mni if extraction_success else [], 'Extracted CST\n(Subject)', 'blue', 0.3),
-#     ]
-    
-#     for i, (sl_data, title, color, alpha) in enumerate(datasets):
-#         ax = axes[0, i]
-#         if len(sl_data) > 0:
-#             n_vis = min(2000, len(sl_data))
-#             if len(sl_data) > n_vis:
-#                 vis_indices = np.random.choice(len(sl_data), n_vis, replace=False)
-#                 vis_sl = [sl_data[j] for j in vis_indices]
-#             else:
-#                 vis_sl = sl_data
-            
-#             for s in vis_sl:
-#                 ax.plot(s[:, 1], s[:, 2], alpha=alpha, linewidth=0.5, color=color)
-        
-#         ax.set_xlabel('Y (mm)')
-#         ax.set_ylabel('Z (mm)')
-#         ax.set_title(f'{title}\n({len(sl_data)} streamlines)')
-#         ax.set_aspect('equal')
-#         ax.grid(True, alpha=0.3)
-#         ax.set_xlim(-100, 100)
-#         ax.set_ylim(-80, 100)
-    
-#     # Row 2: Overlay comparisons
-#     # Subject CST vs Atlas CST
-#     ax = axes[1, 0]
-#     if len(atlas_cst) > 0:
-#         for s in atlas_cst[:500]:
-#             ax.plot(s[:, 1], s[:, 2], alpha=0.2, linewidth=0.5, color='green')
-#     if extraction_success and len(cst_streamlines_mni) > 0:
-#         for s in list(cst_streamlines_mni)[:500]:
-#             ax.plot(s[:, 1], s[:, 2], alpha=0.3, linewidth=0.5, color='blue')
-#     ax.set_xlabel('Y (mm)')
-#     ax.set_ylabel('Z (mm)')
-#     ax.set_title('Overlay: Atlas (green) vs Extracted (blue)')
-#     ax.set_aspect('equal')
-#     ax.grid(True, alpha=0.3)
-#     ax.set_xlim(-100, 100)
-#     ax.set_ylim(-80, 100)
-    
-#     # Coronal view
-#     ax = axes[1, 1]
-#     if len(atlas_cst) > 0:
-#         for s in atlas_cst[:500]:
-#             ax.plot(s[:, 0], s[:, 2], alpha=0.2, linewidth=0.5, color='green')
-#     if extraction_success and len(cst_streamlines_mni) > 0:
-#         for s in list(cst_streamlines_mni)[:500]:
-#             ax.plot(s[:, 0], s[:, 2], alpha=0.3, linewidth=0.5, color='blue')
-#     ax.set_xlabel('X (mm)')
-#     ax.set_ylabel('Z (mm)')
-#     ax.set_title('Coronal: Atlas (green) vs Extracted (blue)')
-#     ax.set_aspect('equal')
-#     ax.grid(True, alpha=0.3)
-#     ax.set_xlim(-100, 100)
-#     ax.set_ylim(-80, 100)
-    
-#     # Statistics
-#     ax = axes[1, 2]
-#     ax.axis('off')
-#     stats_text = f"""
-#     CST EXTRACTION STATISTICS
-#     -------------------------
-    
-#     Whole-brain streamlines: {len(streamlines_mni):,}
-#     Atlas CST streamlines: {len(atlas_cst):,}
-#     Extracted CST streamlines: {len(cst_streamlines_mni):,}
-    
-#     Extraction rate: {len(cst_streamlines_mni)/len(streamlines_mni)*100:.2f}%
-    
-#     FSS radius: {radius} mm
-#     Registration: Affine + SyN
-#     """
-#     ax.text(0.1, 0.5, stats_text, transform=ax.transAxes, fontsize=12,
-#             verticalalignment='center', fontfamily='monospace',
-#             bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
-    
-#     plt.tight_layout()
-#     plt.savefig(os.path.join(vis_dir, "07_cst_extraction.png"), dpi=150, bbox_inches='tight')
-#     plt.show()
