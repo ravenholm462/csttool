@@ -26,9 +26,9 @@ def load_and_mask(nii_dirname, nii_fname, visualize=False, verbose=False):
 
     if verbose:
         print(f"Loaded dataset: {nii_dirname + nii_fname}")
-        print(f"Data shape: {data.shape}")
-        print(f"Affine:\n{affine}")
-        print(f"Gradient table: {len(gtab.bvals)} volumes")
+        print(f"    Data shape: {data.shape}")
+        print(f"    Affine:\n{affine}")
+        print(f"    Gradient table: {len(gtab.bvals)} volumes")
 
     masked_data, brain_mask = background_segmentation(
     data,
@@ -39,6 +39,6 @@ def load_and_mask(nii_dirname, nii_fname, visualize=False, verbose=False):
     if verbose:
         print("Brain mask generated.")
         mask_coverage = brain_mask.sum() / brain_mask.size * 100
-        print(f"Brain mask: {brain_mask.sum():,} voxels ({mask_coverage:.1f}%)")
+        print(f"    Brain mask: {brain_mask.sum():,} voxels ({mask_coverage:.1f}%)")
 
     return data, affine, img, gtab, masked_data, brain_mask

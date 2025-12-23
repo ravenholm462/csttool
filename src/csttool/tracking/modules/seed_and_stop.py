@@ -30,8 +30,8 @@ def seed_and_stop(fa, affine, white_matter=None, fa_thresh=0.2, density=1, use_b
         
         if verbose:
             print(f"Seeding and stopping (binary mode)...")
-            print(f"White matter voxels: {white_matter.sum():,}")
-            print(f"Total seeds (density={density}): {len(seeds):,}")
+            print(f"    White matter voxels: {white_matter.sum():,}")
+            print(f"    Total seeds (density={density}): {len(seeds):,}")
     
     else:
         # FA-based approach (default)
@@ -41,7 +41,7 @@ def seed_and_stop(fa, affine, white_matter=None, fa_thresh=0.2, density=1, use_b
         
         if verbose:
             print(f"Seeding and stopping (FA threshold={fa_thresh})...")
-            print(f"Seed mask voxels: {seed_mask.sum():,}")
-            print(f"Total seeds (density={density}): {len(seeds):,}")
+            print(f"    Seed mask voxels: {seed_mask.sum():,}")
+            print(f"    Total seeds (density={density}): {len(seeds):,}")
     
     return seeds, stopping_criterion

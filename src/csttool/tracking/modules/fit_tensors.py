@@ -36,8 +36,8 @@ def fit_tensors(data, gtab, brain_mask, fa_thresh=0.2, visualize=False, verbose=
     if verbose:
         fa_brain = fa[brain_mask > 0]
         md_brain = md[brain_mask > 0]
-        print(f"FA in brain: mean={fa_brain.mean():.3f}, std={fa_brain.std():.3f}")
-        print(f"MD in brain: mean={md_brain.mean():.2e}, std={md_brain.std():.2e}")
+        print(f"    FA in brain: mean={fa_brain.mean():.3f}, std={fa_brain.std():.3f}")
+        print(f"    MD in brain: mean={md_brain.mean():.2e}, std={md_brain.std():.2e}")
     
     # Create white matter mask
     white_matter = (fa > fa_thresh) & brain_mask
@@ -48,8 +48,8 @@ def fit_tensors(data, gtab, brain_mask, fa_thresh=0.2, visualize=False, verbose=
     wm_after_dilation = white_matter.sum()
     
     if verbose:
-        print(f"White matter (FA > {fa_thresh}): {wm_before_dilation:,} voxels")
-        print(f"After dilation: {wm_after_dilation:,} voxels (+{wm_after_dilation - wm_before_dilation:,})")
+        print(f"    White matter (FA > {fa_thresh}): {wm_before_dilation:,} voxels")
+        print(f"    After dilation: {wm_after_dilation:,} voxels (+{wm_after_dilation - wm_before_dilation:,})")
     
     # Visualization
     if visualize:

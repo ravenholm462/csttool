@@ -23,11 +23,15 @@ tracking_params = {
 }
 
 data, affine, img, gtab, masked_data, brain_mask = load_and_mask(nii_dir, nii_fname, visualize=False, verbose=True)
+print("")
 tenfit, fa, md, white_matter = fit_tensors(masked_data, gtab, brain_mask, fa_thresh=tracking_params['fa_thresh'], verbose=True)
+print("")
 csapeaks = estimate_directions(masked_data, gtab, white_matter, sh_order=tracking_params['sh_order'], verbose=True)
+print("")
 seeds, stopping = seed_and_stop(fa, affine, fa_thresh=tracking_params['fa_thresh'], density=tracking_params['seed_density'], verbose=True)
-streamlines = run_tractography(csapeaks, stopping, seeds, affine, step_size=tracking_params['step_size'], verbose=True)
-
+print("")
+streamlines = run_tractography(csapeaks, stopping, seeds, affine, step_size=tracking_params['step_size'], verbose=True, visualize=False)
+print("")
 # Save with full parameter record
 outputs = save_tracking_outputs(
     streamlines, img, fa, md, affine,

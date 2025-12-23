@@ -25,7 +25,7 @@ def estimate_directions(data, gtab, white_matter, sh_order=6, sphere_name="symme
     
     if verbose:
         print(f"Estimating directions (CSA ODF, SH order={sh_order})...")
-        print(f"White matter voxels: {white_matter.sum():,}")
+        print(f"    White matter voxels: {white_matter.sum():,}")
     
     csamodel = CsaOdfModel(gtab, sh_order_max=sh_order)
     
@@ -42,8 +42,8 @@ def estimate_directions(data, gtab, white_matter, sh_order=6, sphere_name="symme
     if verbose:
         # Count voxels with valid peaks
         valid_peaks = (csapeaks.peak_values[..., 0] > 0).sum()
-        print(f"Voxels with valid peaks: {valid_peaks:,}")
+        print(f"    Voxels with valid peaks: {valid_peaks:,}")
         coverage = valid_peaks / white_matter.sum() * 100
-        print(f"Coverage: {coverage:.1f}%")
+        print(f"    Coverage: {coverage:.1f}%")
     
     return csapeaks
