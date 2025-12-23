@@ -28,6 +28,8 @@ def load_mni_template(contrast="T1"):
 
     return template_img, template_data, template_affine
 
+# use dipy.viz.regtools.overlay_slices to show comparison before and after registration
+# https://docs.dipy.org/1.0.0/examples_built/affine_registration_3d.html
 
 def compute_affine_registration():
 
