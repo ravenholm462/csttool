@@ -51,6 +51,14 @@ def compute_affine_registration(
     → rigid body → full affine. Uses a multi-resolution Gaussian pyramid
     strategy (similar to ANTs) to avoid local optima and accelerate 
     convergence.
+
+    References
+    ----------
+    Mattes, D., Haynor, D. R., Vesselle, H., Lewellen, T. K., Eubank, W. (2003). 
+        PET-CT image registration in the chest using free-form deformations. 
+        IEEE Transactions on Medical Imaging, 22(1), 120-8. Avants11(1,2)
+
+    Avants, B. B., Tustison, N., & Song, G. (2011). Advanced Normalization Tools (ANTS), 1-35
     
     Parameters
     ----------
@@ -180,9 +188,105 @@ def compute_affine_registration(
     return affine
 
 
-def compute_syn_registration():
+def compute_syn_registration(
+    static_image,
+    static_affine,
+    moving_image,
+    moving_affine,
+    prealign=None,
+    level_iters=[10, 10, 5],
+    metric_radius=4,
+    verbose=True
+):
+    """
+    Compute non-linear SyN (Symmetric Normalization) registration.
+    
+    SyN provides diffeomorphic (smooth, invertible) transformations that
+    capture local anatomical variations not handled by affine registration.
+    This should be run after affine registration, using the affine result
+    as pre-alignment.
 
-    return
+    References
+    ----------
+    [Avants08] Avants, B. B., Epstein, C. L., Grossman, M., & Gee, J. C. 
+       (2008). Symmetric diffeomorphic image registration with cross-correlation: 
+       evaluating automated labeling of elderly and neurodegenerative brain. 
+       Medical image analysis, 12(1), 26-41.
+    
+    Parameters
+    ----------
+    static_image : ndarray
+        Reference image (e.g., subject FA map). Shape (X, Y, Z).
+    static_affine : ndarray
+        4x4 affine matrix of the static image.
+    moving_image : ndarray
+        Image to be aligned (e.g., MNI template). Shape (X, Y, Z).
+    moving_affine : ndarray
+        4x4 affine matrix of the moving image.
+    prealign : ndarray or None, optional
+        4x4 affine matrix for pre-alignment (typically from affine 
+        registration). If None, no pre-alignment is applied.
+    level_iters : list of int, optional
+        Number of iterations at each resolution level. Length determines
+        number of resolutions. Default is [10, 10, 5] (3 levels).
+        Note: SyN is computationally expensive, so fewer iterations are
+        used compared to affine registration.
+    metric_radius : int, optional
+        Radius (in voxels) for the cross-correlation metric kernel.
+        Larger values capture more global structure but are slower.
+        Default is 4.
+    verbose : bool, optional
+        Print progress information. Default is True.
+        
+    Returns
+    -------
+    mapping : DiffeomorphicMap
+        The non-linear transformation mapping. Use mapping.transform(image)
+        to warp images from moving to static space, or mapping.transform_inverse(image)
+        to warp from static to moving space.
+
+    Notes
+    -------
+    Code inspired by: https://docs.dipy.org/dev/examples_built/registration/syn_registration_3d.html
+    """
+
+    from dipy.align.imwarp import SymmetricDiffeomorphicRegistration
+    from dipy.align.metrics import CCMetric
+    
+    if verbose:
+        print("Computing SyN non-linear registration...")
+        print(f"    Static (subject): {static_image.shape}")
+        print(f"    Moving (template): {moving_image.shape}")
+        print(f"    Metric: Cross-Correlation (radius={metric_radius})")
+        print(f"    Level iterations: {level_iters}")
+        if prealign is not None:
+            print("    Using affine pre-alignment")
+
+    # Cross-correlation metric
+    # dim=3 for 3D images, sigma_diff controls gradient smoothing
+    metric = CCMetric(dim=3, sigma_diff=metric_radius)
+    
+    # Initialize SyN registration
+    sdr = SymmetricDiffeomorphicRegistration(
+        metric=metric,
+        level_iters=level_iters
+    )
+    
+    # Compute diffeomorphic mapping
+    if verbose:
+        print("    Optimizing diffeomorphic transformation...")
+    
+    mapping = sdr.optimize(
+        static_image, moving_image,
+        static_grid2world=static_affine,
+        moving_grid2world=moving_affine,
+        prealign=prealign
+    )
+    
+    if verbose:
+        print("✓ SyN registration complete")
+    
+    return mapping
 
 
 def register_mni_to_subject():
