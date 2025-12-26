@@ -289,14 +289,325 @@ def compute_syn_registration(
     return mapping
 
 
-def register_mni_to_subject():
+def register_mni_to_subject(
+    subject_fa_path,
+    output_dir,
+    mni_template_path=None,
+    level_iters_affine=[10000, 1000, 100],
+    sigmas_affine=[3.0, 1.0, 0.0],
+    factors_affine=[4, 2, 1],
+    level_iters_syn=[10, 10, 5],
+    metric_radius_syn=4,
+    save_warped=True,
+    generate_qc=True,
+    verbose=True
+):
+    """
+    Complete registration pipeline: MNI template to subject space.
+    
+    Performs progressive affine registration followed by SyN non-linear
+    registration to align the MNI template to the subject's native space.
+    This mapping is used downstream to warp the MNI parcellation atlas
+    into subject space for ROI-based CST extraction.
+    
+    Pipeline: MNI Template + Subject FA → Affine + SyN → Mapping
+    
+    Parameters
+    ----------
+    subject_fa_path : str or Path
+        Path to subject's FA map (.nii.gz).
+    output_dir : str or Path
+        Directory for saving registration outputs.
+    mni_template_path : str or Path, optional
+        Path to MNI template. If None, fetches DIPY's MNI template.
+    level_iters_affine : list of int, optional
+        Iterations per resolution level for affine registration.
+        Default is [10000, 1000, 100].
+    sigmas_affine : list of float, optional
+        Gaussian smoothing sigmas for affine registration.
+        Default is [3.0, 1.0, 0.0].
+    factors_affine : list of int, optional
+        Sub-sampling factors for affine registration.
+        Default is [4, 2, 1].
+    level_iters_syn : list of int, optional
+        Iterations per resolution level for SyN registration.
+        Default is [10, 10, 5].
+    metric_radius_syn : int, optional
+        Radius for cross-correlation metric in SyN. Default is 4.
+    save_warped : bool, optional
+        Save warped template for visual inspection. Default is True.
+    generate_qc : bool, optional
+        Generate QC visualizations. Default is True.
+    verbose : bool, optional
+        Print progress information. Default is True.
+        
+    Returns
+    -------
+    result : dict
+        Dictionary containing:
+        - 'mapping': DiffeomorphicMap for transforming images/atlases
+        - 'affine_map': AffineMap from affine registration stage
+        - 'subject_affine': Subject image affine matrix
+        - 'subject_shape': Subject image shape
+        - 'mni_affine': MNI template affine matrix
+        - 'mni_shape': MNI template shape
+        - 'warped_template_path': Path to warped template (if saved)
+        - 'qc_before_path': Path to pre-registration QC image (if generated)
+        - 'qc_after_path': Path to post-registration QC image (if generated)
+    
+    Notes
+    -----
+    The registration direction is MNI → Subject (template to native space).
+    This allows us to warp the MNI parcellation atlas into subject space,
+    preserving streamline coordinates in their native space.
+    """
+    import nibabel as nib
+    from pathlib import Path
+    from dipy.align.imaffine import AffineMap
+    from dipy.data import fetch_mni_template, read_mni_template
+    import numpy as np
+    import json
+    from datetime import datetime
+    
+    subject_fa_path = Path(subject_fa_path)
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Extract subject ID from filename
+    subject_id = subject_fa_path.stem.replace('_fa', '').replace('.nii', '')
+    
+    if verbose:
+        print("=" * 60)
+        print("REGISTRATION: MNI Template → Subject Space")
+        print("=" * 60)
+        print(f"Subject: {subject_id}")
+        print(f"Output directory: {output_dir}")
+    
+    # -------------------------------------------------------------------------
+    # Step 1: Load subject FA map
+    # -------------------------------------------------------------------------
+    if verbose:
+        print("\n[Step 1/5] Loading subject FA map...")
+    
+    subject_img = nib.load(subject_fa_path)
+    subject_data = subject_img.get_fdata()
+    subject_affine = subject_img.affine
+    
+    if verbose:
+        voxel_size = np.sqrt(np.sum(subject_affine[:3, :3]**2, axis=0))
+        print(f"    Shape: {subject_data.shape}")
+        print(f"    Voxel size: {voxel_size.round(2)} mm")
+    
+    # -------------------------------------------------------------------------
+    # Step 2: Load MNI template
+    # -------------------------------------------------------------------------
+    if verbose:
+        print("\n[Step 2/5] Loading MNI template...")
+    
+    if mni_template_path is not None:
+        mni_img = nib.load(mni_template_path)
+    else:
+        fetch_mni_template()
+        mni_img = read_mni_template(contrast="T1")
+    
+    mni_data = mni_img.get_fdata()
+    mni_affine = mni_img.affine
+    
+    if verbose:
+        print(f"    Shape: {mni_data.shape}")
+    
+    # -------------------------------------------------------------------------
+    # Step 3: Affine registration
+    # -------------------------------------------------------------------------
+    if verbose:
+        print("\n[Step 3/5] Affine registration...")
+    
+    affine_map = compute_affine_registration(
+        static_image=subject_data,
+        static_affine=subject_affine,
+        moving_image=mni_data,
+        moving_affine=mni_affine,
+        level_iters=level_iters_affine,
+        sigmas=sigmas_affine,
+        factors=factors_affine,
+        verbose=verbose
+    )
+    
+    # -------------------------------------------------------------------------
+    # Step 4: SyN non-linear registration
+    # -------------------------------------------------------------------------
+    if verbose:
+        print("\n[Step 4/5] SyN non-linear registration...")
+    
+    mapping = compute_syn_registration(
+        static_image=subject_data,
+        static_affine=subject_affine,
+        moving_image=mni_data,
+        moving_affine=mni_affine,
+        prealign=affine_map.affine,
+        level_iters=level_iters_syn,
+        metric_radius=metric_radius_syn,
+        verbose=verbose
+    )
+    
+    # -------------------------------------------------------------------------
+    # Step 5: Save outputs and generate QC
+    # -------------------------------------------------------------------------
+    if verbose:
+        print("\n[Step 5/5] Saving outputs...")
+    
+    result = {
+        'mapping': mapping,
+        'affine_map': affine_map,
+        'subject_affine': subject_affine,
+        'subject_shape': subject_data.shape,
+        'mni_affine': mni_affine,
+        'mni_shape': mni_data.shape,
+        'warped_template_path': None,
+        'qc_before_path': None,
+        'qc_after_path': None
+    }
+    
+    # Save warped template
+    if save_warped:
+        warped_template = mapping.transform(mni_data)
+        warped_path = output_dir / f"{subject_id}_mni_warped_to_subject.nii.gz"
+        nib.save(
+            nib.Nifti1Image(warped_template.astype(np.float32), subject_affine),
+            warped_path
+        )
+        result['warped_template_path'] = warped_path
+        if verbose:
+            print(f"    ✓ Warped template: {warped_path}")
+    
+    # Generate QC visualizations
+    # if generate_qc:
+    #     viz_dir = output_dir / "visualizations"
+    #     viz_dir.mkdir(parents=True, exist_ok=True)
+        
+    #     # Resample MNI to subject grid with identity (before registration)
+    #     identity_map = AffineMap(
+    #         np.eye(4),
+    #         subject_data.shape, subject_affine,
+    #         mni_data.shape, mni_affine
+    #     )
+    #     mni_resampled_before = identity_map.transform(mni_data)
+        
+    #     # Before registration QC
+    #     qc_before_path = viz_dir / f"{subject_id}_registration_qc_before.png"
+    #     plot_registration_comparison(
+    #         static_data=subject_data,
+    #         moving_data=mni_resampled_before,
+    #         title=f"Before Registration - {subject_id}",
+    #         output_path=qc_before_path
+    #     )
+    #     result['qc_before_path'] = qc_before_path
+        
+    #     # After registration QC
+    #     warped_template = mapping.transform(mni_data)
+    #     qc_after_path = viz_dir / f"{subject_id}_registration_qc_after.png"
+    #     plot_registration_comparison(
+    #         static_data=subject_data,
+    #         moving_data=warped_template,
+    #         title=f"After Registration - {subject_id}",
+    #         output_path=qc_after_path
+    #     )
+    #     result['qc_after_path'] = qc_after_path
+        
+    #     if verbose:
+    #         print(f"    ✓ QC before: {qc_before_path}")
+    #         print(f"    ✓ QC after: {qc_after_path}")
+    
+    # Save registration report
+    log_dir = output_dir / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    
+    report = {
+        'processing_date': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        'subject_id': subject_id,
+        'registration_type': 'Affine + SyN',
+        'direction': 'MNI → Subject',
+        'parameters': {
+            'affine': {
+                'level_iters': level_iters_affine,
+                'sigmas': sigmas_affine,
+                'factors': factors_affine
+            },
+            'syn': {
+                'level_iters': level_iters_syn,
+                'metric_radius': metric_radius_syn
+            }
+        },
+        'subject': {
+            'fa_path': str(subject_fa_path),
+            'shape': list(subject_data.shape)
+        },
+        'mni': {
+            'shape': list(mni_data.shape)
+        },
+        'outputs': {
+            'warped_template': str(result['warped_template_path']) if result['warped_template_path'] else None,
+            'qc_before': str(result['qc_before_path']) if result['qc_before_path'] else None,
+            'qc_after': str(result['qc_after_path']) if result['qc_after_path'] else None
+        }
+    }
+    
+    report_path = log_dir / f"{subject_id}_registration_report.json"
+    with open(report_path, 'w') as f:
+        json.dump(report, f, indent=2)
+    
+    if verbose:
+        print(f"    ✓ Report: {report_path}")
+        print("\n" + "=" * 60)
+        print("Registration complete!")
+        print("=" * 60)
+    
+    return result
 
-    return
 
-
-def save_registration_report():
-
-    return
+def save_registration_report(result, output_dir, subject_id):
+    """
+    Save registration report with transformation details.
+    
+    Parameters
+    ----------
+    result : dict
+        Output from register_mni_to_subject()
+    output_dir : str or Path
+        Output directory
+    subject_id : str
+        Subject identifier
+        
+    Returns
+    -------
+    report_path : Path
+        Path to saved report
+    """
+    import json
+    from datetime import datetime
+    
+    output_dir = Path(output_dir)
+    log_dir = output_dir / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    
+    report = {
+        'processing_date': datetime.now().strftime("%Y%m%d_%H%M%S"),
+        'subject_id': subject_id,
+        'registration_type': 'Affine + SyN',
+        'direction': 'MNI → Subject',
+        'subject_shape': list(result['subject_shape']),
+        'mni_shape': list(result['mni_shape']),
+        'affine_matrix': result['affine_matrix'].tolist(),
+        'warped_template_path': str(result['warped_template_path']) if result['warped_template_path'] else None
+    }
+    
+    report_path = log_dir / f"{subject_id}_registration_report.json"
+    with open(report_path, 'w') as f:
+        json.dump(report, f, indent=2)
+    
+    print(f"✓ Registration report saved: {report_path}")
+    
+    return report_path
 
 
 def visualize():
