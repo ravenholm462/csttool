@@ -38,97 +38,84 @@ def compute_affine_registration(
     moving_affine,
     nbins=32,
     sampling_prop=None,
-    num_iters=[10000, 1000, 100],
+    level_iters=[10000, 1000, 100],
     sigmas=[3.0, 1.0, 0.0],
     factors=[4, 2, 1],
     verbose=True
 ):
-
-    from dipy.align.imaffine import (transform_centers_of_mass,
-                                    AffineMap,
-                                    MutualInformationMetric,
-                                    AffineRegistration)
-
-    from dipy.align.transforms import (TranslationTransform3D,
-                                   RigidTransform3D,
-                                   AffineTransform3D)
-
-    if verbose:
-        print(f"Computing affine registration...")
-        print(f"    Static (subject): {moving_image.shape}")
-        print(f"    Moving: {static_image.shape}")
-
-    if verbose:
-        print("    Aligning centers of mass...")
-
-    centers_of_mass = transform_centers_of_mass(
-        static_image,
-        static_affine,
-        moving_image,
-        moving_affine
+    from dipy.align.imaffine import (
+        transform_centers_of_mass,
+        MutualInformationMetric,
+        AffineRegistration
+    )
+    from dipy.align.transforms import (
+        TranslationTransform3D,
+        RigidTransform3D,
+        AffineTransform3D
     )
 
     if verbose:
-        print("    Center of mass alignment complete")
-        print(f"   Commencing affine registration...")
-        print(f"   Num of iters (coarse, medium, fine): {num_iters}")
-        print(f"   Sigmas: {sigmas}")
-        print(f"   Factors: {factors}")
-    
+        print("Computing affine registration...")
+        print(f"    Static (subject): {static_image.shape}")
+        print(f"    Moving (template): {moving_image.shape}")
+
+    # Stage 0: Center of mass alignment
+    if verbose:
+        print("    Stage 0/3: Aligning centers of mass...")
+    c_of_mass = transform_centers_of_mass(
+        static_image, static_affine,
+        moving_image, moving_affine
+    )
+
+    # Setup registration
+    if verbose:
+        print("    Setting up affine registration...")
+        print(f"        Level iters: {level_iters}")
+        print(f"        Sigmas: {sigmas}")
+        print(f"        Factors: {factors}")
+
     metric = MutualInformationMetric(nbins=nbins, sampling_proportion=sampling_prop)
+    affreg = AffineRegistration(
+        metric=metric,
+        level_iters=level_iters,
+        sigmas=sigmas,
+        factors=factors
+    )
 
-    affreg = AffineRegistration(metric=metric,
-                            level_iters=level_iters,
-                            sigmas=sigmas,
-                            factors=factors)
-
-    transform = TranslationTransform3D()
-    params0 = None
-    starting_affine = center_of_mass.affine
-
+    # Stage 1: Translation
+    if verbose:
+        print("    Stage 1/3: Translation...")
     translation = affreg.optimize(
-        static_image,
-        moving_image,
-        transform,
-        params0,
-        static_affine,
-        moving_affine,
-        starting_affine
+        static_image, moving_image,
+        TranslationTransform3D(), None,
+        static_affine, moving_affine,
+        starting_affine=c_of_mass.affine
     )
 
-    transformed = translation.transform(moving_image)
-
-    transform = RigidTransform3D()
-    params0 = None
-    starting_affine = translation.affine
+    # Stage 2: Rigid
+    if verbose:
+        print("    Stage 2/3: Rigid...")
     rigid = affreg.optimize(
-        static_image, 
-        moving_image, 
-        transform, 
-        params0,
-        static_affine, 
-        moving_affine,
-        starting_affine=starting_affine
+        static_image, moving_image,
+        RigidTransform3D(), None,
+        static_affine, moving_affine,
+        starting_affine=translation.affine
     )
 
-    transformed = rigid.transform(moving_image)
-
-    transform = AffineTransform3D()
-    params0 = None
-    starting_affine = rigid.affine
+    # Stage 3: Full affine
+    if verbose:
+        print("    Stage 3/3: Affine...")
     affine = affreg.optimize(
-        static_image, 
-        moving_image, 
-        transform, 
-        params0,
-        static_affine, 
-        moving_affine,
-        starting_affine=starting_affine
+        static_image, moving_image,
+        AffineTransform3D(), None,
+        static_affine, moving_affine,
+        starting_affine=rigid.affine
     )
 
-    transformed = affine.transform(moving_image)
-    
-    return transformed
+    if verbose:
+        print("✓ Affine registration complete")
+
+    return affine
 
 
 def compute_syn_registration():
