@@ -590,6 +590,9 @@ def save_registration_report(result, output_dir, subject_id):
     log_dir = output_dir / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     
+    # Get affine matrix from AffineMap object
+    affine_matrix = result['affine_map'].affine
+    
     report = {
         'processing_date': datetime.now().strftime("%Y%m%d_%H%M%S"),
         'subject_id': subject_id,
@@ -597,7 +600,7 @@ def save_registration_report(result, output_dir, subject_id):
         'direction': 'MNI → Subject',
         'subject_shape': list(result['subject_shape']),
         'mni_shape': list(result['mni_shape']),
-        'affine_matrix': result['affine_matrix'].tolist(),
+        'affine_matrix': affine_matrix.tolist(),
         'warped_template_path': str(result['warped_template_path']) if result['warped_template_path'] else None
     }
     
@@ -610,8 +613,88 @@ def save_registration_report(result, output_dir, subject_id):
     return report_path
 
 
-def visualize():
-
-    return
-
+def plot_registration_comparison(
+    static_data,
+    moving_data,
+    slice_indices=None,
+    ltitle="Static",
+    rtitle="Moving",
+    output_dir=None,
+    fname_prefix="registration_qc"
+):
+    """
+    Plot registration comparison for all three views using DIPY's regtools.overlay_slices.
+    
+    Parameters
+    ----------
+    static_data : ndarray
+        Reference image (e.g., subject FA map). Shape (X, Y, Z).
+    moving_data : ndarray
+        Moving image, must be resampled to same grid as static.
+    slice_indices : dict, optional
+        Dictionary with keys 'sagittal', 'coronal', 'axial' specifying 
+        slice indices. If None, uses middle slices.
+    ltitle : str, optional
+        Title for static image.
+    rtitle : str, optional
+        Title for moving image.
+    output_dir : str or Path, optional
+        Directory to save images. If None, images are not saved.
+    fname_prefix : str, optional
+        Prefix for saved filenames.
+        
+    Returns
+    -------
+    figs : dict
+        Dictionary with keys 'sagittal', 'coronal', 'axial' containing figures.
+    """
+    from dipy.viz import regtools
+    
+    sh = static_data.shape
+    
+    # Determine slice indices (middle if not specified)
+    if slice_indices is None:
+        slice_indices = {
+            'sagittal': sh[0] // 2,
+            'coronal': sh[1] // 2,
+            'axial': sh[2] // 2
+        }
+    
+    # Convert output_dir to Path once (if provided)
+    if output_dir is not None:
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Map view names to slice_type integers
+    views = {
+        'sagittal': 0,
+        'coronal': 1,
+        'axial': 2
+    }
+    
+    figs = {}
+    
+    for view_name, slice_type in views.items():
+        # Determine output filename
+        fname = None
+        if output_dir is not None:
+            fname = str(output_dir / f"{fname_prefix}_{view_name}.png")
+        
+        # Call DIPY's overlay_slices
+        fig = regtools.overlay_slices(
+            static_data,
+            moving_data,
+            slice_index=slice_indices[view_name],
+            slice_type=slice_type,
+            ltitle=ltitle,
+            rtitle=rtitle,
+            fname=fname
+        )
+        
+        figs[view_name] = fig
+        
+        if fname:
+            print(f"✓ Saved: {fname}")
+    
+    return figs
 
