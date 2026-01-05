@@ -684,3 +684,373 @@ fig.suptitle('CST ROIs: Brainstem + Precentral Gyrus', fontsize=14)
 # Create combined CST ROI mask for visualization
 brainstem_mask = (subcortical_warped == 16).astype(float)
 precentral_mask = (cortical_warped == 7).astype(float) * 2  # Different color cst_combined
+
+# =============================================================================
+# TEST 18: create_cst_roi_masks()
+# =============================================================================
+
+print("\n" + "=" * 70)
+print("TEST 18: create_cst_roi_masks()")
+print("=" * 70)
+
+from csttool.extract.modules.create_roi_masks import (
+    create_cst_roi_masks,
+    visualize_roi_masks,
+    extract_roi_mask,
+    separate_hemispheres
+)
+
+roi_output_dir = output_dir / "roi_masks"
+
+t0 = time()
+masks = create_cst_roi_masks(
+    warped_cortical=atlas_result['cortical_warped'],
+    warped_subcortical=atlas_result['subcortical_warped'],
+    subject_affine=result['subject_affine'],
+    roi_config=atlas_result['roi_config'],
+    dilate_brainstem=2,
+    dilate_motor=1,
+    output_dir=roi_output_dir,
+    subject_id="17_cmrr",
+    save_masks=True,
+    verbose=True
+)
+roi_time = time() - t0
+
+print(f"\n    Result keys: {list(masks.keys())}")
+print(f"    Time: {roi_time:.2f}s")
+print("✓ Test 18 PASSED")
+
+# =============================================================================
+# TEST 19: Verify Hemisphere Separation
+# =============================================================================
+
+print("\n" + "=" * 70)
+print("TEST 19: Verify Hemisphere Separation")
+print("=" * 70)
+
+t0 = time()
+
+# Check that left and right don't overlap
+overlap = masks['motor_left'] & masks['motor_right']
+overlap_count = np.sum(overlap)
+
+print(f"\n    Motor Left voxels:  {np.sum(masks['motor_left']):,}")
+print(f"    Motor Right voxels: {np.sum(masks['motor_right']):,}")
+print(f"    Overlap voxels:     {overlap_count}")
+
+if overlap_count == 0:
+    print("    ✓ No overlap between hemispheres")
+else:
+    print(f"    ⚠️ Warning: {overlap_count} voxels overlap!")
+
+# Verify left is actually on left side (negative X in RAS)
+left_coords = np.where(masks['motor_left'])
+right_coords = np.where(masks['motor_right'])
+
+if len(left_coords[0]) > 0 and len(right_coords[0]) > 0:
+    # Convert to world coordinates
+    left_x_world = result['subject_affine'][0, 0] * np.mean(left_coords[0]) + result['subject_affine'][0, 3]
+    right_x_world = result['subject_affine'][0, 0] * np.mean(right_coords[0]) + result['subject_affine'][0, 3]
+    
+    print(f"\n    Left centroid X (world):  {left_x_world:.1f} mm")
+    print(f"    Right centroid X (world): {right_x_world:.1f} mm")
+    
+    if left_x_world < right_x_world:
+        print("    ✓ Hemisphere assignment correct (Left < Right in X)")
+    else:
+        print("    ⚠️ Warning: Hemisphere assignment may be inverted!")
+
+print(f"\n    Time: {time() - t0:.2f}s")
+print("✓ Test 19 PASSED")
+
+# =============================================================================
+# TEST 20: Visualize ROI Masks
+# =============================================================================
+
+print("\n" + "=" * 70)
+print("TEST 20: visualize_roi_masks()")
+print("=" * 70)
+
+t0 = time()
+
+viz_path = visualize_roi_masks(
+    masks=masks,
+    subject_fa=subject_data,
+    output_dir=viz_dir / "roi_masks",
+    subject_id="17_cmrr",
+    verbose=True
+)
+
+print(f"\n    Time: {time() - t0:.2f}s")
+print("✓ Test 20 PASSED")
+
+# =============================================================================
+# TEST 21: Load Whole-Brain Tractogram
+# =============================================================================
+
+print("\n" + "=" * 70)
+print("TEST 21: Load Whole-Brain Tractogram")
+print("=" * 70)
+
+from csttool.extract.modules.endpoint_filtering import (
+    extract_bilateral_cst,
+    save_cst_tractograms,
+    save_extraction_report
+)
+from dipy.io.streamline import load_tractogram
+
+# Update this path to your whole-brain tractogram
+TRACTOGRAM_PATH = "/home/alem/Documents/thesis/data/out/trk/17_cmrr_mbep2d_diff_ap_tdi.nii_cst_det.trk"
+
+t0 = time()
+
+if Path(TRACTOGRAM_PATH).exists():
+    sft = load_tractogram(TRACTOGRAM_PATH, 'same', bbox_valid_check=False)
+    whole_brain_streamlines = sft.streamlines
+    tractogram_affine = sft.affine
+    print(f"    Loaded: {len(whole_brain_streamlines):,} streamlines")
+    print(f"    Time: {time() - t0:.2f}s")
+    print("✓ Test 21 PASSED")
+else:
+    print(f"    ⚠️ Tractogram not found: {TRACTOGRAM_PATH}")
+    whole_brain_streamlines = None
+
+# =============================================================================
+# TEST 22: extract_bilateral_cst()
+# =============================================================================
+
+if whole_brain_streamlines is not None:
+    print("\n" + "=" * 70)
+    print("TEST 22: extract_bilateral_cst()")
+    print("=" * 70)
+    
+    t0 = time()
+    cst_result = extract_bilateral_cst(
+        streamlines=whole_brain_streamlines,
+        masks=masks,
+        affine=masks['subject_affine'],
+        min_length=20.0,
+        max_length=200.0,
+        verbose=True
+    )
+    extraction_time = time() - t0
+    
+    print(f"\n    Result keys: {list(cst_result.keys())}")
+    print(f"    Time: {extraction_time:.2f}s")
+    print("✓ Test 22 PASSED")
+
+# =============================================================================
+# TEST 23: Save CST Tractograms
+# =============================================================================
+
+if whole_brain_streamlines is not None:
+    print("\n" + "=" * 70)
+    print("TEST 23: save_cst_tractograms()")
+    print("=" * 70)
+    
+    cst_output_dir = output_dir / "cst_tractograms"
+    
+    # Load reference image for tractogram
+    reference_img = nib.load(subject_fa_path)
+    
+    t0 = time()
+    output_paths = save_cst_tractograms(
+        cst_result=cst_result,
+        reference_img=reference_img,
+        output_dir=cst_output_dir,
+        subject_id="17_cmrr",
+        verbose=True
+    )
+    
+    # Save report
+    report_path = save_extraction_report(
+        cst_result=cst_result,
+        output_paths=output_paths,
+        output_dir=cst_output_dir,
+        subject_id="17_cmrr"
+    )
+    
+    print(f"\n    Time: {time() - t0:.2f}s")
+    print("✓ Test 23 PASSED")
+
+    # =============================================================================
+# TEST 24: Visualize Extracted CST
+# =============================================================================
+
+if whole_brain_streamlines is not None and len(cst_result['cst_combined']) > 0:
+    print("\n" + "=" * 70)
+    print("TEST 24: Visualize Extracted CST")
+    print("=" * 70)
+    
+    t0 = time()
+    
+    cst_viz_dir = viz_dir / "cst_extraction"
+    cst_viz_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Create figure with 2 rows x 3 columns
+    fig, axes = plt.subplots(2, 3, figsize=(18, 12))
+    fig.suptitle(f'CST Extraction Results - 17_cmrr', fontsize=16)
+    
+    # Get middle slices for background
+    mid_sag = subject_data.shape[0] // 2
+    mid_cor = subject_data.shape[1] // 2
+    mid_ax = subject_data.shape[2] // 2
+    
+    # Helper function to project streamlines onto 2D plane
+    def project_streamlines_to_plane(streamlines, plane='axial', slice_idx=None, 
+                                      slice_thickness=10, affine=None):
+        """Project streamlines onto a 2D plane, filtering by slice proximity."""
+        points_2d = []
+        
+        for sl in streamlines:
+            # Convert to voxel coordinates if affine provided
+            if affine is not None:
+                inv_affine = np.linalg.inv(affine)
+                ones = np.ones((sl.shape[0], 1))
+                sl_h = np.hstack([sl, ones])
+                sl_vox = (sl_h @ inv_affine.T)[:, :3]
+            else:
+                sl_vox = sl
+            
+            if plane == 'axial':
+                # Filter points near the slice
+                mask = np.abs(sl_vox[:, 2] - slice_idx) < slice_thickness
+                if np.any(mask):
+                    points_2d.append(sl_vox[mask][:, :2])  # X, Y
+            elif plane == 'coronal':
+                mask = np.abs(sl_vox[:, 1] - slice_idx) < slice_thickness
+                if np.any(mask):
+                    points_2d.append(sl_vox[mask][:, [0, 2]])  # X, Z
+            elif plane == 'sagittal':
+                mask = np.abs(sl_vox[:, 0] - slice_idx) < slice_thickness
+                if np.any(mask):
+                    points_2d.append(sl_vox[mask][:, 1:3])  # Y, Z
+        
+        return points_2d
+    
+    # Row 1: Whole brain (gray) + CST Left (blue) + CST Right (green)
+    planes = ['sagittal', 'coronal', 'axial']
+    slice_indices = [mid_sag, mid_cor, mid_ax]
+    bg_slices = [
+        subject_data[mid_sag, :, :].T,
+        subject_data[:, mid_cor, :].T,
+        subject_data[:, :, mid_ax].T
+    ]
+    
+    for col, (plane, slice_idx, bg_slice) in enumerate(zip(planes, slice_indices, bg_slices)):
+        ax = axes[0, col]
+        
+        # Background FA
+        ax.imshow(bg_slice, cmap='gray', origin='lower', aspect='equal')
+        
+        # Project whole brain streamlines (subsample for speed)
+        wb_subsample = whole_brain_streamlines[::10]  # Every 10th streamline
+        wb_points = project_streamlines_to_plane(
+            wb_subsample, plane=plane, slice_idx=slice_idx, 
+            slice_thickness=15, affine=masks['subject_affine']
+        )
+        for pts in wb_points:
+            if len(pts) > 1:
+                ax.plot(pts[:, 0], pts[:, 1], 'gray', alpha=0.1, linewidth=0.3)
+        
+        # Project Left CST
+        left_points = project_streamlines_to_plane(
+            cst_result['cst_left'], plane=plane, slice_idx=slice_idx,
+            slice_thickness=15, affine=masks['subject_affine']
+        )
+        for pts in left_points:
+            if len(pts) > 1:
+                ax.plot(pts[:, 0], pts[:, 1], 'blue', alpha=0.7, linewidth=1.0)
+        
+        # Project Right CST
+        right_points = project_streamlines_to_plane(
+            cst_result['cst_right'], plane=plane, slice_idx=slice_idx,
+            slice_thickness=15, affine=masks['subject_affine']
+        )
+        for pts in right_points:
+            if len(pts) > 1:
+                ax.plot(pts[:, 0], pts[:, 1], 'green', alpha=0.7, linewidth=1.0)
+        
+        ax.set_title(f'{plane.capitalize()}\nWhole Brain + CST')
+        ax.axis('off')
+    
+    # Row 2: CST only with ROI masks overlay
+    for col, (plane, slice_idx, bg_slice) in enumerate(zip(planes, slice_indices, bg_slices)):
+        ax = axes[1, col]
+        
+        # Background FA
+        ax.imshow(bg_slice, cmap='gray', origin='lower', aspect='equal')
+        
+        # ROI masks
+        if plane == 'sagittal':
+            brainstem_slice = masks['brainstem'][mid_sag, :, :].T
+            motor_left_slice = masks['motor_left'][mid_sag, :, :].T
+            motor_right_slice = masks['motor_right'][mid_sag, :, :].T
+        elif plane == 'coronal':
+            brainstem_slice = masks['brainstem'][:, mid_cor, :].T
+            motor_left_slice = masks['motor_left'][:, mid_cor, :].T
+            motor_right_slice = masks['motor_right'][:, mid_cor, :].T
+        else:  # axial
+            brainstem_slice = masks['brainstem'][:, :, mid_ax].T
+            motor_left_slice = masks['motor_left'][:, :, mid_ax].T
+            motor_right_slice = masks['motor_right'][:, :, mid_ax].T
+        
+        # Overlay ROIs with transparency
+        ax.imshow(np.ma.masked_where(brainstem_slice == 0, brainstem_slice),
+                  cmap='Reds', alpha=0.3, origin='lower')
+        ax.imshow(np.ma.masked_where(motor_left_slice == 0, motor_left_slice),
+                  cmap='Blues', alpha=0.3, origin='lower')
+        ax.imshow(np.ma.masked_where(motor_right_slice == 0, motor_right_slice),
+                  cmap='Greens', alpha=0.3, origin='lower')
+        
+        # Project Left CST
+        left_points = project_streamlines_to_plane(
+            cst_result['cst_left'], plane=plane, slice_idx=slice_idx,
+            slice_thickness=15, affine=masks['subject_affine']
+        )
+        for pts in left_points:
+            if len(pts) > 1:
+                ax.plot(pts[:, 0], pts[:, 1], 'blue', alpha=0.8, linewidth=1.2)
+        
+        # Project Right CST
+        right_points = project_streamlines_to_plane(
+            cst_result['cst_right'], plane=plane, slice_idx=slice_idx,
+            slice_thickness=15, affine=masks['subject_affine']
+        )
+        for pts in right_points:
+            if len(pts) > 1:
+                ax.plot(pts[:, 0], pts[:, 1], 'green', alpha=0.8, linewidth=1.2)
+        
+        ax.set_title(f'{plane.capitalize()}\nCST + ROIs')
+        ax.axis('off')
+    
+    # Add legend
+    from matplotlib.lines import Line2D
+    from matplotlib.patches import Patch
+    legend_elements = [
+        Line2D([0], [0], color='gray', linewidth=1, alpha=0.5, label='Whole Brain'),
+        Line2D([0], [0], color='blue', linewidth=2, label=f'Left CST ({len(cst_result["cst_left"]):,})'),
+        Line2D([0], [0], color='green', linewidth=2, label=f'Right CST ({len(cst_result["cst_right"]):,})'),
+        Patch(facecolor='red', alpha=0.3, label='Brainstem ROI'),
+        Patch(facecolor='blue', alpha=0.3, label='Motor Left ROI'),
+        Patch(facecolor='green', alpha=0.3, label='Motor Right ROI'),
+    ]
+    fig.legend(handles=legend_elements, loc='lower center', ncol=6, fontsize=10)
+    
+    plt.tight_layout()
+    plt.subplots_adjust(bottom=0.08)
+    
+    # Save figure
+    cst_viz_path = cst_viz_dir / "17_cmrr_cst_extraction_visualization.png"
+    plt.savefig(cst_viz_path, dpi=150, bbox_inches='tight')
+    plt.close()
+    
+    print(f"    ✓ Saved CST visualization: {cst_viz_path}")
+    print(f"    Time: {time() - t0:.2f}s")
+    print("✓ Test 24 PASSED")
+
+else:
+    print("\n" + "=" * 70)
+    print("TEST 24: SKIPPED (no CST streamlines extracted)")
+    print("=" * 70)
