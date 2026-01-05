@@ -21,7 +21,7 @@ HARVARDOXFORD_SUBCORTICAL = {
     'right_caudate': 16,
 }
 
-# Cortical atlas labels (HarvardOxford-cort) - maxprob-thr25-1mm version
+# Cortical atlas labels (HarvardOxford-cort) - maxprob-thr25-2mm version
 # Note: Left/Right are distinguished by hemisphere, not separate labels
 HARVARDOXFORD_CORTICAL = {
     'precentral_gyrus': 7,
@@ -98,7 +98,7 @@ def fetch_harvard_oxford(verbose=True):
     if verbose:
         print("    Downloading cortical atlas...")
     cort_atlas = datasets.fetch_atlas_harvard_oxford(
-        'cort-maxprob-thr25-2mm',
+        'cort-maxprob-thr25-1mm',
         # symmetric_split=False
     )
     
@@ -106,7 +106,7 @@ def fetch_harvard_oxford(verbose=True):
     if verbose:
         print("    Downloading subcortical atlas...")
     subcort_atlas = datasets.fetch_atlas_harvard_oxford(
-        'sub-maxprob-thr25-2mm'
+        'sub-maxprob-thr25-1mm'
     )
     
     # Load the atlas images

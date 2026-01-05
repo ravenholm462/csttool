@@ -22,13 +22,13 @@ matplotlib.use('Agg')
 # =============================================================================
 
 # Input: Subject FA map from tracking pipeline
-SUBJECT_FA_PATH = "/home/alemnalo/anom/tracking_test_output/scalar_maps/17_cmrr_mbep2d_diff_ap_tdi_fa.nii.gz"
+SUBJECT_FA_PATH = "/home/alem/Documents/thesis/data/out/trk/scalar_maps/17_cmrr_mbep2d_diff_ap_tdi.nii_fa.nii.gz"
 
 # Output directory for registration results
-OUTPUT_DIR = "/home/alemnalo/anom/extraction_test_output/"
+OUTPUT_DIR = "/home/alem/Documents/thesis/data/out/extraction_test_output/"
 
 # Use reduced iterations for faster testing (set to False for full registration)
-FAST_TEST = True
+FAST_TEST = False
 
 # =============================================================================
 # IMPORTS
@@ -460,7 +460,7 @@ print(f"    Warped dtype: {subcortical_warped.dtype}")
 print(f"    Unique labels: {len(np.unique(subcortical_warped))}")
 
 # Check brainstem label specifically
-brainstem_label = 16
+brainstem_label = 8
 brainstem_voxels = np.sum(subcortical_warped == brainstem_label)
 print(f"\n    Brainstem (label {brainstem_label}): {brainstem_voxels:,} voxels")
 
