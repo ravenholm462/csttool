@@ -17,7 +17,8 @@ dependencies = [
     "dipy",
     "matplotlib",
     "nibabel",
-    "dicom2nifti"
+    "dicom2nifti",
+    "nilearn"
 ]
 
 [project.scripts]

@@ -31,6 +31,36 @@ def load_mni_template(contrast="T1"):
 # use dipy.viz.regtools.overlay_slices to show comparison before and after registration
 # https://docs.dipy.org/1.0.0/examples_built/affine_registration_3d.html
 
+
+# Issue: subject acquisition orientation not always same as MNI (RAS)
+# Solution: helper function to reorient subject image before registration
+def reorient_to_ras(img):
+    """
+    Reorient a NIfTI image to RAS+ orientation.
+    
+    Parameters
+    ----------
+    img : Nifti1Image
+        Input image in any orientation.
+        
+    Returns
+    -------
+    reoriented : Nifti1Image
+        Image reoriented to RAS+.
+    """
+    import nibabel as nib
+    from nibabel.orientations import axcodes2ornt, ornt_transform, apply_orientation
+    
+    current_ornt = nib.io_orientation(img.affine)
+    target_ornt = axcodes2ornt(('R', 'A', 'S'))
+    transform = ornt_transform(current_ornt, target_ornt)
+    
+    reoriented_data = apply_orientation(img.get_fdata(), transform)
+    reoriented_affine = img.affine @ nib.orientations.inv_ornt_aff(transform, img.shape)
+    
+    return nib.Nifti1Image(reoriented_data, reoriented_affine, img.header)
+
+
 def compute_affine_registration(
     static_image,
     static_affine,
@@ -415,6 +445,19 @@ def register_mni_to_subject(
     
     if verbose:
         print(f"    Shape: {mni_data.shape}")
+
+    # -------------------------------------------------------------------------
+    # Step 2.5: Reorient subject to MNI if necessary
+    # -------------------------------------------------------------------------
+
+    # Reorient to RAS if needed
+    if nib.aff2axcodes(subject_img.affine) != ('R', 'A', 'S'):
+        if verbose:
+            print(f"    Reorienting from {nib.aff2axcodes(subject_img.affine)} to RAS...")
+        subject_img = reorient_to_ras(subject_img)
+
+    subject_data = subject_img.get_fdata()
+    subject_affine = subject_img.affine
     
     # -------------------------------------------------------------------------
     # Step 3: Affine registration

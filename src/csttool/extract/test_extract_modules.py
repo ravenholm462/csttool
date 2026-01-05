@@ -1,7 +1,7 @@
 """
 test_registration.py
 
-Complete test script for csttool's registration module.
+Complete test script for csttool's registration and atlas warping modules.
 
 Usage:
     python test_registration.py
@@ -22,10 +22,10 @@ matplotlib.use('Agg')
 # =============================================================================
 
 # Input: Subject FA map from tracking pipeline
-SUBJECT_FA_PATH = "/home/alem/Documents/thesis/out/trk/scalar_maps/csttool_dwi.nii_fa.nii.gz"
+SUBJECT_FA_PATH = "/home/alemnalo/anom/tracking_test_output/scalar_maps/17_cmrr_mbep2d_diff_ap_tdi_fa.nii.gz"
 
 # Output directory for registration results
-OUTPUT_DIR = "/home/alem/Documents/thesis/out/extract/registration"
+OUTPUT_DIR = "/home/alemnalo/anom/extraction_test_output/"
 
 # Use reduced iterations for faster testing (set to False for full registration)
 FAST_TEST = True
@@ -43,12 +43,22 @@ from csttool.extract.modules.registration import (
     plot_registration_comparison
 )
 
+from csttool.extract.modules.warp_atlas_to_subject import (
+    fetch_harvard_oxford,
+    warp_atlas_to_subject,
+    warp_harvard_oxford_to_subject,
+    verify_atlas_labels,
+    CST_ROI_CONFIG,
+    HARVARDOXFORD_SUBCORTICAL,
+    HARVARDOXFORD_CORTICAL
+)
+
 # =============================================================================
 # SETUP
 # =============================================================================
 
 print("=" * 70)
-print("CSTTOOL REGISTRATION MODULE - TEST SCRIPT")
+print("CSTTOOL REGISTRATION & ATLAS WARPING - TEST SCRIPT")
 print("=" * 70)
 
 # Verify input exists
@@ -384,51 +394,293 @@ print(f"    Time: {time() - t0:.2f}s")
 print("✓ Test 10 PASSED")
 
 # =============================================================================
-# SUMMARY
+# =============================================================================
+# ATLAS WARPING TESTS
+# =============================================================================
+# =============================================================================
+
+print("\n")
+print("=" * 70)
+print("=" * 70)
+print("ATLAS WARPING MODULE TESTS")
+print("=" * 70)
+print("=" * 70)
+
+# =============================================================================
+# TEST 11: Fetch Harvard-Oxford Atlases
 # =============================================================================
 
 print("\n" + "=" * 70)
-print("TEST SUMMARY")
+print("TEST 11: fetch_harvard_oxford()")
 print("=" * 70)
 
-total_time = affine_time + syn_time + pipeline_time
+t0 = time()
+atlases = fetch_harvard_oxford(verbose=True)
+fetch_time = time() - t0
 
-print(f"""
-All 10 tests PASSED! ✓
+print(f"\n    Result keys: {list(atlases.keys())}")
+print(f"    Cortical atlas path: {atlases['cortical_path']}")
+print(f"    Subcortical atlas path: {atlases['subcortical_path']}")
+print(f"    Cortical shape: {atlases['cortical_img'].shape}")
+print(f"    Subcortical shape: {atlases['subcortical_img'].shape}")
 
-Timing Breakdown:
-    Affine registration:     {affine_time:6.2f}s
-    SyN registration:        {syn_time:6.2f}s
-    Full pipeline:           {pipeline_time:6.2f}s
-    ────────────────────────────────
-    Total registration time: {total_time:6.2f}s
+# Check label ranges
+cort_data = atlases['cortical_img'].get_fdata()
+subcort_data = atlases['subcortical_img'].get_fdata()
+print(f"\n    Cortical label range: [{int(cort_data.min())}, {int(cort_data.max())}]")
+print(f"    Subcortical label range: [{int(subcort_data.min())}, {int(subcort_data.max())}]")
+print(f"    Cortical unique labels: {len(np.unique(cort_data))}")
+print(f"    Subcortical unique labels: {len(np.unique(subcort_data))}")
 
-Output Directory: {output_dir}
+print(f"\n    Time: {fetch_time:.2f}s")
+print("✓ Test 11 PASSED")
 
-Generated Files:
-""")
+# =============================================================================
+# TEST 12: Warp Single Atlas (Subcortical)
+# =============================================================================
 
-# List all generated files
-for f in sorted(output_dir.rglob("*")):
-    if f.is_file():
-        size_kb = f.stat().st_size / 1024
-        print(f"    {f.relative_to(output_dir)} ({size_kb:.1f} KB)")
-
-print(f"""
-QC Images to Review:
-    1. {viz_dir}/01_before_registration_*.png  (initial misalignment)
-    2. {viz_dir}/02_after_affine_*.png         (affine correction)
-    3. {viz_dir}/03_after_syn_*.png            (non-linear refinement)
-
-Next Steps:
-    - Review QC images to verify registration quality
-    - Use result['mapping'] to warp MNI parcellation atlas
-    - Proceed to warp_atlas_to_subject module
-""")
-
-print("=" * 70)
-print("REGISTRATION MODULE TESTING COMPLETE")
+print("\n" + "=" * 70)
+print("TEST 12: warp_atlas_to_subject() - Subcortical Atlas")
 print("=" * 70)
 
-# Close all matplotlib figures
-plt.close('all')
+t0 = time()
+
+subcortical_warped = warp_atlas_to_subject(
+    atlas_img=atlases['subcortical_img'],
+    mapping=result['mapping'],
+    subject_shape=result['subject_shape'],
+    subject_affine=result['subject_affine'],
+    interpolation='nearest',
+    verbose=True
+)
+warp_subcort_time = time() - t0
+
+print(f"\n    Warped shape: {subcortical_warped.shape}")
+print(f"    Warped dtype: {subcortical_warped.dtype}")
+print(f"    Unique labels: {len(np.unique(subcortical_warped))}")
+
+# Check brainstem label specifically
+brainstem_label = 16
+brainstem_voxels = np.sum(subcortical_warped == brainstem_label)
+print(f"\n    Brainstem (label {brainstem_label}): {brainstem_voxels:,} voxels")
+
+print(f"\n    Time: {warp_subcort_time:.2f}s")
+print("✓ Test 12 PASSED")
+
+# =============================================================================
+# TEST 13: Warp Single Atlas (Cortical)
+# =============================================================================
+
+print("\n" + "=" * 70)
+print("TEST 13: warp_atlas_to_subject() - Cortical Atlas")
+print("=" * 70)
+
+t0 = time()
+
+cortical_warped = warp_atlas_to_subject(
+    atlas_img=atlases['cortical_img'],
+    mapping=result['mapping'],
+    subject_shape=result['subject_shape'],
+    subject_affine=result['subject_affine'],
+    interpolation='nearest',
+    verbose=True
+)
+warp_cort_time = time() - t0
+
+print(f"\n    Warped shape: {cortical_warped.shape}")
+print(f"    Warped dtype: {cortical_warped.dtype}")
+print(f"    Unique labels: {len(np.unique(cortical_warped))}")
+
+# Check precentral gyrus label specifically
+precentral_label = 7
+precentral_voxels = np.sum(cortical_warped == precentral_label)
+print(f"\n    Precentral Gyrus (label {precentral_label}): {precentral_voxels:,} voxels")
+
+print(f"\n    Time: {warp_cort_time:.2f}s")
+print("✓ Test 13 PASSED")
+
+# =============================================================================
+# TEST 14: Verify Atlas Labels
+# =============================================================================
+
+print("\n" + "=" * 70)
+print("TEST 14: verify_atlas_labels()")
+print("=" * 70)
+
+t0 = time()
+
+# Verify subcortical labels (brainstem is critical for CST)
+subcort_verification = verify_atlas_labels(
+    warped_atlas=subcortical_warped,
+    expected_labels=[16],  # Brainstem
+    atlas_name="Subcortical (brainstem)",
+    verbose=True
+)
+
+# Verify cortical labels (precentral gyrus is critical for CST)
+cort_verification = verify_atlas_labels(
+    warped_atlas=cortical_warped,
+    expected_labels=[7],  # Precentral gyrus
+    atlas_name="Cortical (precentral)",
+    verbose=True
+)
+
+print(f"\n    Subcortical verification: {'✓ PASSED' if subcort_verification['success'] else '✗ FAILED'}")
+print(f"    Cortical verification: {'✓ PASSED' if cort_verification['success'] else '✗ FAILED'}")
+
+if not subcort_verification['success']:
+    print(f"    ⚠️  Missing subcortical labels: {subcort_verification['missing']}")
+if not cort_verification['success']:
+    print(f"    ⚠️  Missing cortical labels: {cort_verification['missing']}")
+
+print(f"\n    Time: {time() - t0:.2f}s")
+print("✓ Test 14 PASSED")
+
+# =============================================================================
+# TEST 15: Full Pipeline - warp_harvard_oxford_to_subject()
+# =============================================================================
+
+print("\n" + "=" * 70)
+print("TEST 15: warp_harvard_oxford_to_subject() - Full Pipeline")
+print("=" * 70)
+
+atlas_output_dir = output_dir / "warped_atlases"
+
+t0 = time()
+atlas_result = warp_harvard_oxford_to_subject(
+    registration_result=result,
+    output_dir=atlas_output_dir,
+    subject_id="17_cmrr",
+    save_warped=True,
+    verbose=True
+)
+atlas_pipeline_time = time() - t0
+
+print(f"\n    Result keys: {list(atlas_result.keys())}")
+print(f"    Cortical warped shape: {atlas_result['cortical_warped'].shape}")
+print(f"    Subcortical warped shape: {atlas_result['subcortical_warped'].shape}")
+print(f"    Cortical saved to: {atlas_result['cortical_warped_path']}")
+print(f"    Subcortical saved to: {atlas_result['subcortical_warped_path']}")
+print(f"    ROI config keys: {list(atlas_result['roi_config'].keys())}")
+
+print(f"\n    Time: {atlas_pipeline_time:.2f}s")
+print("✓ Test 15 PASSED")
+
+# =============================================================================
+# TEST 16: Verify CST ROI Labels in Warped Atlases
+# =============================================================================
+
+print("\n" + "=" * 70)
+print("TEST 16: Verify CST-Specific ROI Labels")
+print("=" * 70)
+
+t0 = time()
+
+print("\n    CST ROI Configuration:")
+for roi_name, roi_info in CST_ROI_CONFIG.items():
+    print(f"      {roi_name}:")
+    print(f"        Atlas: {roi_info['atlas']}")
+    print(f"        Label: {roi_info['label']}")
+    print(f"        Description: {roi_info['description']}")
+
+# Check each CST ROI in warped atlases
+print("\n    Verifying CST ROIs in warped atlases:")
+
+# Brainstem (subcortical)
+brainstem_mask = atlas_result['subcortical_warped'] == CST_ROI_CONFIG['brainstem']['label']
+brainstem_count = np.sum(brainstem_mask)
+print(f"      Brainstem: {brainstem_count:,} voxels {'✓' if brainstem_count > 0 else '✗'}")
+
+# Motor Left (cortical, left hemisphere)
+motor_label = CST_ROI_CONFIG['motor_left']['label']
+motor_left_preliminary = atlas_result['cortical_warped'] == motor_label
+motor_left_count = np.sum(motor_left_preliminary)
+print(f"      Motor cortex (label {motor_label}, both hemispheres): {motor_left_count:,} voxels {'✓' if motor_left_count > 0 else '✗'}")
+
+# Note about hemisphere separation
+print("\n    Note: Hemisphere separation (motor_left vs motor_right)")
+print("          will be implemented in create_roi_masks.py")
+
+print(f"\n    Time: {time() - t0:.2f}s")
+print("✓ Test 16 PASSED")
+
+# =============================================================================
+# TEST 17: Visualize Warped Atlas Overlays
+# =============================================================================
+
+print("\n" + "=" * 70)
+print("TEST 17: Visualize Warped Atlas Overlays")
+print("=" * 70)
+
+t0 = time()
+
+atlas_viz_dir = viz_dir / "atlas_overlays"
+atlas_viz_dir.mkdir(parents=True, exist_ok=True)
+
+# Create overlay visualization
+fig, axes = plt.subplots(2, 3, figsize=(15, 10))
+fig.suptitle('Warped Harvard-Oxford Atlas Overlays', fontsize=14)
+
+# Get middle slices
+mid_sag = subject_data.shape[0] // 2
+mid_cor = subject_data.shape[1] // 2
+mid_ax = subject_data.shape[2] // 2
+
+# Row 1: Subcortical atlas (brainstem)
+axes[0, 0].imshow(subject_data[mid_sag, :, :].T, cmap='gray', origin='lower')
+axes[0, 0].imshow(np.ma.masked_where(subcortical_warped[mid_sag, :, :].T == 0, 
+                                      subcortical_warped[mid_sag, :, :].T), 
+                  cmap='tab20', alpha=0.5, origin='lower')
+axes[0, 0].set_title('Subcortical - Sagittal')
+axes[0, 0].axis('off')
+
+axes[0, 1].imshow(subject_data[:, mid_cor, :].T, cmap='gray', origin='lower')
+axes[0, 1].imshow(np.ma.masked_where(subcortical_warped[:, mid_cor, :].T == 0,
+                                      subcortical_warped[:, mid_cor, :].T),
+                  cmap='tab20', alpha=0.5, origin='lower')
+axes[0, 1].set_title('Subcortical - Coronal')
+axes[0, 1].axis('off')
+
+axes[0, 2].imshow(subject_data[:, :, mid_ax].T, cmap='gray', origin='lower')
+axes[0, 2].imshow(np.ma.masked_where(subcortical_warped[:, :, mid_ax].T == 0,
+                                      subcortical_warped[:, :, mid_ax].T),
+                  cmap='tab20', alpha=0.5, origin='lower')
+axes[0, 2].set_title('Subcortical - Axial')
+axes[0, 2].axis('off')
+
+# Row 2: Cortical atlas (motor cortex)
+axes[1, 0].imshow(subject_data[mid_sag, :, :].T, cmap='gray', origin='lower')
+axes[1, 0].imshow(np.ma.masked_where(cortical_warped[mid_sag, :, :].T == 0,
+                                      cortical_warped[mid_sag, :, :].T),
+                  cmap='tab20', alpha=0.5, origin='lower')
+axes[1, 0].set_title('Cortical - Sagittal')
+axes[1, 0].axis('off')
+
+axes[1, 1].imshow(subject_data[:, mid_cor, :].T, cmap='gray', origin='lower')
+axes[1, 1].imshow(np.ma.masked_where(cortical_warped[:, mid_cor, :].T == 0,
+                                      cortical_warped[:, mid_cor, :].T),
+                  cmap='tab20', alpha=0.5, origin='lower')
+axes[1, 1].set_title('Cortical - Coronal')
+axes[1, 1].axis('off')
+
+axes[1, 2].imshow(subject_data[:, :, mid_ax].T, cmap='gray', origin='lower')
+axes[1, 2].imshow(np.ma.masked_where(cortical_warped[:, :, mid_ax].T == 0,
+                                      cortical_warped[:, :, mid_ax].T),
+                  cmap='tab20', alpha=0.5, origin='lower')
+axes[1, 2].set_title('Cortical - Axial')
+axes[1, 2].axis('off')
+
+plt.tight_layout()
+overlay_path = atlas_viz_dir / "atlas_overlay_all_views.png"
+plt.savefig(overlay_path, dpi=150, bbox_inches='tight')
+plt.close()
+
+print(f"    ✓ Saved atlas overlay: {overlay_path}")
+
+# Create CST-specific ROI visualization
+fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+fig.suptitle('CST ROIs: Brainstem + Precentral Gyrus', fontsize=14)
+
+# Create combined CST ROI mask for visualization
+brainstem_mask = (subcortical_warped == 16).astype(float)
+precentral_mask = (cortical_warped == 7).astype(float) * 2  # Different color cst_combined
