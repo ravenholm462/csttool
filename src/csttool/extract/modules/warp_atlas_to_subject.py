@@ -14,7 +14,7 @@ from pathlib import Path
 # Harvard-Oxford label definitions for CST extraction
 # Subcortical atlas labels (HarvardOxford-sub)
 HARVARDOXFORD_SUBCORTICAL = {
-    'brainstem': 16,
+    'brainstem': 8,
     'left_thalamus': 4,
     'right_thalamus': 15,
     'left_caudate': 5,
@@ -33,7 +33,7 @@ HARVARDOXFORD_CORTICAL = {
 CST_ROI_CONFIG = {
     'brainstem': {
         'atlas': 'subcortical',
-        'label': 16,
+        'label': 8,
         'description': 'Brainstem - inferior CST endpoint'
     },
     'motor_left': {
@@ -98,20 +98,20 @@ def fetch_harvard_oxford(verbose=True):
     if verbose:
         print("    Downloading cortical atlas...")
     cort_atlas = datasets.fetch_atlas_harvard_oxford(
-        'cort-maxprob-thr25-1mm',
-        symmetric_split=False
+        'cort-maxprob-thr25-2mm',
+        # symmetric_split=False
     )
     
     # Fetch subcortical atlas (contains brainstem)
     if verbose:
         print("    Downloading subcortical atlas...")
     subcort_atlas = datasets.fetch_atlas_harvard_oxford(
-        'sub-maxprob-thr25-1mm'
+        'sub-maxprob-thr25-2mm'
     )
     
     # Load the atlas images
-    cort_img = nib.load(cort_atlas.maps)
-    subcort_img = nib.load(subcort_atlas.maps)
+    cort_img = cort_atlas.maps
+    subcort_img = subcort_atlas.maps
     
     if verbose:
         print(f"    ✓ Cortical atlas: {cort_atlas.maps}")
@@ -122,8 +122,8 @@ def fetch_harvard_oxford(verbose=True):
         print(f"    Subcortical labels: {len(subcort_atlas.labels)} regions")
     
     return {
-        'cortical_path': Path(cort_atlas.maps),
-        'subcortical_path': Path(subcort_atlas.maps),
+        'cortical_path': str(cort_atlas.maps),
+        'subcortical_path': str(subcort_atlas.maps),
         'cortical_img': cort_img,
         'subcortical_img': subcort_img,
         'cortical_labels': cort_atlas.labels,
