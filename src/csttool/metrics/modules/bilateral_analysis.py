@@ -1,0 +1,348 @@
+"""
+bilateral_analysis.py
+
+Functions for bilateral CST comparison and asymmetry analysis.
+
+This module takes outputs from unilateral_analysis and computes:
+- Laterality indices (LI) for volume, FA, MD
+- Asymmetry metrics
+- Statistical comparisons
+"""
+
+import numpy as np
+
+
+def compare_bilateral_cst(left_metrics, right_metrics):
+    """
+    Compare left and right CST metrics and compute asymmetry measures.
+    
+    Parameters
+    ----------
+    left_metrics : dict
+        Metrics from analyze_cst_hemisphere() for left CST
+    right_metrics : dict
+        Metrics from analyze_cst_hemisphere() for right CST
+        
+    Returns
+    -------
+    comparison : dict
+        Comprehensive bilateral comparison containing:
+        - left: complete left hemisphere metrics
+        - right: complete right hemisphere metrics
+        - asymmetry: laterality indices and differences
+    """
+    
+    print("\nComputing bilateral comparison...")
+    
+    comparison = {
+        'left': left_metrics,
+        'right': right_metrics,
+        'asymmetry': compute_laterality_indices(left_metrics, right_metrics)
+    }
+    
+    print_bilateral_summary(comparison)
+    
+    return comparison
+
+
+def compute_laterality_indices(left_metrics, right_metrics):
+    """
+    Compute laterality indices for all available metrics.
+    
+    Laterality Index (LI) = (L - R) / (L + R)
+    
+    LI interpretation:
+    - LI > 0: Left hemisphere larger/higher
+    - LI < 0: Right hemisphere larger/higher  
+    - LI ≈ 0: Symmetric
+    - |LI| > 0.1: Potentially significant asymmetry
+    
+    Parameters
+    ----------
+    left_metrics : dict
+        Left hemisphere metrics
+    right_metrics : dict
+        Right hemisphere metrics
+        
+    Returns
+    -------
+    asymmetry : dict
+        Laterality indices and absolute differences for:
+        - volume
+        - streamline count
+        - mean length
+        - mean FA (if available)
+        - mean MD (if available)
+    """
+    
+    asymmetry = {}
+    
+    # Morphological asymmetry
+    left_morph = left_metrics['morphology']
+    right_morph = right_metrics['morphology']
+    
+    asymmetry['volume'] = compute_li(
+        left_morph['tract_volume'],
+        right_morph['tract_volume']
+    )
+    
+    asymmetry['streamline_count'] = compute_li(
+        left_morph['n_streamlines'],
+        right_morph['n_streamlines']
+    )
+    
+    asymmetry['mean_length'] = compute_li(
+        left_morph['mean_length'],
+        right_morph['mean_length']
+    )
+    
+    # Microstructural asymmetry
+    if 'fa' in left_metrics and 'fa' in right_metrics:
+        asymmetry['fa'] = compute_li(
+            left_metrics['fa']['mean'],
+            right_metrics['fa']['mean']
+        )
+    
+    if 'md' in left_metrics and 'md' in right_metrics:
+        asymmetry['md'] = compute_li(
+            left_metrics['md']['mean'],
+            right_metrics['md']['mean']
+        )
+    
+    return asymmetry
+
+
+def compute_li(left_value, right_value):
+    """
+    Compute laterality index and absolute difference.
+    
+    Parameters
+    ----------
+    left_value : float
+        Metric value from left hemisphere
+    right_value : float
+        Metric value from right hemisphere
+        
+    Returns
+    -------
+    li_info : dict
+        Dictionary containing:
+        - laterality_index: (L-R)/(L+R)
+        - absolute_difference: |L-R|
+        - percent_difference: 100 * |L-R| / mean(L,R)
+        - interpretation: text description
+    """
+    
+    total = left_value + right_value
+    
+    if total == 0:
+        return {
+            'laterality_index': 0.0,
+            'absolute_difference': 0.0,
+            'percent_difference': 0.0,
+            'interpretation': 'no data'
+        }
+    
+    li = (left_value - right_value) / total
+    abs_diff = abs(left_value - right_value)
+    mean_value = (left_value + right_value) / 2
+    pct_diff = 100 * abs_diff / mean_value if mean_value > 0 else 0.0
+    
+    # Interpret laterality
+    if abs(li) < 0.05:
+        interpretation = 'symmetric'
+    elif abs(li) < 0.10:
+        interpretation = 'mild asymmetry'
+    elif abs(li) < 0.20:
+        interpretation = 'moderate asymmetry'
+    else:
+        interpretation = 'strong asymmetry'
+    
+    if li > 0:
+        interpretation += ' (left > right)'
+    elif li < 0:
+        interpretation += ' (right > left)'
+    
+    return {
+        'laterality_index': float(li),
+        'absolute_difference': float(abs_diff),
+        'percent_difference': float(pct_diff),
+        'interpretation': interpretation,
+        'left_value': float(left_value),
+        'right_value': float(right_value)
+    }
+
+
+def print_bilateral_summary(comparison):
+    """
+    Print human-readable bilateral comparison summary.
+    
+    Parameters
+    ----------
+    comparison : dict
+        Output from compare_bilateral_cst()
+    """
+    
+    print("\n" + "="*70)
+    print("BILATERAL CST COMPARISON")
+    print("="*70)
+    
+    left = comparison['left']
+    right = comparison['right']
+    asym = comparison['asymmetry']
+    
+    # Morphology comparison
+    print("\nMORPHOLOGY:")
+    print(f"  Streamline Count:")
+    print(f"    Left:  {left['morphology']['n_streamlines']}")
+    print(f"    Right: {right['morphology']['n_streamlines']}")
+    print(f"    LI:    {asym['streamline_count']['laterality_index']:+.3f} "
+          f"({asym['streamline_count']['interpretation']})")
+    
+    print(f"\n  Tract Volume:")
+    print(f"    Left:  {left['morphology']['tract_volume']:.0f} mm³")
+    print(f"    Right: {right['morphology']['tract_volume']:.0f} mm³")
+    print(f"    LI:    {asym['volume']['laterality_index']:+.3f} "
+          f"({asym['volume']['interpretation']})")
+    print(f"    Diff:  {asym['volume']['absolute_difference']:.0f} mm³ "
+          f"({asym['volume']['percent_difference']:.1f}%)")
+    
+    print(f"\n  Mean Length:")
+    print(f"    Left:  {left['morphology']['mean_length']:.1f} mm")
+    print(f"    Right: {right['morphology']['mean_length']:.1f} mm")
+    print(f"    LI:    {asym['mean_length']['laterality_index']:+.3f} "
+          f"({asym['mean_length']['interpretation']})")
+    
+    # Microstructural comparison
+    if 'fa' in asym:
+        print(f"\nFRACTIONAL ANISOTROPY:")
+        print(f"    Left:  {left['fa']['mean']:.3f} ± {left['fa']['std']:.3f}")
+        print(f"    Right: {right['fa']['mean']:.3f} ± {right['fa']['std']:.3f}")
+        print(f"    LI:    {asym['fa']['laterality_index']:+.3f} "
+              f"({asym['fa']['interpretation']})")
+        print(f"    Diff:  {asym['fa']['absolute_difference']:.3f} "
+              f"({asym['fa']['percent_difference']:.1f}%)")
+    
+    if 'md' in asym:
+        print(f"\nMEAN DIFFUSIVITY:")
+        print(f"    Left:  {left['md']['mean']:.3e} ± {left['md']['std']:.3e}")
+        print(f"    Right: {right['md']['mean']:.3e} ± {right['md']['std']:.3e}")
+        print(f"    LI:    {asym['md']['laterality_index']:+.3f} "
+              f"({asym['md']['interpretation']})")
+        print(f"    Diff:  {asym['md']['absolute_difference']:.3e} "
+              f"({asym['md']['percent_difference']:.1f}%)")
+    
+    print("="*70 + "\n")
+
+
+def assess_clinical_significance(asymmetry, thresholds=None):
+    """
+    Assess clinical significance of asymmetry based on thresholds.
+    
+    Parameters
+    ----------
+    asymmetry : dict
+        Asymmetry metrics from compute_laterality_indices()
+    thresholds : dict, optional
+        Custom thresholds for each metric
+        Default thresholds are based on literature (if available)
+        
+    Returns
+    -------
+    assessment : dict
+        Clinical assessment with flags for significant asymmetries
+    """
+    
+    if thresholds is None:
+        # Default thresholds (can be refined based on normative data)
+        thresholds = {
+            'volume': 0.15,        # 15% asymmetry is potentially significant
+            'fa': 0.10,            # 10% FA asymmetry
+            'md': 0.10,            # 10% MD asymmetry
+            'streamline_count': 0.20  # 20% streamline asymmetry
+        }
+    
+    assessment = {
+        'flags': [],
+        'severity': 'normal',
+        'recommendations': []
+    }
+    
+    # Check each metric
+    for metric, threshold in thresholds.items():
+        if metric in asymmetry:
+            li = abs(asymmetry[metric]['laterality_index'])
+            
+            if li > threshold:
+                assessment['flags'].append({
+                    'metric': metric,
+                    'laterality_index': asymmetry[metric]['laterality_index'],
+                    'threshold': threshold,
+                    'interpretation': asymmetry[metric]['interpretation']
+                })
+    
+    # Determine overall severity
+    if len(assessment['flags']) == 0:
+        assessment['severity'] = 'normal'
+        assessment['recommendations'].append('No significant asymmetries detected')
+    elif len(assessment['flags']) == 1:
+        assessment['severity'] = 'mild'
+        assessment['recommendations'].append('Single metric shows asymmetry - consider follow-up')
+    elif len(assessment['flags']) == 2:
+        assessment['severity'] = 'moderate'
+        assessment['recommendations'].append('Multiple metrics show asymmetry - recommend clinical correlation')
+    else:
+        assessment['severity'] = 'significant'
+        assessment['recommendations'].append('Significant asymmetries detected - recommend further clinical evaluation')
+    
+    return assessment
+
+
+def compute_effect_size(left_metrics, right_metrics, metric_path):
+    """
+    Compute Cohen's d effect size for bilateral comparison.
+    
+    Parameters
+    ----------
+    left_metrics : dict
+        Left hemisphere metrics
+    right_metrics : dict
+        Right hemisphere metrics  
+    metric_path : str
+        Path to metric (e.g., 'morphology.tract_volume' or 'fa.mean')
+        
+    Returns
+    -------
+    effect_size : float
+        Cohen's d effect size
+    """
+    
+    # Navigate nested dict
+    keys = metric_path.split('.')
+    left_val = left_metrics
+    right_val = right_metrics
+    
+    for key in keys:
+        left_val = left_val[key]
+        right_val = right_val[key]
+    
+    # Compute Cohen's d
+    mean_diff = abs(left_val - right_val)
+    
+    # For std, we need to access it properly
+    if 'fa' in metric_path or 'md' in metric_path:
+        # These have std available
+        std_key = keys[0]
+        pooled_std = np.sqrt(
+            (left_metrics[std_key]['std']**2 + right_metrics[std_key]['std']**2) / 2
+        )
+    else:
+        # For morphology, estimate from data
+        pooled_std = np.sqrt((left_val**2 + right_val**2) / 2) * 0.1  # Assume 10% CV
+    
+    if pooled_std == 0:
+        return 0.0
+    
+    cohens_d = mean_diff / pooled_std
+    
+    return float(cohens_d)
