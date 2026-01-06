@@ -371,7 +371,7 @@ def generate_complete_report(
         Dictionary of all generated report file paths
     """
     
-    from .modules.visualizations import (
+    from .visualizations import (
         plot_tract_profiles,
         plot_bilateral_comparison,
         create_summary_figure
