@@ -18,7 +18,8 @@ dependencies = [
     "matplotlib",
     "nibabel",
     "dicom2nifti",
-    "nilearn"
+    "nilearn",
+    reportlab
 ]
 
 [project.scripts]
