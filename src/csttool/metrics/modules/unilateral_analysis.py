@@ -121,11 +121,28 @@ def compute_morphology(streamlines, affine):
     # Compute streamline lengths
     lengths = np.array([length(s) for s in streamlines])
     
-    # Compute tract volume
+    # Compute tract volume by counting unique voxels
+    # Get all points from all streamlines
+    all_points = np.vstack(streamlines)
+    
+    # Transform to voxel coordinates using inverse affine
+    inv_affine = np.linalg.inv(affine)
+    all_points_hom = np.c_[all_points, np.ones(len(all_points))]
+    voxel_coords = (inv_affine @ all_points_hom.T).T[:, :3]
+    
+    # Round to integer voxel indices
+    voxel_indices = np.round(voxel_coords).astype(int)
+    
+    # Count unique voxels
+    unique_voxels = np.unique(voxel_indices, axis=0)
+    n_voxels = len(unique_voxels)
+    
+    # Compute voxel volume
     voxel_size = np.sqrt(np.sum(affine[:3, :3]**2, axis=0))
-    density = density_map(streamlines, affine=affine, voxel_sizes=voxel_size)
     voxel_volume = np.prod(voxel_size)
-    tract_volume = np.sum(density > 0) * voxel_volume
+    
+    # Total tract volume
+    tract_volume = n_voxels * voxel_volume
     
     morphology = {
         'n_streamlines': len(streamlines),
