@@ -118,6 +118,66 @@ def main() -> None:
     )
     p_track.set_defaults(func=cmd_track)
 
+    # Extraction subtool
+    p_extract = subparsers.add_parser(
+        "extract",
+        help="Extract bilateral CST from whole-brain tractogram using atlas-based ROI filtering"
+    )
+    p_extract.add_argument(
+        "--tractogram",
+        type=Path,
+        required=True,
+        help="Path to whole-brain tractogram (.trk)"
+    )
+    p_extract.add_argument(
+        "--fa",
+        type=Path,
+        required=True,
+        help="Path to subject FA map for registration"
+    )
+    p_extract.add_argument(
+        "--subject-id",
+        type=str,
+        default="subject",
+        help="Subject identifier for output naming"
+    )
+    p_extract.add_argument(
+        "--min-length",
+        type=float,
+        default=20.0,
+        help="Minimum streamline length in mm (default: 20)"
+    )
+    p_extract.add_argument(
+        "--max-length",
+        type=float,
+        default=200.0,
+        help="Maximum streamline length in mm (default: 200)"
+    )
+    p_extract.add_argument(
+        "--dilate-brainstem",
+        type=int,
+        default=2,
+        help="Dilation iterations for brainstem ROI (default: 2)"
+    )
+    p_extract.add_argument(
+        "--dilate-motor",
+        type=int,
+        default=1,
+        help="Dilation iterations for motor cortex ROIs (default: 1)"
+    )
+    p_extract.add_argument(
+        "--fast-registration",
+        action="store_true",
+        help="Use reduced iterations for faster registration (testing mode)"
+    )
+    p_extract.add_argument(
+        "--out",
+        type=Path,
+        required=True,
+        help="Output directory for extracted CST tractograms"
+    )
+    p_extract.set_defaults(func=cmd_extract)
+
     # Metrics subtool
     p_metrics = subparsers.add_parser(
         "metrics",
@@ -587,6 +647,105 @@ def cmd_track(args: argparse.Namespace) -> None:
     print(f"{'='*50}")
     print(f"Whole-brain streamlines: {len(streamlines)}")
     print(f"CST streamlines extracted: {len(cst_streamlines)}")
+
+
+def cmd_extract(args):
+    """Extract bilateral CST using atlas-based ROI filtering."""
+    from csttool.extract.modules.registration import register_mni_to_subject
+    from csttool.extract.modules.warp_atlas_to_subject import (
+        fetch_harvard_oxford, 
+        warp_harvard_oxford_to_subject,
+        CST_ROI_CONFIG
+    )
+    from csttool.extract.modules.create_roi_masks import create_cst_roi_masks
+    from csttool.extract.modules.endpoint_filtering import (
+        extract_bilateral_cst,
+        save_cst_tractograms,
+        save_extraction_report
+    )
+    from dipy.io.streamline import load_tractogram
+    from dipy.io.image import load_nifti
+    
+    args.out.mkdir(parents=True, exist_ok=True)
+    
+    # Step 1: Load inputs
+    print(f"Loading tractogram: {args.tractogram}")
+    sft = load_tractogram(str(args.tractogram), 'same')
+    streamlines = sft.streamlines
+    
+    print(f"Loading FA map: {args.fa}")
+    fa_data, fa_affine = load_nifti(str(args.fa))
+    
+    # Step 2: Registration (MNI → Subject)
+    print("\nStep 1: Registering MNI template to subject space...")
+    level_iters_affine = [1000, 100, 10] if args.fast_registration else [10000, 1000, 100]
+    level_iters_syn = [5, 5, 3] if args.fast_registration else [10, 10, 5]
+    
+    reg_result = register_mni_to_subject(
+        subject_fa_path=args.fa,
+        output_dir=args.out,
+        subject_id=args.subject_id,
+        level_iters_affine=level_iters_affine,
+        level_iters_syn=level_iters_syn,
+        verbose=True
+    )
+    
+    # Step 3: Warp Harvard-Oxford atlases
+    print("\nStep 2: Warping Harvard-Oxford atlases to subject space...")
+    atlases = fetch_harvard_oxford(verbose=True)
+    warped = warp_harvard_oxford_to_subject(
+        cortical_img=atlases['cortical_img'],
+        subcortical_img=atlases['subcortical_img'],
+        mapping=reg_result['mapping'],
+        output_dir=args.out,
+        subject_id=args.subject_id,
+        verbose=True
+    )
+    
+    # Step 4: Create ROI masks
+    print("\nStep 3: Creating CST ROI masks...")
+    masks = create_cst_roi_masks(
+        warped_cortical=warped['cortical'],
+        warped_subcortical=warped['subcortical'],
+        subject_affine=fa_affine,
+        roi_config=CST_ROI_CONFIG,
+        dilate_brainstem=args.dilate_brainstem,
+        dilate_motor=args.dilate_motor,
+        output_dir=args.out,
+        subject_id=args.subject_id,
+        verbose=True
+    )
+    
+    # Step 5: Extract bilateral CST
+    print("\nStep 4: Extracting bilateral CST...")
+    cst_result = extract_bilateral_cst(
+        streamlines=streamlines,
+        masks=masks,
+        affine=fa_affine,
+        min_length=args.min_length,
+        max_length=args.max_length,
+        verbose=True
+    )
+    
+    # Step 6: Save outputs
+    print("\nStep 5: Saving extracted tractograms...")
+    reference_img = nib.load(str(args.fa))
+    output_paths = save_cst_tractograms(
+        cst_result=cst_result,
+        reference_img=reference_img,
+        output_dir=args.out,
+        subject_id=args.subject_id,
+        verbose=True
+    )
+    
+    # Save extraction report
+    save_extraction_report(cst_result, output_paths, args.out, args.subject_id)
+    
+    print(f"\n{'='*50}")
+    print(f"EXTRACTION COMPLETE")
+    print(f"{'='*50}")
+    print(f"Left CST:  {cst_result['stats']['cst_left_count']:,} streamlines")
+    print(f"Right CST: {cst_result['stats']['cst_right_count']:,} streamlines")
 
 def cmd_metrics(args):
     """Compute CST metrics from tractography results."""
