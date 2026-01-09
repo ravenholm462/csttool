@@ -1,12 +1,32 @@
+"""
+cli.py
+
+Command-line interface for csttool - CST assessment using DTI data.
+
+Commands:
+    check       - Run environment checks
+    import      - Import DICOMs or load NIfTI data
+    preprocess  - Run preprocessing pipeline
+    track       - Run whole-brain tractography
+    extract     - Extract bilateral CST from tractogram
+    metrics     - Compute CST metrics and generate reports
+"""
+
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
 from . import __version__
 import csttool.preprocess.funcs as preproc
-import csttool.tracking.modules as trk
-import csttool.metrics.modules as metr
+from csttool.tracking.modules import (
+    fit_tensors,
+    estimate_directions,
+    seed_and_stop,
+    run_tractography,
+    save_tracking_outputs,
+)
 
 from dipy.io import read_bvals_bvecs
 from dipy.core.gradients import gradient_table
@@ -28,11 +48,15 @@ def main() -> None:
 
     subparsers = parser.add_subparsers(dest="command")
 
+    # -------------------------------------------------------------------------
     # check subtool
+    # -------------------------------------------------------------------------
     p_check = subparsers.add_parser("check", help="Run environment checks")
     p_check.set_defaults(func=cmd_check)
 
+    # -------------------------------------------------------------------------
     # import subtool
+    # -------------------------------------------------------------------------
     p_import = subparsers.add_parser(
         "import",
         help="Import DICOMs or load NIfTI data and report basic info"
@@ -40,7 +64,9 @@ def main() -> None:
     add_io_arguments(p_import)
     p_import.set_defaults(func=cmd_import)
 
+    # -------------------------------------------------------------------------
     # preprocess subtool
+    # -------------------------------------------------------------------------
     p_preproc = subparsers.add_parser(
         "preprocess",
         help="Run preprocessing pipeline (denoise, skull strip, motion correction)"
@@ -62,18 +88,31 @@ def main() -> None:
         action="store_true",
         help="Enable between volume motion correction (disabled by default)."
     )
+    p_preproc.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Print detailed processing information."
+    )
     p_preproc.set_defaults(func=cmd_preprocess)
 
+    # -------------------------------------------------------------------------
     # track subtool
+    # -------------------------------------------------------------------------
     p_track = subparsers.add_parser(
         "track",
-        help="Run deterministic tractography on preprocessed data"
+        help="Run whole-brain deterministic tractography on preprocessed data"
     )
     p_track.add_argument(
         "--nifti",
         type=Path,
         required=True,
         help="Path to preprocessed NIfTI (.nii or .nii.gz).",
+    )
+    p_track.add_argument(
+        "--subject-id",
+        type=str,
+        default=None,
+        help="Subject identifier for output naming (default: extracted from filename)."
     )
     p_track.add_argument(
         "--fa-thr",
@@ -100,25 +139,26 @@ def main() -> None:
         help="Maximum spherical harmonic order for CSA ODF model (default 6).",
     )
     p_track.add_argument(
-        "--fss-radius",
-        type=float,
-        default=7.0,
-        help="Radius for Fast Streamline Search in mm (default: 7.0)"
-    )
-    p_track.add_argument(
         "--show-plots",
         action="store_true",
-        help="Enable QC plots used by background segmentation.",
+        help="Enable QC plots for segmentation and tractography.",
+    )
+    p_track.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Print detailed processing information."
     )
     p_track.add_argument(
         "--out",
         type=Path,
         required=True,
-        help="Output directory for tractogram.",
+        help="Output directory for tractogram and scalar maps.",
     )
     p_track.set_defaults(func=cmd_track)
 
-    # Extraction subtool
+    # -------------------------------------------------------------------------
+    # extract subtool
+    # -------------------------------------------------------------------------
     p_extract = subparsers.add_parser(
         "extract",
         help="Extract bilateral CST from whole-brain tractogram using atlas-based ROI filtering"
@@ -171,6 +211,11 @@ def main() -> None:
         help="Use reduced iterations for faster registration (testing mode)"
     )
     p_extract.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Print detailed processing information."
+    )
+    p_extract.add_argument(
         "--out",
         type=Path,
         required=True,
@@ -178,7 +223,9 @@ def main() -> None:
     )
     p_extract.set_defaults(func=cmd_extract)
 
-    #Metrics subtool
+    # -------------------------------------------------------------------------
+    # metrics subtool
+    # -------------------------------------------------------------------------
     p_metrics = subparsers.add_parser(
         "metrics",
         help="Compute bilateral CST metrics and generate reports"
@@ -217,6 +264,11 @@ def main() -> None:
         help="Generate PDF clinical report"
     )
     p_metrics.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Print detailed processing information."
+    )
+    p_metrics.add_argument(
         "--out",
         type=Path,
         required=True,
@@ -224,6 +276,9 @@ def main() -> None:
     )
     p_metrics.set_defaults(func=cmd_metrics)
 
+    # -------------------------------------------------------------------------
+    # Parse and execute
+    # -------------------------------------------------------------------------
     args = parser.parse_args()
 
     if hasattr(args, "func"):
@@ -231,6 +286,10 @@ def main() -> None:
     else:
         parser.print_help()
 
+
+# =============================================================================
+# Helper functions
+# =============================================================================
 
 def add_io_arguments(p: argparse.ArgumentParser) -> None:
     """Add common IO arguments for import and preprocess."""
@@ -247,15 +306,6 @@ def add_io_arguments(p: argparse.ArgumentParser) -> None:
         required=True,
         help="Output directory (also used for converted NIfTI)."
     )
-
-
-def cmd_check(args: argparse.Namespace) -> None:
-    """Runs environment checks."""
-    import sys
-
-    print("csttool environment OK")
-    print(f"Python: {sys.version.split()[0]}")
-    print(f"Version: {__version__}")
 
 
 def resolve_nifti(args: argparse.Namespace) -> Path:
@@ -327,27 +377,94 @@ def get_gtab_for_preproc(preproc_nii: Path):
     else:
         raise ValueError("Preprocessed NIfTI must end with .nii or .nii.gz")
 
-    if stem.endswith("_preproc"):
-        orig_stem = stem[:-8]
-    else:
-        # If user gives a non preproc name, assume sidecars match it
-        orig_stem = stem
-
-    bval = preproc_nii.with_name(f"{orig_stem}.bval")
-    bvec = preproc_nii.with_name(f"{orig_stem}.bvec")
+    # Try to find matching bval/bvec files
+    # First try exact stem match
+    bval = preproc_nii.with_name(f"{stem}.bval")
+    bvec = preproc_nii.with_name(f"{stem}.bvec")
+    
+    # If not found, try removing _preproc suffix variations
+    if not bval.exists() or not bvec.exists():
+        for suffix in ["_preproc", "_dwi_preproc_nomc", "_dwi_preproc_mc", "_dwi_preproc"]:
+            if stem.endswith(suffix):
+                orig_stem = stem[:-len(suffix)]
+                bval = preproc_nii.with_name(f"{orig_stem}.bval")
+                bvec = preproc_nii.with_name(f"{orig_stem}.bvec")
+                if bval.exists() and bvec.exists():
+                    break
 
     print(f"Using .bval: {bval}")
     print(f"Using .bvec: {bvec}")
 
     if not bval.exists() or not bvec.exists():
         raise FileNotFoundError(
-            f"Missing .bval or .bvec for {orig_stem}. "
+            f"Missing .bval or .bvec for {stem}. "
             "Expected them next to the NIfTI file."
         )
 
     bvals, bvecs = read_bvals_bvecs(str(bval), str(bvec))
     gtab = gradient_table(bvals, bvecs=bvecs)
     return gtab
+
+
+def extract_stem_from_filename(filename: str) -> str:
+    """Extract clean stem from filename, removing common suffixes."""
+    path = Path(filename)
+    stem = path.stem  # Removes .gz if present
+    
+    # Handle .nii.gz case
+    if stem.endswith('.nii'):
+        stem = stem[:-4]
+    
+    # Remove common suffixes
+    suffixes_to_remove = [
+        '_dwi_preproc_nomc',
+        '_dwi_preproc_mc', 
+        '_preproc_nomc',
+        '_preproc_mc',
+        '_preproc',
+        '_dwi'
+    ]
+    
+    for suffix in suffixes_to_remove:
+        if stem.endswith(suffix):
+            stem = stem[:-len(suffix)]
+            break
+    
+    # If stem is empty or very short, use original name
+    if len(stem) < 3:
+        stem = path.stem.replace('.nii', '')
+    
+    return stem
+
+
+# =============================================================================
+# Command implementations
+# =============================================================================
+
+def cmd_check(args: argparse.Namespace) -> None:
+    """Runs environment checks."""
+    print("csttool environment OK")
+    print(f"Python: {sys.version.split()[0]}")
+    print(f"Version: {__version__}")
+    
+    # Check key dependencies
+    try:
+        import dipy
+        print(f"DIPY: {dipy.__version__}")
+    except ImportError:
+        print("DIPY: NOT FOUND")
+    
+    try:
+        import nibabel
+        print(f"NiBabel: {nibabel.__version__}")
+    except ImportError:
+        print("NiBabel: NOT FOUND")
+    
+    try:
+        import numpy
+        print(f"NumPy: {numpy.__version__}")
+    except ImportError:
+        print("NumPy: NOT FOUND")
 
 
 def cmd_import(args: argparse.Namespace) -> None:
@@ -360,10 +477,13 @@ def cmd_import(args: argparse.Namespace) -> None:
 
     data, _affine, hdr, gtab = load_with_preproc(nii)
 
-    print(f"Data shape: {data.shape}")
-    print(f"Gradient directions: {len(gtab.bvals)}")
+    print(f"\nDataset Information:")
+    print(f"  File: {nii}")
+    print(f"  Data shape: {data.shape}")
+    print(f"  Gradient directions: {len(gtab.bvals)}")
     voxel_size = tuple(float(v) for v in hdr.get_zooms()[:3])
-    print(f"Voxel size (mm): {voxel_size}")
+    print(f"  Voxel size (mm): {voxel_size}")
+    print(f"  B-values: {sorted(set(gtab.bvals.astype(int)))}")
 
 
 def cmd_preprocess(args: argparse.Namespace) -> None:
@@ -430,114 +550,42 @@ def cmd_preprocess(args: argparse.Namespace) -> None:
         nii, str(args.out), stem, motion_correction_applied
     )
 
-    print(f"Preprocessing complete. Output: {output_path}")
-
-
-def extract_subject_id(filename):
-    """
-    Extract subject ID from filename based on common patterns.
-    """
-    import re
-    
-    # Common patterns - adjust these if needed
-    patterns = [
-        r'(sub-[a-zA-Z0-9]+)',  # BIDS: sub-XXX
-        r'([A-Za-z]+_\d+)',     # XXX_001
-        r'(\d{6})',             # 6-digit ID
-        r'(S\d+)',              # S001, S002
-    ]
-    
-    for pattern in patterns:
-        match = re.search(pattern, filename)
-        if match:
-            return match.group(1)
-    
-    # If no pattern matches, use the filename stem
-    return filename
-
-
-def copy_gradient_files(original_nii, out_dir, stem):
-    """
-    Copy .bval and .bvec files to maintain complete preprocessed dataset.
-    """
-    from pathlib import Path
-    import shutil
-    
-    original_dir = Path(original_nii).parent
-    
-    # Look for bval/bvec files with same stem as original NIfTI
-    bval_candidates = [
-        original_dir / f"{stem}.bval",
-        original_dir / f"{stem}_preproc.bval",  # In case they already exist
-    ]
-    
-    bvec_candidates = [
-        original_dir / f"{stem}.bvec", 
-        original_dir / f"{stem}_preproc.bvec",
-    ]
-    
-    preproc_dir = Path(out_dir) / "preprocessed"
-    preproc_dir.mkdir(parents=True, exist_ok=True)
-    
-    # Copy bval file
-    for bval_path in bval_candidates:
-        if bval_path.exists():
-            dest_bval = preproc_dir / f"{stem}_dwi_preproc.bval"
-            shutil.copy2(bval_path, dest_bval)
-            print(f"✓ Copied bval to: {dest_bval}")
-            break
-    
-    # Copy bvec file  
-    for bvec_path in bvec_candidates:
-        if bvec_path.exists():
-            dest_bvec = preproc_dir / f"{stem}_dwi_preproc.bvec"
-            shutil.copy2(bvec_path, dest_bvec)
-            print(f"✓ Copied bvec to: {dest_bvec}")
-            break
-
-
-def extract_stem_from_filename(filename):
-    """Extract clean stem from filename."""
-    from pathlib import Path
-    
-    path = Path(filename)
-    stem = path.stem  # Removes .gz if present
-    
-    # Remove common suffixes
-    suffixes_to_remove = [
-        '_dwi_preproc_nomc',
-        '_dwi_preproc_mc', 
-        '_preproc_nomc',
-        '_preproc_mc',
-        '_preproc',
-        '.nii',  # In case .nii.gz wasn't fully stripped
-        '_dwi'
-    ]
-    
-    for suffix in suffixes_to_remove:
-        if stem.endswith(suffix):
-            stem = stem[:-len(suffix)]
-    
-    # If stem is empty or very short, use original name
-    if len(stem) < 3:
-        stem = path.stem.replace('.nii.gz', '').replace('.nii', '')
-    
-    return stem
+    print(f"\n✓ Preprocessing complete. Output: {output_path}")
 
 
 def cmd_track(args: argparse.Namespace) -> None:
     """
-    Run deterministic tractography on preprocessed data with organized output.
+    Run whole-brain deterministic tractography on preprocessed data.
+    
+    Outputs:
+        - Whole-brain tractogram (.trk)
+        - FA map (.nii.gz)
+        - MD map (.nii.gz)
+        - Processing report (.json)
     """
     preproc_nii = args.nifti
+    verbose = getattr(args, 'verbose', False)
+    
     if not preproc_nii.exists():
         print(f"Error: preprocessed NIfTI not found: {preproc_nii}")
         return
 
     args.out.mkdir(parents=True, exist_ok=True)
 
+    # Determine subject ID / stem
+    if args.subject_id:
+        stem = args.subject_id
+    else:
+        stem = extract_stem_from_filename(str(preproc_nii))
+    
+    print(f"Subject ID: {stem}")
     print(f"Loading preprocessed data from {preproc_nii}")
-    data, affine, img = load_nifti(str(preproc_nii), return_img=True)
+    
+    try:
+        data, affine, img = load_nifti(str(preproc_nii), return_img=True)
+    except Exception as e:
+        print(f"Error loading NIfTI: {e}")
+        return
 
     print("Building gradient table for preprocessed data")
     try:
@@ -546,310 +594,535 @@ def cmd_track(args: argparse.Namespace) -> None:
         print(f"Error: {e}")
         return
 
-    print("Step 1: Brain masking with median Otsu")
-    # Reuse segmentation on the preprocessed data
+    # -------------------------------------------------------------------------
+    # Step 1: Brain masking
+    # -------------------------------------------------------------------------
+    print("\nStep 1: Brain masking with median Otsu")
     masked_data, brain_mask = preproc.background_segmentation(
         data,
         gtab,
         visualize=args.show_plots,
     )
 
-    print("Step 2: Tensor fit and scalar measures")
-    tenfit = trk.fit_tensor(masked_data, gtab, brain_mask=brain_mask)
-    fa, md = trk.compute_measures(tenfit)
-
-    print("Step 3: Direction field estimation")
-    peaks = trk.get_directions(
-        masked_data,
-        gtab,
-        mask=brain_mask,
-        sh_order_max=args.sh_order,
-    )
-
-    print("Step 4: Stopping criterion and seeds")
-    stopping_criterion, seeds, seed_mask = trk.terminate_and_seed(
-        fa,
-        affine,
-        fa_thr=args.fa_thr,
-        seed_density=args.seed_density,
-    )
-
-    print("Step 5: Deterministic tracking")
-    streamlines = trk.run_deterministic_tracking(
-        peaks,
-        stopping_criterion,
-        seeds,
-        affine,
-        step_size=args.step_size,
-    )
-
-    print("Step 6: Atlas-based CST extraction using Fast Streamline Search")
-    cst_streamlines, atlas_cst = trk.extract_cst_using_fss(
-        streamlines, affine, radius=args.fss_radius
+    # -------------------------------------------------------------------------
+    # Step 2: Tensor fitting
+    # -------------------------------------------------------------------------
+    print("\nStep 2: Tensor fit and scalar measures (FA, MD)")
+    try:
+        tenfit, fa, md, white_matter = fit_tensors(
+            masked_data, 
+            gtab, 
+            brain_mask,
+            fa_thresh=args.fa_thr,
+            visualize=args.show_plots,
+            verbose=verbose
         )
-    
-    print(f"CST extraction complete. Streamline reduction: {len(streamlines)} → {len(cst_streamlines)}")
-    
-    # Create organized output structure for tracking
-    stem = extract_stem_from_filename(str(preproc_nii))
-    
-    print("Step 7: Saving tractograms and outputs")
-    
-    # 1. Save FULL whole-brain tractogram (for reference)
-    full_tract_name = f"{stem}_whole_brain"
-    full_tract_path = trk.save_tractogram_trk(
-        streamlines,
-        img,
-        args.out,
-        fname=full_tract_name,
-    )
-    print(f"✓ Full whole-brain tractogram: {full_tract_path}")
-    
-    # 2. Save CST-only tractogram (for analysis) - ONLY if we have CST streamlines
-    if len(cst_streamlines) > 0:
-        cst_tract_name = f"{stem}_cst_extracted"
-        cst_tract_path = trk.save_tractogram_trk(
-            cst_streamlines,
-            img,
-            args.out,
-            fname=cst_tract_name,
+    except Exception as e:
+        print(f"Error during tensor fitting: {e}")
+        return
+
+    # -------------------------------------------------------------------------
+    # Step 3: Direction field estimation
+    # -------------------------------------------------------------------------
+    print("\nStep 3: Direction field estimation (CSA ODF model)")
+    try:
+        csapeaks = estimate_directions(
+            masked_data,
+            gtab,
+            white_matter,
+            sh_order=args.sh_order,
+            verbose=verbose
         )
-        print(f"✓ CST-only tractogram: {cst_tract_path}")
-    else:
-        print("⚠️  No CST streamlines to save")
-        cst_tract_path = None
-    
-    # 3. DON'T save atlas streamlines - they're in different space
-    # Instead, just note that atlas was used for reference
-    print("✓ Atlas used as reference (not saved due to space mismatch)")
-    
-    # Save scalar maps (FA, MD) for later analysis
-    scalar_outputs = trk.save_scalar_maps(
-        fa, md, affine, args.out, stem
-    )
-    
-    # Save processing report
-    report_path = trk.save_tracking_report(
-        streamlines, 
-        args.out, 
-        stem, 
-        {
-            'full_tractogram': full_tract_path,
-            'cst_tractogram': cst_tract_path,
-            'atlas_reference': 'Used for FSS matching (not saved)'
-        }, 
-        scalar_outputs,
-        cst_streamlines_count=len(cst_streamlines)
-    )
-    
-    # Create comparison visualization (only if we have CST streamlines)
-    if len(cst_streamlines) > 0:
-        print("Step 8: Creating comparison visualizations")
-        comparison_path = trk.visualize_cst_comparison(
-            streamlines,
-            cst_streamlines,
-            atlas_cst,  # Still pass for visualization (will show mismatch)
+    except Exception as e:
+        print(f"Error during direction estimation: {e}")
+        return
+
+    # -------------------------------------------------------------------------
+    # Step 4: Stopping criterion and seeds
+    # -------------------------------------------------------------------------
+    print("\nStep 4: Stopping criterion and seed generation")
+    try:
+        seeds, stopping_criterion = seed_and_stop(
             fa,
             affine,
-            args.out,
-            stem
+            white_matter=white_matter,
+            fa_thresh=args.fa_thr,
+            density=args.seed_density,
+            use_binary=False,
+            verbose=verbose
         )
-        print(f"✓ Comparison visualization: {comparison_path}")
-    else:
-        print("Skipping visualization (no CST streamlines)")
+    except Exception as e:
+        print(f"Error during seed generation: {e}")
+        return
+
+    # -------------------------------------------------------------------------
+    # Step 5: Deterministic tracking
+    # -------------------------------------------------------------------------
+    print("\nStep 5: Deterministic tracking")
+    try:
+        streamlines = run_tractography(
+            csapeaks,
+            stopping_criterion,
+            seeds,
+            affine,
+            step_size=args.step_size,
+            verbose=verbose,
+            visualize=args.show_plots
+        )
+    except Exception as e:
+        print(f"Error during tractography: {e}")
+        return
+
+    # -------------------------------------------------------------------------
+    # Step 6: Save outputs
+    # -------------------------------------------------------------------------
+    print("\nStep 6: Saving tractogram, scalar maps, and report")
     
-    # Print summary
-    print(f"\n{'='*50}")
-    print(f"TRACKING SUMMARY FOR {stem}")
-    print(f"{'='*50}")
-    print(f"Whole-brain streamlines: {len(streamlines)}")
-    print(f"CST streamlines extracted: {len(cst_streamlines)}")
+    tracking_params = {
+        'step_size': args.step_size,
+        'fa_thresh': args.fa_thr,
+        'seed_density': args.seed_density,
+        'sh_order': args.sh_order,
+        'sphere': 'symmetric362',
+        'stopping_criterion': 'fa_threshold',
+        'relative_peak_threshold': 0.8,
+        'min_separation_angle': 45,
+    }
+    
+    try:
+        outputs = save_tracking_outputs(
+            streamlines,
+            img,
+            fa,
+            md,
+            affine,
+            out_dir=args.out,
+            stem=stem,
+            tracking_params=tracking_params,
+            verbose=verbose
+        )
+    except Exception as e:
+        print(f"Error saving outputs: {e}")
+        return
+
+    # -------------------------------------------------------------------------
+    # Summary
+    # -------------------------------------------------------------------------
+    print(f"\n{'='*60}")
+    print(f"TRACKING COMPLETE - {stem}")
+    print(f"{'='*60}")
+    print(f"Whole-brain streamlines: {len(streamlines):,}")
+    print(f"\nOutputs:")
+    for key, path in outputs.items():
+        print(f"  {key}: {path}")
+    print(f"{'='*60}")
 
 
-def cmd_extract(args):
-    """Extract bilateral CST using atlas-based ROI filtering."""
+def cmd_extract(args: argparse.Namespace) -> None:
+    """
+    Extract bilateral CST using atlas-based ROI filtering.
+    
+    Pipeline:
+        1. Register MNI template to subject space (Affine + SyN)
+        2. Warp Harvard-Oxford atlases to subject space
+        3. Create ROI masks (brainstem, motor cortex L/R)
+        4. Filter streamlines by endpoint connectivity
+        5. Save bilateral CST tractograms
+    """
     import nibabel as nib
-    from csttool.extract.modules.registration import register_mni_to_subject
-    from csttool.extract.modules.warp_atlas_to_subject import (
-        fetch_harvard_oxford, 
-        warp_harvard_oxford_to_subject,
-        CST_ROI_CONFIG
-    )
-    from csttool.extract.modules.create_roi_masks import create_cst_roi_masks
-    from csttool.extract.modules.endpoint_filtering import (
-        extract_bilateral_cst,
-        save_cst_tractograms,
-        save_extraction_report
-    )
-    from dipy.io.streamline import load_tractogram
-    from dipy.io.image import load_nifti
+    
+    verbose = getattr(args, 'verbose', True)
+    
+    # Validate inputs
+    if not args.tractogram.exists():
+        print(f"Error: Tractogram not found: {args.tractogram}")
+        return
+    
+    if not args.fa.exists():
+        print(f"Error: FA map not found: {args.fa}")
+        return
     
     args.out.mkdir(parents=True, exist_ok=True)
     
+    # Import extraction modules
+    try:
+        from csttool.extract.modules.registration import register_mni_to_subject
+        from csttool.extract.modules.warp_atlas_to_subject import (
+            fetch_harvard_oxford, 
+            warp_harvard_oxford_to_subject,
+            CST_ROI_CONFIG
+        )
+        from csttool.extract.modules.create_roi_masks import create_cst_roi_masks
+        from csttool.extract.modules.endpoint_filtering import (
+            extract_bilateral_cst,
+            save_cst_tractograms,
+            save_extraction_report
+        )
+        from dipy.io.streamline import load_tractogram
+    except ImportError as e:
+        print(f"Error importing extraction modules: {e}")
+        print("Make sure all extraction module dependencies are installed.")
+        return
+    
+    # -------------------------------------------------------------------------
     # Step 1: Load inputs
+    # -------------------------------------------------------------------------
     print(f"Loading tractogram: {args.tractogram}")
-    sft = load_tractogram(str(args.tractogram), 'same')
-    streamlines = sft.streamlines
+    try:
+        sft = load_tractogram(str(args.tractogram), 'same')
+        streamlines = sft.streamlines
+        print(f"  Loaded {len(streamlines):,} streamlines")
+    except Exception as e:
+        print(f"Error loading tractogram: {e}")
+        return
     
     print(f"Loading FA map: {args.fa}")
-    fa_data, fa_affine = load_nifti(str(args.fa))
+    try:
+        fa_data, fa_affine = load_nifti(str(args.fa))
+    except Exception as e:
+        print(f"Error loading FA map: {e}")
+        return
     
+    # -------------------------------------------------------------------------
     # Step 2: Registration (MNI → Subject)
-    print("\nStep 1: Registering MNI template to subject space...")
+    # -------------------------------------------------------------------------
+    print("\n" + "="*60)
+    print("Step 1: Registering MNI template to subject space")
+    print("="*60)
+    
     level_iters_affine = [1000, 100, 10] if args.fast_registration else [10000, 1000, 100]
     level_iters_syn = [5, 5, 3] if args.fast_registration else [10, 10, 5]
     
-    reg_result = register_mni_to_subject(
-        subject_fa_path=args.fa,
-        output_dir=args.out,
-        subject_id=args.subject_id,
-        level_iters_affine=level_iters_affine,
-        level_iters_syn=level_iters_syn,
-        verbose=True
-    )
+    if args.fast_registration:
+        print("⚡ Fast registration mode enabled (reduced iterations)")
     
+    try:
+        reg_result = register_mni_to_subject(
+            subject_fa_path=args.fa,
+            output_dir=args.out,
+            subject_id=args.subject_id,
+            level_iters_affine=level_iters_affine,
+            level_iters_syn=level_iters_syn,
+            verbose=verbose
+        )
+    except Exception as e:
+        print(f"Error during registration: {e}")
+        return
+    
+    # -------------------------------------------------------------------------
     # Step 3: Warp Harvard-Oxford atlases
-    print("\nStep 2: Warping Harvard-Oxford atlases to subject space...")
-    atlases = fetch_harvard_oxford(verbose=True)
-    warped = warp_harvard_oxford_to_subject(
-        cortical_img=atlases['cortical_img'],
-        subcortical_img=atlases['subcortical_img'],
-        mapping=reg_result['mapping'],
-        output_dir=args.out,
-        subject_id=args.subject_id,
-        verbose=True
-    )
+    # -------------------------------------------------------------------------
+    print("\n" + "="*60)
+    print("Step 2: Warping Harvard-Oxford atlases to subject space")
+    print("="*60)
     
+    try:
+        atlases = fetch_harvard_oxford(verbose=verbose)
+        warped = warp_harvard_oxford_to_subject(
+            cortical_img=atlases['cortical_img'],
+            subcortical_img=atlases['subcortical_img'],
+            mapping=reg_result['mapping'],
+            output_dir=args.out,
+            subject_id=args.subject_id,
+            verbose=verbose
+        )
+    except Exception as e:
+        print(f"Error warping atlases: {e}")
+        return
+    
+    # -------------------------------------------------------------------------
     # Step 4: Create ROI masks
-    print("\nStep 3: Creating CST ROI masks...")
-    masks = create_cst_roi_masks(
-        warped_cortical=warped['cortical'],
-        warped_subcortical=warped['subcortical'],
-        subject_affine=fa_affine,
-        roi_config=CST_ROI_CONFIG,
-        dilate_brainstem=args.dilate_brainstem,
-        dilate_motor=args.dilate_motor,
-        output_dir=args.out,
-        subject_id=args.subject_id,
-        verbose=True
-    )
+    # -------------------------------------------------------------------------
+    print("\n" + "="*60)
+    print("Step 3: Creating CST ROI masks")
+    print("="*60)
     
+    try:
+        masks = create_cst_roi_masks(
+            warped_cortical=warped['cortical'],
+            warped_subcortical=warped['subcortical'],
+            subject_affine=fa_affine,
+            roi_config=CST_ROI_CONFIG,
+            dilate_brainstem=args.dilate_brainstem,
+            dilate_motor=args.dilate_motor,
+            output_dir=args.out,
+            subject_id=args.subject_id,
+            verbose=verbose
+        )
+    except Exception as e:
+        print(f"Error creating ROI masks: {e}")
+        return
+    
+    # -------------------------------------------------------------------------
     # Step 5: Extract bilateral CST
-    print("\nStep 4: Extracting bilateral CST...")
-    cst_result = extract_bilateral_cst(
-        streamlines=streamlines,
-        masks=masks,
-        affine=fa_affine,
-        min_length=args.min_length,
-        max_length=args.max_length,
-        verbose=True
-    )
+    # -------------------------------------------------------------------------
+    print("\n" + "="*60)
+    print("Step 4: Extracting bilateral CST")
+    print("="*60)
     
+    try:
+        cst_result = extract_bilateral_cst(
+            streamlines=streamlines,
+            masks=masks,
+            affine=fa_affine,
+            min_length=args.min_length,
+            max_length=args.max_length,
+            verbose=verbose
+        )
+    except Exception as e:
+        print(f"Error during CST extraction: {e}")
+        return
+    
+    # -------------------------------------------------------------------------
     # Step 6: Save outputs
-    print("\nStep 5: Saving extracted tractograms...")
-    reference_img = nib.load(str(args.fa))
-    output_paths = save_cst_tractograms(
-        cst_result=cst_result,
-        reference_img=reference_img,
-        output_dir=args.out,
-        subject_id=args.subject_id,
-        verbose=True
-    )
+    # -------------------------------------------------------------------------
+    print("\n" + "="*60)
+    print("Step 5: Saving extracted tractograms")
+    print("="*60)
     
-    # Save extraction report
-    save_extraction_report(cst_result, output_paths, args.out, args.subject_id)
+    try:
+        reference_img = nib.load(str(args.fa))
+        output_paths = save_cst_tractograms(
+            cst_result=cst_result,
+            reference_img=reference_img,
+            output_dir=args.out,
+            subject_id=args.subject_id,
+            verbose=verbose
+        )
+        
+        # Save extraction report
+        save_extraction_report(cst_result, output_paths, args.out, args.subject_id)
+    except Exception as e:
+        print(f"Error saving outputs: {e}")
+        return
     
-    print(f"\n{'='*50}")
-    print(f"EXTRACTION COMPLETE")
-    print(f"{'='*50}")
+    # -------------------------------------------------------------------------
+    # Summary
+    # -------------------------------------------------------------------------
+    print(f"\n{'='*60}")
+    print("EXTRACTION COMPLETE")
+    print(f"{'='*60}")
+    print(f"Subject: {args.subject_id}")
     print(f"Left CST:  {cst_result['stats']['cst_left_count']:,} streamlines")
     print(f"Right CST: {cst_result['stats']['cst_right_count']:,} streamlines")
+    print(f"Total:     {cst_result['stats']['cst_total_count']:,} streamlines")
+    print(f"Extraction rate: {cst_result['stats']['extraction_rate']:.2f}%")
+    print(f"\nOutputs saved to: {args.out}")
+    print(f"{'='*60}")
 
-def cmd_metrics(args):
-    """Compute bilateral CST metrics and generate reports."""
-    from dipy.io.streamline import load_tractogram
-    from dipy.io.image import load_nifti
-    from csttool.metrics import (
-        analyze_cst_hemisphere,
-        compare_bilateral_cst,
-        print_bilateral_summary
-    )
-    from csttool.metrics.modules.reports import (
-        save_json_report,
-        save_csv_summary,
-        save_pdf_report,
-        generate_complete_report
-    )
-    from csttool.metrics import (
-        plot_tract_profiles,
-        plot_bilateral_comparison,
-        create_summary_figure
-    )
+
+def cmd_metrics(args: argparse.Namespace) -> None:
+    """
+    Compute bilateral CST metrics and generate reports.
+    
+    Outputs:
+        - JSON report (complete metrics)
+        - CSV summary (for group analysis)
+        - PDF report (optional, with visualizations)
+        - Visualization plots
+    """
+    verbose = getattr(args, 'verbose', True)
+    
+    # Validate inputs
+    if not args.cst_left.exists():
+        print(f"Error: Left CST tractogram not found: {args.cst_left}")
+        return
+    
+    if not args.cst_right.exists():
+        print(f"Error: Right CST tractogram not found: {args.cst_right}")
+        return
     
     args.out.mkdir(parents=True, exist_ok=True)
     
+    # Import metrics modules
+    try:
+        from dipy.io.streamline import load_tractogram
+        from csttool.metrics import (
+            analyze_cst_hemisphere,
+            compare_bilateral_cst,
+            print_hemisphere_summary,
+            print_bilateral_summary,
+            plot_tract_profiles,
+            plot_bilateral_comparison,
+        )
+        from csttool.metrics.modules.reports import (
+            save_json_report,
+            save_csv_summary,
+            save_pdf_report,
+        )
+    except ImportError as e:
+        print(f"Error importing metrics modules: {e}")
+        return
+    
+    # -------------------------------------------------------------------------
     # Load tractograms
+    # -------------------------------------------------------------------------
     print(f"Loading left CST: {args.cst_left}")
-    sft_left = load_tractogram(str(args.cst_left), 'same')
-    streamlines_left = sft_left.streamlines
+    try:
+        sft_left = load_tractogram(str(args.cst_left), 'same')
+        streamlines_left = sft_left.streamlines
+        print(f"  Loaded {len(streamlines_left):,} streamlines")
+    except Exception as e:
+        print(f"Error loading left CST: {e}")
+        return
     
     print(f"Loading right CST: {args.cst_right}")
-    sft_right = load_tractogram(str(args.cst_right), 'same')
-    streamlines_right = sft_right.streamlines
+    try:
+        sft_right = load_tractogram(str(args.cst_right), 'same')
+        streamlines_right = sft_right.streamlines
+        print(f"  Loaded {len(streamlines_right):,} streamlines")
+    except Exception as e:
+        print(f"Error loading right CST: {e}")
+        return
     
     # Load scalar maps
-    fa_map, fa_affine = load_nifti(str(args.fa)) if args.fa else (None, None)
-    md_map, _ = load_nifti(str(args.md)) if args.md else (None, None)
+    fa_map, fa_affine = None, None
+    md_map = None
     
-    affine = sft_left.affine
+    if args.fa:
+        if args.fa.exists():
+            print(f"Loading FA map: {args.fa}")
+            fa_map, fa_affine = load_nifti(str(args.fa))
+        else:
+            print(f"Warning: FA map not found: {args.fa}")
     
+    if args.md:
+        if args.md.exists():
+            print(f"Loading MD map: {args.md}")
+            md_map, _ = load_nifti(str(args.md))
+        else:
+            print(f"Warning: MD map not found: {args.md}")
+    
+    # Use tractogram affine if FA affine not available
+    affine = fa_affine if fa_affine is not None else sft_left.affine
+    
+    # -------------------------------------------------------------------------
     # Analyze each hemisphere
-    print("\nAnalyzing LEFT CST...")
-    left_metrics = analyze_cst_hemisphere(
-        streamlines=streamlines_left,
-        fa_map=fa_map,
-        md_map=md_map,
-        affine=affine,
-        hemisphere='left'
-    )
+    # -------------------------------------------------------------------------
+    print("\n" + "="*60)
+    print("Analyzing LEFT CST")
+    print("="*60)
+    try:
+        left_metrics = analyze_cst_hemisphere(
+            streamlines=streamlines_left,
+            fa_map=fa_map,
+            md_map=md_map,
+            affine=affine,
+            hemisphere='left'
+        )
+        if verbose:
+            print_hemisphere_summary(left_metrics)
+    except Exception as e:
+        print(f"Error analyzing left CST: {e}")
+        return
     
-    print("\nAnalyzing RIGHT CST...")
-    right_metrics = analyze_cst_hemisphere(
-        streamlines=streamlines_right,
-        fa_map=fa_map,
-        md_map=md_map,
-        affine=affine,
-        hemisphere='right'
-    )
+    print("\n" + "="*60)
+    print("Analyzing RIGHT CST")
+    print("="*60)
+    try:
+        right_metrics = analyze_cst_hemisphere(
+            streamlines=streamlines_right,
+            fa_map=fa_map,
+            md_map=md_map,
+            affine=affine,
+            hemisphere='right'
+        )
+        if verbose:
+            print_hemisphere_summary(right_metrics)
+    except Exception as e:
+        print(f"Error analyzing right CST: {e}")
+        return
     
+    # -------------------------------------------------------------------------
     # Bilateral comparison
-    comparison = compare_bilateral_cst(left_metrics, right_metrics)
+    # -------------------------------------------------------------------------
+    print("\n" + "="*60)
+    print("Computing bilateral comparison")
+    print("="*60)
+    try:
+        comparison = compare_bilateral_cst(left_metrics, right_metrics)
+    except Exception as e:
+        print(f"Error during bilateral comparison: {e}")
+        return
     
+    # -------------------------------------------------------------------------
     # Save reports
-    json_path = save_json_report(comparison, args.out, args.subject_id)
-    csv_path = save_csv_summary(comparison, args.out, args.subject_id)
+    # -------------------------------------------------------------------------
+    print("\n" + "="*60)
+    print("Generating reports")
+    print("="*60)
     
+    try:
+        json_path = save_json_report(comparison, args.out, args.subject_id)
+        print(f"✓ JSON report: {json_path}")
+    except Exception as e:
+        print(f"Error saving JSON report: {e}")
+    
+    try:
+        csv_path = save_csv_summary(comparison, args.out, args.subject_id)
+        print(f"✓ CSV summary: {csv_path}")
+    except Exception as e:
+        print(f"Error saving CSV summary: {e}")
+    
+    # -------------------------------------------------------------------------
     # Generate visualizations
+    # -------------------------------------------------------------------------
     viz_dir = args.out / "visualizations"
     viz_dir.mkdir(exist_ok=True)
     
     viz_paths = {}
-    if fa_map is not None:
-        viz_paths['tract_profiles'] = plot_tract_profiles(
-            left_metrics, right_metrics, viz_dir, args.subject_id, scalar='fa'
+    
+    try:
+        if fa_map is not None and 'fa' in left_metrics:
+            viz_paths['tract_profiles'] = plot_tract_profiles(
+                left_metrics, right_metrics, viz_dir, args.subject_id, scalar='fa'
+            )
+            print(f"✓ Tract profiles: {viz_paths['tract_profiles']}")
+    except Exception as e:
+        print(f"Warning: Could not generate tract profiles: {e}")
+    
+    try:
+        viz_paths['bilateral_comparison'] = plot_bilateral_comparison(
+            comparison, viz_dir, args.subject_id
         )
-    viz_paths['bilateral_comparison'] = plot_bilateral_comparison(
-        comparison, viz_dir, args.subject_id
-    )
+        print(f"✓ Bilateral comparison: {viz_paths['bilateral_comparison']}")
+    except Exception as e:
+        print(f"Warning: Could not generate bilateral comparison: {e}")
     
+    # -------------------------------------------------------------------------
     # Generate PDF if requested
+    # -------------------------------------------------------------------------
     if args.generate_pdf:
-        pdf_path = save_pdf_report(comparison, viz_paths, args.out, args.subject_id)
-        print(f"✓ PDF report: {pdf_path}")
+        try:
+            pdf_path = save_pdf_report(comparison, viz_paths, args.out, args.subject_id)
+            print(f"✓ PDF report: {pdf_path}")
+        except Exception as e:
+            print(f"Warning: Could not generate PDF report: {e}")
+            print("  (You may need to install reportlab: pip install reportlab)")
     
-    print(f"\n{'='*50}")
+    # -------------------------------------------------------------------------
+    # Summary
+    # -------------------------------------------------------------------------
+    print(f"\n{'='*60}")
     print("METRICS COMPLETE")
-    print(f"{'='*50}")
+    print(f"{'='*60}")
+    print(f"Subject: {args.subject_id}")
+    print(f"\nMorphology:")
+    print(f"  Left CST:  {left_metrics['morphology']['n_streamlines']:,} streamlines, "
+          f"volume = {left_metrics['morphology']['tract_volume']:.0f} mm³")
+    print(f"  Right CST: {right_metrics['morphology']['n_streamlines']:,} streamlines, "
+          f"volume = {right_metrics['morphology']['tract_volume']:.0f} mm³")
+    
+    if 'fa' in left_metrics:
+        print(f"\nFA:")
+        print(f"  Left:  {left_metrics['fa']['mean']:.3f} ± {left_metrics['fa']['std']:.3f}")
+        print(f"  Right: {right_metrics['fa']['mean']:.3f} ± {right_metrics['fa']['std']:.3f}")
+        if 'fa' in comparison['asymmetry']:
+            print(f"  LI:    {comparison['asymmetry']['fa']['laterality_index']:.3f}")
+    
+    print(f"\nOutputs saved to: {args.out}")
+    print(f"{'='*60}")
+
 
 if __name__ == "__main__":
     main()
