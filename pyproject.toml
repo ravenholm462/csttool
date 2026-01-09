@@ -19,7 +19,7 @@ dependencies = [
     "nibabel",
     "dicom2nifti",
     "nilearn",
-    reportlab
+    "reportlab"
 ]
 
 [project.scripts]

@@ -906,7 +906,7 @@ def cmd_extract(args: argparse.Namespace) -> None:
         reg_result = register_mni_to_subject(
             subject_fa_path=args.fa,
             output_dir=args.out,
-            subject_id=args.subject_id,
+            # subject_id=args.subject_id,
             level_iters_affine=level_iters_affine,
             level_iters_syn=level_iters_syn,
             verbose=verbose
@@ -923,11 +923,8 @@ def cmd_extract(args: argparse.Namespace) -> None:
     print("="*60)
     
     try:
-        atlases = fetch_harvard_oxford(verbose=verbose)
         warped = warp_harvard_oxford_to_subject(
-            cortical_img=atlases['cortical_img'],
-            subcortical_img=atlases['subcortical_img'],
-            mapping=reg_result['mapping'],
+            registration_result=reg_result,
             output_dir=args.out,
             subject_id=args.subject_id,
             verbose=verbose
@@ -945,8 +942,8 @@ def cmd_extract(args: argparse.Namespace) -> None:
     
     try:
         masks = create_cst_roi_masks(
-            warped_cortical=warped['cortical'],
-            warped_subcortical=warped['subcortical'],
+            warped_cortical=warped['cortical_warped'],      # Changed from warped['cortical']
+            warped_subcortical=warped['subcortical_warped'], # Changed from warped['subcortical']
             subject_affine=fa_affine,
             roi_config=CST_ROI_CONFIG,
             dilate_brainstem=args.dilate_brainstem,
