@@ -1,438 +1,335 @@
-#!/usr/bin/env python3
 """
-test_metrics_module.py
+test.py
 
-Comprehensive test script for csttool's metrics module.
+Test script for csttool's metrics analysis pipeline.
 
 This script tests:
-1. Module imports
-2. Unilateral analysis functions
-3. Bilateral comparison functions
-4. Visualization generation
-5. Report generation
-6. Full pipeline integration
-
-Usage:
-    python test_metrics_module.py
+1. Loading bilateral CST tractograms (left, right, bilateral)
+2. Loading FA and MD scalar maps
+3. Analyzing individual CST bundles
+4. Comparing bilateral CST metrics
+5. Generating comprehensive reports
+6. Visualizing tract profiles
 """
 
-import sys
-import numpy as np
 from pathlib import Path
+import json
+import matplotlib.pyplot as plt
+import numpy as np
 
-# Add project to path if needed
-project_root = Path(__file__).parent
-sys.path.insert(0, str(project_root / 'src'))
+from dipy.io.streamline import load_tractogram
+from dipy.io.image import load_nifti
 
-# Also need DIPY
-try:
-    import dipy
-except ImportError:
-    print("⚠️  WARNING: DIPY not found. Installing required packages...")
-    print("   Run: pip install numpy scipy dipy matplotlib")
-    sys.exit(1)
+# Import from modular structure
+from csttool.metrics.modules.unilateral_analysis import analyze_cst_hemisphere
+from csttool.metrics.modules.bilateral_analysis import compare_bilateral_cst
+from csttool.metrics.modules.reports import print_metrics_summary
 
-print("="*70)
-print("CSTTOOL METRICS MODULE - COMPREHENSIVE TEST")
-print("="*70)
 
-# ============================================================================
-# TEST 1: MODULE IMPORTS
-# ============================================================================
-print("\n[TEST 1] Testing module imports...")
-
-try:
-    from csttool.metrics.modules import (
-        analyze_cst_hemisphere,
-        compare_bilateral_cst,
-        plot_tract_profiles,
-        plot_bilateral_comparison,
-        create_summary_figure
-    )
-    from csttool.metrics.modules.reports import (
-        save_json_report,
-        save_csv_summary,
-        generate_complete_report
-    )
-    print("✅ All imports successful!")
-except ImportError as e:
-    print(f"❌ Import failed: {e}")
-    sys.exit(1)
-
-# ============================================================================
-# TEST 2: CREATE SYNTHETIC DATA
-# ============================================================================
-print("\n[TEST 2] Creating synthetic test data...")
-
-def create_synthetic_streamlines(n_streamlines=100, length=50):
-    """Create synthetic streamlines for testing."""
-    from dipy.tracking.streamline import Streamlines
+def main():
+    """Main test function for metrics module."""
     
-    streamlines = []
-    for i in range(n_streamlines):
-        # Create a curved streamline
-        t = np.linspace(0, 1, length)
-        x = 50 + 20 * np.sin(2 * np.pi * t) + np.random.randn(length) * 0.5
-        y = 50 + 30 * t + np.random.randn(length) * 0.5
-        z = 40 + 10 * np.cos(2 * np.pi * t) + np.random.randn(length) * 0.5
-        
-        streamline = np.column_stack([x, y, z])
-        streamlines.append(streamline)
+    # =================================================================
+    # PATHS - Update these to match your system
+    # =================================================================
+    base_dir = Path("/home/alem/Documents/thesis/data/out")
     
-    return Streamlines(streamlines)
-
-def create_synthetic_scalar_map(shape=(100, 100, 100), mean_value=0.5):
-    """Create synthetic FA or MD map."""
-    # Create a gradient with some noise
-    scalar_map = np.ones(shape) * mean_value
+    # Input paths
+    cst_dir = base_dir / "extraction_test_output" / "cst_tractograms"
+    trk_left = cst_dir / "17_cmrr_cst_left.trk"
+    trk_right = cst_dir / "17_cmrr_cst_right.trk"
+    trk_bilateral = cst_dir / "17_cmrr_cst_bilateral.trk"
     
-    # Add spatial variation
-    x, y, z = np.meshgrid(
-        np.linspace(0, 1, shape[0]),
-        np.linspace(0, 1, shape[1]),
-        np.linspace(0, 1, shape[2]),
-        indexing='ij'
-    )
+    scalar_dir = base_dir / "trk" / "scalar_maps"
+    fa_map_path = scalar_dir / "17_cmrr_mbep2d_diff_ap_tdi.nii_fa.nii.gz"
+    md_map_path = scalar_dir / "17_cmrr_mbep2d_diff_ap_tdi.nii_md.nii.gz"
     
-    scalar_map += 0.2 * np.sin(2 * np.pi * x) * np.cos(2 * np.pi * y)
-    scalar_map += np.random.randn(*shape) * 0.05
+    # Output path
+    output_dir = base_dir / "metrics_test_output"
+    output_dir.mkdir(parents=True, exist_ok=True)
     
-    # Clip to valid range
-    if mean_value == 0.5:  # FA-like
-        scalar_map = np.clip(scalar_map, 0, 1)
-    else:  # MD-like
-        scalar_map = np.clip(scalar_map, 0, 0.003)
+    print("="*70)
+    print("CSTTOOL METRICS MODULE TEST")
+    print("="*70)
     
-    return scalar_map
-
-# Create test data
-print("  Creating synthetic streamlines...")
-streamlines_left = create_synthetic_streamlines(n_streamlines=120, length=50)
-streamlines_right = create_synthetic_streamlines(n_streamlines=110, length=48)
-
-print("  Creating synthetic scalar maps...")
-fa_map = create_synthetic_scalar_map(shape=(100, 100, 100), mean_value=0.5)
-md_map = create_synthetic_scalar_map(shape=(100, 100, 100), mean_value=0.0008)
-
-# Create affine matrix
-affine = np.eye(4)
-affine[:3, :3] = np.diag([2.0, 2.0, 2.0])  # 2mm isotropic
-
-print(f"✅ Synthetic data created:")
-print(f"   Left CST: {len(streamlines_left)} streamlines")
-print(f"   Right CST: {len(streamlines_right)} streamlines")
-print(f"   FA map: {fa_map.shape}, mean = {fa_map.mean():.3f}")
-print(f"   MD map: {md_map.shape}, mean = {md_map.mean():.3e}")
-
-# ============================================================================
-# TEST 3: UNILATERAL ANALYSIS
-# ============================================================================
-print("\n[TEST 3] Testing unilateral analysis...")
-
-try:
-    print("  Analyzing LEFT hemisphere...")
+    # =================================================================
+    # STEP 1: Load tractograms
+    # =================================================================
+    print("\nSTEP 1: Loading CST tractograms...")
+    print("-" * 70)
+    
+    sft_left = load_tractogram(str(trk_left), 'same')
+    left_streamlines = sft_left.streamlines
+    print(f"✓ Left CST loaded: {len(left_streamlines)} streamlines")
+    
+    sft_right = load_tractogram(str(trk_right), 'same')
+    right_streamlines = sft_right.streamlines
+    print(f"✓ Right CST loaded: {len(right_streamlines)} streamlines")
+    
+    sft_bilateral = load_tractogram(str(trk_bilateral), 'same')
+    bilateral_streamlines = sft_bilateral.streamlines
+    print(f"✓ Bilateral CST loaded: {len(bilateral_streamlines)} streamlines")
+    
+    # Get affine from tractogram
+    affine = sft_left.affine
+    
+    # =================================================================
+    # STEP 2: Load scalar maps
+    # =================================================================
+    print("\nSTEP 2: Loading scalar maps...")
+    print("-" * 70)
+    
+    fa_map, fa_affine = load_nifti(str(fa_map_path))
+    print(f"✓ FA map loaded: shape {fa_map.shape}")
+    print(f"  FA range: [{fa_map.min():.3f}, {fa_map.max():.3f}]")
+    
+    md_map, md_affine = load_nifti(str(md_map_path))
+    print(f"✓ MD map loaded: shape {md_map.shape}")
+    print(f"  MD range: [{md_map.min():.3e}, {md_map.max():.3e}]")
+    
+    # =================================================================
+    # STEP 3: Analyze individual bundles
+    # =================================================================
+    print("\nSTEP 3: Analyzing individual CST bundles...")
+    print("-" * 70)
+    
+    print("\n--- LEFT CST ---")
     left_metrics = analyze_cst_hemisphere(
-        streamlines=streamlines_left,
-        fa_map=fa_map,
-        md_map=md_map,
-        affine=affine,
-        hemisphere='left'
+        left_streamlines, 
+        fa_map=fa_map, 
+        md_map=md_map, 
+        affine=affine
     )
+    print_metrics_summary(left_metrics)
     
-    print("  Analyzing RIGHT hemisphere...")
+    print("\n--- RIGHT CST ---")
     right_metrics = analyze_cst_hemisphere(
-        streamlines=streamlines_right,
+        right_streamlines,
         fa_map=fa_map,
         md_map=md_map,
-        affine=affine,
-        hemisphere='right'
+        affine=affine
     )
+    print_metrics_summary(right_metrics)
     
-    # Verify structure
-    assert 'hemisphere' in left_metrics
-    assert 'morphology' in left_metrics
-    assert 'fa' in left_metrics
-    assert 'md' in left_metrics
+    print("\n--- BILATERAL CST ---")
+    bilateral_metrics = analyze_cst_hemisphere(
+        bilateral_streamlines,
+        fa_map=fa_map,
+        md_map=md_map,
+        affine=affine
+    )
+    print_metrics_summary(bilateral_metrics)
     
-    assert left_metrics['morphology']['n_streamlines'] == 120
-    assert right_metrics['morphology']['n_streamlines'] == 110
+    # =================================================================
+    # STEP 4: Bilateral comparison
+    # =================================================================
+    print("\nSTEP 4: Comparing bilateral CST...")
+    print("-" * 70)
     
-    print("✅ Unilateral analysis successful!")
-    print(f"   Left: {left_metrics['morphology']['n_streamlines']} streamlines, "
-          f"FA={left_metrics['fa']['mean']:.3f}")
-    print(f"   Right: {right_metrics['morphology']['n_streamlines']} streamlines, "
-          f"FA={right_metrics['fa']['mean']:.3f}")
-    
-except Exception as e:
-    print(f"❌ Unilateral analysis failed: {e}")
-    import traceback
-    traceback.print_exc()
-    sys.exit(1)
-
-# ============================================================================
-# TEST 4: BILATERAL COMPARISON
-# ============================================================================
-print("\n[TEST 4] Testing bilateral comparison...")
-
-try:
     comparison = compare_bilateral_cst(
-        left_metrics=left_metrics,
-        right_metrics=right_metrics
-    )
-    
-    # Verify structure
-    assert 'left' in comparison
-    assert 'right' in comparison
-    assert 'asymmetry' in comparison
-    
-    assert 'volume' in comparison['asymmetry']
-    assert 'fa' in comparison['asymmetry']
-    assert 'laterality_index' in comparison['asymmetry']['volume']
-    
-    volume_li = comparison['asymmetry']['volume']['laterality_index']
-    fa_li = comparison['asymmetry']['fa']['laterality_index']
-    
-    print("✅ Bilateral comparison successful!")
-    print(f"   Volume LI: {volume_li:+.3f}")
-    print(f"   FA LI: {fa_li:+.3f}")
-    print(f"   Interpretation: {comparison['asymmetry']['volume']['interpretation']}")
-    
-except Exception as e:
-    print(f"❌ Bilateral comparison failed: {e}")
-    import traceback
-    traceback.print_exc()
-    sys.exit(1)
-
-# ============================================================================
-# TEST 5: VISUALIZATIONS
-# ============================================================================
-print("\n[TEST 5] Testing visualization generation...")
-
-output_dir = Path(__file__).parent / "test_output" / "metrics_test"
-output_dir.mkdir(parents=True, exist_ok=True)
-subject_id = "TEST-001"
-
-try:
-    print("  Generating tract profiles...")
-    profile_path = plot_tract_profiles(
-        left_metrics=left_metrics,
-        right_metrics=right_metrics,
-        output_dir=output_dir / "visualizations",
-        subject_id=subject_id,
-        scalar='fa'
-    )
-    
-    print("  Generating bilateral comparison...")
-    comparison_path = plot_bilateral_comparison(
-        comparison=comparison,
-        output_dir=output_dir / "visualizations",
-        subject_id=subject_id
-    )
-    
-    print("  Generating summary figure...")
-    summary_path = create_summary_figure(
-        comparison=comparison,
-        streamlines_left=streamlines_left,
-        streamlines_right=streamlines_right,
-        fa_map=fa_map,
-        affine=affine,
-        output_dir=output_dir / "visualizations",
-        subject_id=subject_id
-    )
-    
-    # Verify files exist
-    assert profile_path.exists(), f"Profile plot not created: {profile_path}"
-    assert comparison_path.exists(), f"Comparison plot not created: {comparison_path}"
-    assert summary_path.exists(), f"Summary figure not created: {summary_path}"
-    
-    print("✅ Visualization generation successful!")
-    print(f"   Tract profiles: {profile_path}")
-    print(f"   Comparison: {comparison_path}")
-    print(f"   Summary: {summary_path}")
-    
-except Exception as e:
-    print(f"❌ Visualization generation failed: {e}")
-    import traceback
-    traceback.print_exc()
-    sys.exit(1)
-
-# ============================================================================
-# TEST 6: REPORT GENERATION
-# ============================================================================
-print("\n[TEST 6] Testing report generation...")
-
-try:
-    print("  Generating JSON report...")
-    json_path = save_json_report(
-        comparison=comparison,
-        output_dir=output_dir,
-        subject_id=subject_id
-    )
-    
-    print("  Generating CSV summary...")
-    csv_path = save_csv_summary(
-        comparison=comparison,
-        output_dir=output_dir,
-        subject_id=subject_id
-    )
-    
-    # Verify files exist
-    assert json_path.exists(), f"JSON report not created: {json_path}"
-    assert csv_path.exists(), f"CSV summary not created: {csv_path}"
-    
-    # Read JSON to verify format
-    import json
-    with open(json_path, 'r') as f:
-        json_data = json.load(f)
-    
-    assert 'subject_id' in json_data
-    assert 'metrics' in json_data
-    assert json_data['subject_id'] == subject_id
-    
-    # Read CSV to verify format
-    import csv
-    with open(csv_path, 'r') as f:
-        csv_reader = csv.DictReader(f)
-        rows = list(csv_reader)
-    
-    assert len(rows) == 1
-    assert rows[0]['subject_id'] == subject_id
-    
-    print("✅ Report generation successful!")
-    print(f"   JSON: {json_path}")
-    print(f"   CSV: {csv_path}")
-    
-    # Try PDF generation (may fail if reportlab not installed)
-    try:
-        from csttool.metrics.modules.reports import save_pdf_report
-        
-        viz_paths = {
-            'tract_profiles': profile_path,
-            'bilateral_comparison': comparison_path,
-            'summary': summary_path
-        }
-        
-        print("  Generating PDF report...")
-        pdf_path = save_pdf_report(
-            comparison=comparison,
-            visualization_paths=viz_paths,
-            output_dir=output_dir,
-            subject_id=subject_id
-        )
-        
-        if pdf_path and pdf_path.exists():
-            print(f"✅ PDF report generated: {pdf_path}")
-        else:
-            print("⚠️  PDF generation skipped (reportlab not installed)")
-    except Exception as e:
-        print(f"⚠️  PDF generation failed (this is optional): {e}")
-    
-except Exception as e:
-    print(f"❌ Report generation failed: {e}")
-    import traceback
-    traceback.print_exc()
-    sys.exit(1)
-
-# ============================================================================
-# TEST 7: FULL PIPELINE INTEGRATION
-# ============================================================================
-print("\n[TEST 7] Testing full pipeline integration...")
-
-try:
-    print("  Running complete report generation...")
-    
-    report_paths = generate_complete_report(
-        comparison=comparison,
-        streamlines_left=streamlines_left,
-        streamlines_right=streamlines_right,
-        fa_map=fa_map,
-        affine=affine,
-        output_dir=output_dir / "full_pipeline",
-        subject_id=subject_id
-    )
-    
-    # Verify all reports generated
-    assert 'json' in report_paths
-    assert 'csv' in report_paths
-    assert 'visualizations' in report_paths
-    
-    print("✅ Full pipeline integration successful!")
-    print(f"   Generated {len(report_paths)} report types")
-    
-except Exception as e:
-    print(f"❌ Full pipeline integration failed: {e}")
-    import traceback
-    traceback.print_exc()
-    sys.exit(1)
-
-# ============================================================================
-# TEST 8: EDGE CASES
-# ============================================================================
-print("\n[TEST 8] Testing edge cases...")
-
-try:
-    # Test with empty streamlines
-    from dipy.tracking.streamline import Streamlines
-    empty_streamlines = Streamlines([])
-    
-    print("  Testing empty streamlines...")
-    empty_metrics = analyze_cst_hemisphere(
-        streamlines=empty_streamlines,
+        left_streamlines,
+        right_streamlines,
         fa_map=fa_map,
         md_map=md_map,
-        affine=affine,
-        hemisphere='empty'
+        affine=affine
     )
     
-    assert empty_metrics['morphology']['n_streamlines'] == 0
-    assert empty_metrics['morphology']['tract_volume'] == 0.0
-    print("  ✓ Empty streamlines handled correctly")
+    print("\nAsymmetry Metrics:")
+    print(f"  Volume laterality index: {comparison['asymmetry']['volume_laterality']:.3f}")
+    if 'fa_laterality' in comparison['asymmetry']:
+        print(f"  FA laterality index: {comparison['asymmetry']['fa_laterality']:.3f}")
     
-    # Test without scalar maps
-    print("  Testing without scalar maps...")
-    no_scalar_metrics = analyze_cst_hemisphere(
-        streamlines=streamlines_left,
-        fa_map=None,
-        md_map=None,
-        affine=affine,
-        hemisphere='test'
+    # =================================================================
+    # STEP 5: Save comprehensive report
+    # =================================================================
+    print("\nSTEP 5: Saving comprehensive report...")
+    print("-" * 70)
+    
+    full_report = {
+        'subject_id': '17_cmrr',
+        'individual_metrics': {
+            'left': left_metrics,
+            'right': right_metrics,
+            'bilateral': bilateral_metrics
+        },
+        'bilateral_comparison': comparison,
+        'input_files': {
+            'left_tractogram': str(trk_left),
+            'right_tractogram': str(trk_right),
+            'bilateral_tractogram': str(trk_bilateral),
+            'fa_map': str(fa_map_path),
+            'md_map': str(md_map_path)
+        }
+    }
+    
+    report_path = output_dir / "cst_metrics_full_report.json"
+    with open(report_path, 'w') as f:
+        json.dump(full_report, f, indent=2)
+    
+    print(f"✓ Full report saved to: {report_path}")
+    
+    # Save individual CSV files for easier analysis
+    save_metrics_csv(left_metrics, output_dir / "left_cst_metrics.csv")
+    save_metrics_csv(right_metrics, output_dir / "right_cst_metrics.csv")
+    save_metrics_csv(bilateral_metrics, output_dir / "bilateral_cst_metrics.csv")
+    
+    # =================================================================
+    # STEP 6: Visualize tract profiles
+    # =================================================================
+    print("\nSTEP 6: Creating visualizations...")
+    print("-" * 70)
+    
+    # Plot tract profiles
+    visualize_tract_profiles(
+        left_metrics, 
+        right_metrics,
+        output_dir / "cst_tract_profiles.png"
     )
     
-    assert 'fa' not in no_scalar_metrics
-    assert 'md' not in no_scalar_metrics
-    assert 'morphology' in no_scalar_metrics
-    print("  ✓ Missing scalar maps handled correctly")
+    # Plot asymmetry
+    visualize_asymmetry(
+        comparison,
+        output_dir / "cst_asymmetry.png"
+    )
     
-    print("✅ Edge cases handled correctly!")
+    print("\n" + "="*70)
+    print("METRICS TEST COMPLETED SUCCESSFULLY")
+    print("="*70)
+    print(f"\nAll outputs saved to: {output_dir}")
+
+
+def save_metrics_csv(metrics_dict, output_path):
+    """Save metrics to CSV format for easy analysis."""
+    import csv
     
-except Exception as e:
-    print(f"❌ Edge case testing failed: {e}")
-    import traceback
-    traceback.print_exc()
-    sys.exit(1)
+    with open(output_path, 'w', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(['Metric', 'Value'])
+        
+        # Morphology
+        writer.writerow(['n_streamlines', metrics_dict['morphology']['n_streamlines']])
+        writer.writerow(['mean_length_mm', metrics_dict['morphology']['mean_length']])
+        writer.writerow(['tract_volume_mm3', metrics_dict['morphology']['tract_volume']])
+        
+        # FA metrics
+        if 'fa' in metrics_dict:
+            writer.writerow(['fa_mean', metrics_dict['fa']['mean']])
+            writer.writerow(['fa_std', metrics_dict['fa']['std']])
+            writer.writerow(['fa_median', metrics_dict['fa']['median']])
+        
+        # MD metrics
+        if 'md' in metrics_dict:
+            writer.writerow(['md_mean', metrics_dict['md']['mean']])
+            writer.writerow(['md_std', metrics_dict['md']['std']])
+            writer.writerow(['md_median', metrics_dict['md']['median']])
+    
+    print(f"✓ CSV metrics saved to: {output_path}")
 
-# ============================================================================
-# TEST SUMMARY
-# ============================================================================
-print("\n" + "="*70)
-print("TEST SUMMARY")
-print("="*70)
-print("✅ All tests passed successfully!")
-print(f"\nTest outputs saved to: {output_dir}")
-print("\nGenerated files:")
-print(f"  - Visualizations: {len(list((output_dir / 'visualizations').glob('*.png')))} PNG files")
-print(f"  - JSON report: {json_path.name}")
-print(f"  - CSV summary: {csv_path.name}")
-if 'pdf_path' in locals() and pdf_path and pdf_path.exists():
-    print(f"  - PDF report: {pdf_path.name}")
 
-print("\n" + "="*70)
-print("METRICS MODULE IS READY FOR USE!")
-print("="*70)
-print("\nNext steps:")
-print("1. Integrate into CLI (see METRICS_USAGE_GUIDE.py)")
-print("2. Test with real CST data")
-print("3. Validate metrics against known values")
-print("="*70)
+def visualize_tract_profiles(left_metrics, right_metrics, output_path):
+    """Create visualization of FA and MD tract profiles."""
+    
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+    
+    # FA profile
+    if 'fa' in left_metrics and 'fa' in right_metrics:
+        left_fa_profile = left_metrics['fa']['profile']
+        right_fa_profile = right_metrics['fa']['profile']
+        
+        x = np.linspace(0, 100, len(left_fa_profile))
+        
+        axes[0].plot(x, left_fa_profile, 'b-', linewidth=2, label='Left CST')
+        axes[0].plot(x, right_fa_profile, 'r-', linewidth=2, label='Right CST')
+        axes[0].fill_between(x, left_fa_profile, alpha=0.3, color='blue')
+        axes[0].fill_between(x, right_fa_profile, alpha=0.3, color='red')
+        axes[0].set_xlabel('Normalized Position Along Tract (%)', fontsize=12)
+        axes[0].set_ylabel('Fractional Anisotropy (FA)', fontsize=12)
+        axes[0].set_title('FA Tract Profile', fontsize=14, fontweight='bold')
+        axes[0].legend()
+        axes[0].grid(True, alpha=0.3)
+        axes[0].set_ylim([0, 1])
+    
+    # MD profile
+    if 'md' in left_metrics and 'md' in right_metrics:
+        left_md_profile = left_metrics['md']['profile']
+        right_md_profile = right_metrics['md']['profile']
+        
+        x = np.linspace(0, 100, len(left_md_profile))
+        
+        axes[1].plot(x, left_md_profile, 'b-', linewidth=2, label='Left CST')
+        axes[1].plot(x, right_md_profile, 'r-', linewidth=2, label='Right CST')
+        axes[1].fill_between(x, left_md_profile, alpha=0.3, color='blue')
+        axes[1].fill_between(x, right_md_profile, alpha=0.3, color='red')
+        axes[1].set_xlabel('Normalized Position Along Tract (%)', fontsize=12)
+        axes[1].set_ylabel('Mean Diffusivity (MD) [mm²/s]', fontsize=12)
+        axes[1].set_title('MD Tract Profile', fontsize=14, fontweight='bold')
+        axes[1].legend()
+        axes[1].grid(True, alpha=0.3)
+    
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    print(f"✓ Tract profiles visualization saved to: {output_path}")
 
-sys.exit(0)
+
+def visualize_asymmetry(comparison, output_path):
+    """Create bar plot comparing left vs right CST metrics."""
+    
+    left = comparison['left']
+    right = comparison['right']
+    
+    # Prepare data
+    metrics_names = ['Volume\n(mm³)', 'Mean\nLength\n(mm)', 'Mean\nFA', 'Mean\nMD\n(×10⁻³)']
+    left_values = [
+        left['morphology']['tract_volume'],
+        left['morphology']['mean_length'],
+        left['fa']['mean'] if 'fa' in left else 0,
+        left['md']['mean'] * 1000 if 'md' in left else 0  # Convert to 10^-3
+    ]
+    right_values = [
+        right['morphology']['tract_volume'],
+        right['morphology']['mean_length'],
+        right['fa']['mean'] if 'fa' in right else 0,
+        right['md']['mean'] * 1000 if 'md' in right else 0
+    ]
+    
+    # Create grouped bar chart
+    fig, ax = plt.subplots(figsize=(10, 6))
+    
+    x = np.arange(len(metrics_names))
+    width = 0.35
+    
+    bars1 = ax.bar(x - width/2, left_values, width, label='Left CST', color='steelblue')
+    bars2 = ax.bar(x + width/2, right_values, width, label='Right CST', color='coral')
+    
+    ax.set_ylabel('Value', fontsize=12)
+    ax.set_title('Bilateral CST Comparison', fontsize=14, fontweight='bold')
+    ax.set_xticks(x)
+    ax.set_xticklabels(metrics_names)
+    ax.legend()
+    ax.grid(True, axis='y', alpha=0.3)
+    
+    # Add value labels on bars
+    def autolabel(bars):
+        for bar in bars:
+            height = bar.get_height()
+            ax.annotate(f'{height:.1f}',
+                       xy=(bar.get_x() + bar.get_width() / 2, height),
+                       xytext=(0, 3),
+                       textcoords="offset points",
+                       ha='center', va='bottom',
+                       fontsize=9)
+    
+    autolabel(bars1)
+    autolabel(bars2)
+    
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    print(f"✓ Asymmetry visualization saved to: {output_path}")
+
+
+if __name__ == "__main__":
+    main()

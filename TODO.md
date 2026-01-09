@@ -6,7 +6,8 @@
 
 ### CLI
 
-- [ ] Implement a `run` command that will run all the steps in the following order: `check`, `import`, `preprocess`, `track`, `extract`, `metrics`. 
+- [x] Implement a `run` command that will run all the steps in the following order: `check`, `import`, `preprocess`, `track`, `extract`, `metrics`. 
+- [ ] Add "--visualizations" flag to save the figs.
 
 ### Import
 

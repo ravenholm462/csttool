@@ -5,11 +5,12 @@ Command-line interface for csttool - CST assessment using DTI data.
 
 Commands:
     check       - Run environment checks
-    import      - Import DICOMs or load NIfTI data
+    import      - Import DICOMs or load NIfTI data (with series selection)
     preprocess  - Run preprocessing pipeline
     track       - Run whole-brain tractography
     extract     - Extract bilateral CST from tractogram
     metrics     - Compute CST metrics and generate reports
+    run         - Run complete pipeline (check → import → preprocess → track → extract → metrics)
 """
 
 from __future__ import annotations
@@ -17,6 +18,9 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
+from datetime import datetime
+from time import time
+import json
 
 from . import __version__
 import csttool.preprocess.funcs as preproc
@@ -55,15 +59,8 @@ def main() -> None:
     p_check.set_defaults(func=cmd_check)
 
     # -------------------------------------------------------------------------
-    # import subtool
+    # import subtool (with ingest module support)
     # -------------------------------------------------------------------------
-    p_import = subparsers.add_parser(
-        "import",
-        help="Import DICOMs or load NIfTI data and report basic info"
-    )
-    add_io_arguments(p_import)
-    p_import.set_defaults(func=cmd_import)
-
     p_import = subparsers.add_parser(
         "import",
         help="Import DICOM data or load NIfTI with series selection and validation"
@@ -125,12 +122,7 @@ def main() -> None:
     p_preproc.add_argument(
         "--show-plots",
         action="store_true",
-        help="Enable interactive QC plots (displayed, not saved)."
-    )
-    p_preproc.add_argument(
-        "--save-visualizations",
-        action="store_true",
-        help="Save QC visualizations to output directory."
+        help="Enable QC plots for denoising and segmentation."
     )
     p_preproc.add_argument(
         "--perform-motion-correction",
@@ -190,12 +182,7 @@ def main() -> None:
     p_track.add_argument(
         "--show-plots",
         action="store_true",
-        help="Enable interactive QC plots (displayed, not saved).",
-    )
-    p_track.add_argument(
-        "--save-visualizations",
-        action="store_true",
-        help="Save QC visualizations to output directory."
+        help="Enable QC plots for segmentation and tractography.",
     )
     p_track.add_argument(
         "--verbose",
@@ -265,11 +252,6 @@ def main() -> None:
         help="Use reduced iterations for faster registration (testing mode)"
     )
     p_extract.add_argument(
-        "--save-visualizations",
-        action="store_true",
-        help="Save QC visualizations to output directory."
-    )
-    p_extract.add_argument(
         "--verbose",
         action="store_true",
         help="Print detailed processing information."
@@ -323,11 +305,6 @@ def main() -> None:
         help="Generate PDF clinical report"
     )
     p_metrics.add_argument(
-        "--save-visualizations",
-        action="store_true",
-        help="Save QC visualizations to output directory (enabled by default for metrics)."
-    )
-    p_metrics.add_argument(
         "--verbose",
         action="store_true",
         help="Print detailed processing information."
@@ -339,6 +316,147 @@ def main() -> None:
         help="Output directory for metrics and reports"
     )
     p_metrics.set_defaults(func=cmd_metrics)
+
+    # -------------------------------------------------------------------------
+    # run subtool - COMPLETE PIPELINE
+    # -------------------------------------------------------------------------
+    p_run = subparsers.add_parser(
+        "run",
+        help="Run complete pipeline: check → import → preprocess → track → extract → metrics"
+    )
+    
+    # Input options
+    p_run.add_argument(
+        "--dicom",
+        type=Path,
+        help="Path to DICOM directory"
+    )
+    p_run.add_argument(
+        "--nifti",
+        type=Path,
+        help="Path to existing NIfTI file (skip import step)"
+    )
+    p_run.add_argument(
+        "--out",
+        type=Path,
+        required=True,
+        help="Output directory (subdirectories created for each step)"
+    )
+    p_run.add_argument(
+        "--subject-id",
+        type=str,
+        default=None,
+        help="Subject identifier for all outputs"
+    )
+    
+    # Import options
+    p_run.add_argument(
+        "--series",
+        type=int,
+        default=None,
+        help="DICOM series number to convert (1-indexed)"
+    )
+    
+    # Preprocessing options
+    p_run.add_argument(
+        "--coil-count",
+        type=int,
+        default=4,
+        help="Number of receiver coils for PIESNO (default: 4)"
+    )
+    p_run.add_argument(
+        "--perform-motion-correction",
+        action="store_true",
+        help="Enable motion correction during preprocessing"
+    )
+    
+    # Tracking options
+    p_run.add_argument(
+        "--fa-thr",
+        type=float,
+        default=0.2,
+        help="FA threshold for tracking (default: 0.2)"
+    )
+    p_run.add_argument(
+        "--seed-density",
+        type=int,
+        default=1,
+        help="Seeds per voxel (default: 1)"
+    )
+    p_run.add_argument(
+        "--step-size",
+        type=float,
+        default=0.5,
+        help="Tracking step size in mm (default: 0.5)"
+    )
+    p_run.add_argument(
+        "--sh-order",
+        type=int,
+        default=6,
+        help="Spherical harmonic order (default: 6)"
+    )
+    
+    # Extraction options
+    p_run.add_argument(
+        "--min-length",
+        type=float,
+        default=20.0,
+        help="Minimum streamline length in mm (default: 20)"
+    )
+    p_run.add_argument(
+        "--max-length",
+        type=float,
+        default=200.0,
+        help="Maximum streamline length in mm (default: 200)"
+    )
+    p_run.add_argument(
+        "--dilate-brainstem",
+        type=int,
+        default=2,
+        help="Brainstem ROI dilation (default: 2)"
+    )
+    p_run.add_argument(
+        "--dilate-motor",
+        type=int,
+        default=1,
+        help="Motor cortex ROI dilation (default: 1)"
+    )
+    p_run.add_argument(
+        "--fast-registration",
+        action="store_true",
+        help="Use fast registration (reduced accuracy)"
+    )
+    
+    # Metrics options
+    p_run.add_argument(
+        "--generate-pdf",
+        action="store_true",
+        help="Generate PDF clinical report"
+    )
+    
+    # Pipeline control options
+    p_run.add_argument(
+        "--skip-check",
+        action="store_true",
+        help="Skip environment check step"
+    )
+    p_run.add_argument(
+        "--continue-on-error",
+        action="store_true",
+        help="Continue pipeline even if a step fails"
+    )
+    p_run.add_argument(
+        "--show-plots",
+        action="store_true",
+        help="Show QC plots during processing"
+    )
+    p_run.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Print detailed processing information"
+    )
+    
+    p_run.set_defaults(func=cmd_run)
 
     # -------------------------------------------------------------------------
     # Parse and execute
@@ -379,8 +497,7 @@ def resolve_nifti(args: argparse.Namespace) -> Path:
     # DICOM case
     if args.dicom and preproc.is_dicom_dir(args.dicom):
         print("Valid DICOM directory. Converting to NIfTI...")
-        nii_str, _bval, _bvec = preproc.convert_to_nifti(args.dicom, args.out)
-        nii = Path(nii_str)  # Convert string to Path
+        nii, _bval, _bvec = preproc.convert_to_nifti(args.dicom, args.out)
 
     else:
         # Provided DICOM path is invalid
@@ -390,7 +507,7 @@ def resolve_nifti(args: argparse.Namespace) -> Path:
 
         # Use explicit NIfTI if given
         if args.nifti:
-            nii = args.nifti if isinstance(args.nifti, Path) else Path(args.nifti)
+            nii = args.nifti
         else:
             # Try to find a NIfTI in the output directory
             print(f"Attempting to find NIfTI in {args.out}...")
@@ -502,204 +619,172 @@ def extract_stem_from_filename(filename: str) -> str:
     return stem
 
 
+def find_files_recursive(directory: Path, pattern: str) -> list[Path]:
+    """Recursively find files matching a pattern."""
+    return list(directory.rglob(pattern))
+
+
 # =============================================================================
 # Command implementations
 # =============================================================================
 
-def cmd_check(args: argparse.Namespace) -> None:
-    """Runs environment checks."""
-    print("csttool environment OK")
+def cmd_check(args: argparse.Namespace) -> bool:
+    """Runs environment checks. Returns True if all checks pass."""
+    print("csttool environment check")
     print(f"Python: {sys.version.split()[0]}")
     print(f"Version: {__version__}")
+    
+    all_ok = True
     
     # Check key dependencies
     try:
         import dipy
-        print(f"DIPY: {dipy.__version__}")
+        print(f"✓ DIPY: {dipy.__version__}")
     except ImportError:
-        print("DIPY: NOT FOUND")
+        print("✗ DIPY: NOT FOUND")
+        all_ok = False
     
     try:
         import nibabel
-        print(f"NiBabel: {nibabel.__version__}")
+        print(f"✓ NiBabel: {nibabel.__version__}")
     except ImportError:
-        print("NiBabel: NOT FOUND")
+        print("✗ NiBabel: NOT FOUND")
+        all_ok = False
     
     try:
         import numpy
-        print(f"NumPy: {numpy.__version__}")
+        print(f"✓ NumPy: {numpy.__version__}")
     except ImportError:
-        print("NumPy: NOT FOUND")
+        print("✗ NumPy: NOT FOUND")
+        all_ok = False
+    
+    try:
+        import scipy
+        print(f"✓ SciPy: {scipy.__version__}")
+    except ImportError:
+        print("✗ SciPy: NOT FOUND")
+        all_ok = False
     
     try:
         import matplotlib
-        print(f"Matplotlib: {matplotlib.__version__}")
+        print(f"✓ Matplotlib: {matplotlib.__version__}")
     except ImportError:
-        print("Matplotlib: NOT FOUND")
+        print("✗ Matplotlib: NOT FOUND")
+        all_ok = False
+    
+    try:
+        import nilearn
+        print(f"✓ Nilearn: {nilearn.__version__}")
+    except ImportError:
+        print("✗ Nilearn: NOT FOUND (needed for atlas)")
+        all_ok = False
+    
+    # Check optional dependencies
+    try:
+        import reportlab
+        print(f"✓ ReportLab: {reportlab.Version}")
+    except ImportError:
+        print("○ ReportLab: NOT FOUND (optional, for PDF reports)")
+    
+    # Check ingest module
+    try:
+        from csttool.ingest import run_ingest_pipeline
+        print("✓ Ingest module: available")
+    except ImportError:
+        print("○ Ingest module: not installed (legacy import will be used)")
+    
+    if all_ok:
+        print("\n✓ All required dependencies available")
+    else:
+        print("\n✗ Some dependencies missing - install with: pip install -e .")
+    
+    return all_ok
 
-def cmd_import(args: argparse.Namespace) -> None:
-    """
-    Import DICOM data or load existing NIfTI.
+
+def cmd_import(args: argparse.Namespace) -> dict | None:
+    """Import DICOM data or load an existing NIfTI dataset."""
     
-    Enhanced version with:
-    - Multi-series scanning and analysis
-    - Automatic best series selection
-    - Suitability scoring for tractography
-    - Organized output structure
-    """
-    # Import ingest module
+    # Try to use the new ingest module
     try:
-        from csttool.ingest import (
-            run_ingest_pipeline,
-            scan_study,
-            analyze_all_series,
-            recommend_series,
-            print_series_summary
-        )
-    except ImportError as e:
-        print(f"Error: Could not import ingest module: {e}")
-        print("Make sure csttool is properly installed with the ingest module.")
-        print("\nFalling back to legacy import behavior...")
-        cmd_import_legacy(args)
-        return
+        from csttool.ingest import run_ingest_pipeline, scan_study
+        USE_INGEST = True
+    except ImportError:
+        USE_INGEST = False
+        print("Note: Ingest module not available, using legacy import")
     
-    verbose = getattr(args, 'verbose', True)
-    
-    # -------------------------------------------------------------------------
-    # Case 1: NIfTI provided directly (skip conversion)
-    # -------------------------------------------------------------------------
-    if args.nifti:
-        if not args.nifti.exists():
-            print(f"Error: NIfTI file not found: {args.nifti}")
-            return
+    if USE_INGEST and args.dicom:
+        # Use new ingest pipeline
+        args.out.mkdir(parents=True, exist_ok=True)
         
-        print(f"Using existing NIfTI: {args.nifti}")
-        
-        # Just print info about the file
-        try:
-            import nibabel as nib
-            img = nib.load(str(args.nifti))
-            print(f"\nDataset Information:")
-            print(f"  Shape: {img.shape}")
-            print(f"  Voxel size: {img.header.get_zooms()[:3]}")
+        # Scan-only mode
+        if getattr(args, 'scan_only', False):
+            print(f"Scanning DICOM directory: {args.dicom}")
+            series_list = scan_study(args.dicom)
             
-            # Check for gradient files
-            stem = args.nifti.stem.replace('.nii', '')
-            bval = args.nifti.parent / f"{stem}.bval"
-            bvec = args.nifti.parent / f"{stem}.bvec"
+            if not series_list:
+                print("No valid DICOM series found.")
+                return None
             
-            if bval.exists() and bvec.exists():
-                print(f"  Gradient files found: {bval.name}, {bvec.name}")
-                
-                # Load and report b-values
-                bvals, _ = read_bvals_bvecs(str(bval), str(bvec))
-                print(f"  B-values: {sorted(set(bvals.astype(int)))}")
-                print(f"  Gradient directions: {len(bvals)}")
-            else:
-                print("  ⚠️ No gradient files found alongside NIfTI")
-        except Exception as e:
-            print(f"  Warning: Could not read NIfTI info: {e}")
+            print(f"\nFound {len(series_list)} series.")
+            return {'series': series_list, 'scan_only': True}
         
-        return
-    
-    # -------------------------------------------------------------------------
-    # Case 2: DICOM directory provided
-    # -------------------------------------------------------------------------
-    if not args.dicom:
-        print("Error: Provide either --dicom or --nifti")
-        return
-    
-    if not args.dicom.exists():
-        print(f"Error: DICOM directory not found: {args.dicom}")
-        return
-    
-    # -------------------------------------------------------------------------
-    # Scan-only mode
-    # -------------------------------------------------------------------------
-    if args.scan_only:
-        print("=" * 60)
-        print("DICOM STUDY SCAN")
-        print("=" * 60)
-        
-        series_list = scan_study(args.dicom, verbose=verbose)
-        
-        if not series_list:
-            print("\nNo DICOM series found.")
-            return
-        
-        print_series_summary(series_list)
-        
-        # Analyze all series
-        print("\nAnalyzing series for tractography suitability...")
-        analyses = analyze_all_series(series_list, verbose=verbose)
-        
-        # Show recommendation
-        recommend_series(analyses, verbose=True)
-        
-        print("\nTo convert a specific series, run:")
-        print(f"  csttool import --dicom {args.dicom} --series <N> --out <output_dir>")
-        return
-    
-    # -------------------------------------------------------------------------
-    # Full conversion pipeline
-    # -------------------------------------------------------------------------
-    args.out.mkdir(parents=True, exist_ok=True)
-    
-    try:
-        outputs = run_ingest_pipeline(
+        # Full conversion
+        result = run_ingest_pipeline(
             study_dir=args.dicom,
             output_dir=args.out,
+            series_index=args.series - 1 if args.series else None,
             subject_id=args.subject_id,
-            series_index=args.series,
-            auto_select=True,
-            verbose=verbose
+            verbose=getattr(args, 'verbose', False)
         )
         
-        # Print next steps
-        print("\n📋 Next step: Preprocessing")
-        print(f"   csttool preprocess --nifti {outputs['nifti_path']} --out {args.out}")
-        
+        if result and result.get('nifti_path'):
+            print(f"\n✓ Import complete: {result['nifti_path']}")
+            return result
+        else:
+            print("Import failed.")
+            return None
+    
+    else:
+        # Legacy import behavior
+        return cmd_import_legacy(args)
+
+
+def cmd_import_legacy(args: argparse.Namespace) -> dict | None:
+    """Legacy import using preproc functions."""
+    try:
+        nii = resolve_nifti(args)
     except FileNotFoundError as e:
         print(f"Error: {e}")
-    except ValueError as e:
-        print(f"Error: {e}")
-        print("\nUse --scan-only to see available series, then specify with --series <N>")
-    except RuntimeError as e:
-        print(f"Error: {e}")
+        return None
 
-# def cmd_import(args: argparse.Namespace) -> None:
-#     """Import DICOM data or load an existing NIfTI dataset and print basic info."""
-#     try:
-#         nii = resolve_nifti(args)
-#     except FileNotFoundError as e:
-#         print(f"Error: {e}")
-#         return
+    data, _affine, hdr, gtab = load_with_preproc(nii)
 
-#     data, _affine, hdr, gtab = load_with_preproc(nii)
-
-#     print(f"\nDataset Information:")
-#     print(f"  File: {nii}")
-#     print(f"  Data shape: {data.shape}")
-#     print(f"  Gradient directions: {len(gtab.bvals)}")
-#     voxel_size = tuple(float(v) for v in hdr.get_zooms()[:3])
-#     print(f"  Voxel size (mm): {voxel_size}")
-#     print(f"  B-values: {sorted(set(gtab.bvals.astype(int)))}")
+    print(f"\nDataset Information:")
+    print(f"  File: {nii}")
+    print(f"  Data shape: {data.shape}")
+    print(f"  Gradient directions: {len(gtab.bvals)}")
+    voxel_size = tuple(float(v) for v in hdr.get_zooms()[:3])
+    print(f"  Voxel size (mm): {voxel_size}")
+    print(f"  B-values: {sorted(set(gtab.bvals.astype(int)))}")
+    
+    return {
+        'nifti_path': nii,
+        'data_shape': data.shape,
+        'n_gradients': len(gtab.bvals)
+    }
 
 
-def cmd_preprocess(args: argparse.Namespace) -> None:
+def cmd_preprocess(args: argparse.Namespace) -> dict | None:
     """Run the preprocessing pipeline on the input data."""
     try:
         nii = resolve_nifti(args)
     except FileNotFoundError as e:
         print(f"Error: {e}")
-        return
+        return None
 
     args.out.mkdir(parents=True, exist_ok=True)
 
     data, affine, _hdr, gtab = load_with_preproc(nii)
-    
-    # Keep original data for visualization comparison
-    data_original = data.copy() if args.save_visualizations else None
 
     stem = nii.name.replace(".nii.gz", "").replace(".nii", "")
 
@@ -708,21 +793,18 @@ def cmd_preprocess(args: argparse.Namespace) -> None:
         data,
         N=args.coil_count,
         brain_mask=None,
-        visualize=args.show_plots,
+        visualize=getattr(args, 'show_plots', False),
     )
-    
-    # Keep denoised data for visualization
-    data_denoised = denoised.copy() if args.save_visualizations else None
 
     print("Step 2: Brain masking with median Otsu")
     masked_data, brain_mask = preproc.background_segmentation(
         denoised,
         gtab,
-        visualize=args.show_plots,
+        visualize=getattr(args, 'show_plots', False),
     )
 
-    reg_affines = None
-    if args.perform_motion_correction:
+    motion_correction_applied = False
+    if getattr(args, 'perform_motion_correction', False):
         print("Step 3: Between volume motion correction")
         try:
             preprocessed, reg_affines = preproc.perform_motion_correction(
@@ -737,14 +819,12 @@ def cmd_preprocess(args: argparse.Namespace) -> None:
             print(f"Motion correction failed: {e}")
             print("Continuing without motion correction")
             preprocessed = masked_data
-            motion_correction_applied = False
     else:
         print("Skipping motion correction (default behavior)")
         preprocessed = masked_data
-        motion_correction_applied = False
 
     print("Step 4: Saving output")
-    output_path = preproc.save_output(
+    output_paths = preproc.save_output(
         preprocessed,
         affine,
         str(args.out),
@@ -756,55 +836,29 @@ def cmd_preprocess(args: argparse.Namespace) -> None:
     preproc.copy_gradient_files(
         nii, str(args.out), stem, motion_correction_applied
     )
+    
+    # Save brain mask
+    mask_path = preproc.save_brain_mask(brain_mask, affine, str(args.out), stem)
 
-    # Generate visualizations if requested
-    if args.save_visualizations:
-        print("\nStep 6: Generating QC visualizations")
-        try:
-            from csttool.preprocess.modules.visualizations import (
-                save_all_preprocessing_visualizations
-            )
-            
-            viz_paths = save_all_preprocessing_visualizations(
-                data_original=data_original,
-                data_denoised=data_denoised,
-                data_preprocessed=preprocessed,
-                brain_mask=brain_mask,
-                gtab=gtab,
-                output_dir=args.out,
-                stem=stem,
-                reg_affines=reg_affines,
-                motion_correction_applied=motion_correction_applied,
-                verbose=True
-            )
-            
-            print(f"\nVisualizations saved:")
-            for name, path in viz_paths.items():
-                if path:
-                    print(f"  {name}: {path}")
-        except Exception as e:
-            print(f"Warning: Could not generate visualizations: {e}")
-
-    print(f"\n✓ Preprocessing complete. Output: {output_path}")
+    print(f"\n✓ Preprocessing complete.")
+    
+    return {
+        'preprocessed_path': output_paths['preprocessed_dwi'],
+        'motion_correction': motion_correction_applied,
+        'stem': stem
+    }
 
 
-def cmd_track(args: argparse.Namespace) -> None:
+def cmd_track(args: argparse.Namespace) -> dict | None:
     """
     Run whole-brain deterministic tractography on preprocessed data.
-    
-    Outputs:
-        - Whole-brain tractogram (.trk)
-        - FA map (.nii.gz)
-        - MD map (.nii.gz)
-        - Processing report (.json)
-        - Visualizations (optional, with --save-visualizations)
     """
     preproc_nii = args.nifti
     verbose = getattr(args, 'verbose', False)
     
     if not preproc_nii.exists():
         print(f"Error: preprocessed NIfTI not found: {preproc_nii}")
-        return
+        return None
 
     args.out.mkdir(parents=True, exist_ok=True)
 
@@ -821,28 +875,24 @@ def cmd_track(args: argparse.Namespace) -> None:
         data, affine, img = load_nifti(str(preproc_nii), return_img=True)
     except Exception as e:
         print(f"Error loading NIfTI: {e}")
-        return
+        return None
 
     print("Building gradient table for preprocessed data")
     try:
         gtab = get_gtab_for_preproc(preproc_nii)
     except FileNotFoundError as e:
         print(f"Error: {e}")
-        return
+        return None
 
-    # -------------------------------------------------------------------------
     # Step 1: Brain masking
-    # -------------------------------------------------------------------------
     print("\nStep 1: Brain masking with median Otsu")
     masked_data, brain_mask = preproc.background_segmentation(
         data,
         gtab,
-        visualize=args.show_plots,
+        visualize=getattr(args, 'show_plots', False),
     )
 
-    # -------------------------------------------------------------------------
     # Step 2: Tensor fitting
-    # -------------------------------------------------------------------------
     print("\nStep 2: Tensor fit and scalar measures (FA, MD)")
     try:
         tenfit, fa, md, white_matter = fit_tensors(
@@ -850,16 +900,14 @@ def cmd_track(args: argparse.Namespace) -> None:
             gtab, 
             brain_mask,
             fa_thresh=args.fa_thr,
-            visualize=args.show_plots,
+            visualize=getattr(args, 'show_plots', False),
             verbose=verbose
         )
     except Exception as e:
         print(f"Error during tensor fitting: {e}")
-        return
+        return None
 
-    # -------------------------------------------------------------------------
     # Step 3: Direction field estimation
-    # -------------------------------------------------------------------------
     print("\nStep 3: Direction field estimation (CSA ODF model)")
     try:
         csapeaks = estimate_directions(
@@ -871,11 +919,9 @@ def cmd_track(args: argparse.Namespace) -> None:
         )
     except Exception as e:
         print(f"Error during direction estimation: {e}")
-        return
+        return None
 
-    # -------------------------------------------------------------------------
     # Step 4: Stopping criterion and seeds
-    # -------------------------------------------------------------------------
     print("\nStep 4: Stopping criterion and seed generation")
     try:
         seeds, stopping_criterion = seed_and_stop(
@@ -889,11 +935,9 @@ def cmd_track(args: argparse.Namespace) -> None:
         )
     except Exception as e:
         print(f"Error during seed generation: {e}")
-        return
+        return None
 
-    # -------------------------------------------------------------------------
     # Step 5: Deterministic tracking
-    # -------------------------------------------------------------------------
     print("\nStep 5: Deterministic tracking")
     try:
         streamlines = run_tractography(
@@ -903,15 +947,13 @@ def cmd_track(args: argparse.Namespace) -> None:
             affine,
             step_size=args.step_size,
             verbose=verbose,
-            visualize=args.show_plots
+            visualize=getattr(args, 'show_plots', False)
         )
     except Exception as e:
         print(f"Error during tractography: {e}")
-        return
+        return None
 
-    # -------------------------------------------------------------------------
     # Step 6: Save outputs
-    # -------------------------------------------------------------------------
     print("\nStep 6: Saving tractogram, scalar maps, and report")
     
     tracking_params = {
@@ -939,71 +981,30 @@ def cmd_track(args: argparse.Namespace) -> None:
         )
     except Exception as e:
         print(f"Error saving outputs: {e}")
-        return
+        return None
 
-    # -------------------------------------------------------------------------
-    # Step 7: Generate visualizations (optional)
-    # -------------------------------------------------------------------------
-    if args.save_visualizations:
-        print("\nStep 7: Generating QC visualizations")
-        try:
-            from csttool.tracking.modules.visualizations import (
-                save_all_tracking_visualizations
-            )
-            
-            viz_paths = save_all_tracking_visualizations(
-                streamlines=streamlines,
-                fa=fa,
-                md=md,
-                white_matter=white_matter,
-                brain_mask=brain_mask,
-                seeds=seeds,
-                affine=affine,
-                output_dir=args.out,
-                stem=stem,
-                tenfit=tenfit,
-                fa_thresh=args.fa_thr,
-                tracking_params=tracking_params,
-                verbose=True
-            )
-            
-            outputs['visualizations'] = viz_paths
-            
-            print(f"\nVisualizations saved:")
-            for name, path in viz_paths.items():
-                if path:
-                    print(f"  {name}: {path}")
-        except Exception as e:
-            print(f"Warning: Could not generate visualizations: {e}")
-            import traceback
-            traceback.print_exc()
-
-    # -------------------------------------------------------------------------
     # Summary
-    # -------------------------------------------------------------------------
     print(f"\n{'='*60}")
     print(f"TRACKING COMPLETE - {stem}")
     print(f"{'='*60}")
     print(f"Whole-brain streamlines: {len(streamlines):,}")
     print(f"\nOutputs:")
     for key, path in outputs.items():
-        if key != 'visualizations':
-            print(f"  {key}: {path}")
-    if 'visualizations' in outputs:
-        print(f"  visualizations: {args.out / 'visualizations'}")
+        print(f"  {key}: {path}")
     print(f"{'='*60}")
+    
+    return {
+        'tractogram_path': outputs['tractogram'],
+        'fa_path': outputs['fa_map'],
+        'md_path': outputs['md_map'],
+        'n_streamlines': len(streamlines),
+        'stem': stem
+    }
 
 
-def cmd_extract(args: argparse.Namespace) -> None:
+def cmd_extract(args: argparse.Namespace) -> dict | None:
     """
     Extract bilateral CST using atlas-based ROI filtering.
-    
-    Pipeline:
-        1. Register MNI template to subject space (Affine + SyN)
-        2. Warp Harvard-Oxford atlases to subject space
-        3. Create ROI masks (brainstem, motor cortex L/R)
-        4. Filter streamlines by endpoint connectivity
-        5. Save bilateral CST tractograms
     """
     import nibabel as nib
     
@@ -1012,11 +1013,11 @@ def cmd_extract(args: argparse.Namespace) -> None:
     # Validate inputs
     if not args.tractogram.exists():
         print(f"Error: Tractogram not found: {args.tractogram}")
-        return
+        return None
     
     if not args.fa.exists():
         print(f"Error: FA map not found: {args.fa}")
-        return
+        return None
     
     args.out.mkdir(parents=True, exist_ok=True)
     
@@ -1024,14 +1025,10 @@ def cmd_extract(args: argparse.Namespace) -> None:
     try:
         from csttool.extract.modules.registration import register_mni_to_subject
         from csttool.extract.modules.warp_atlas_to_subject import (
-            fetch_harvard_oxford, 
             warp_harvard_oxford_to_subject,
             CST_ROI_CONFIG
         )
-        from csttool.extract.modules.create_roi_masks import (
-            create_cst_roi_masks,
-            visualize_roi_masks
-        )
+        from csttool.extract.modules.create_roi_masks import create_cst_roi_masks
         from csttool.extract.modules.endpoint_filtering import (
             extract_bilateral_cst,
             save_cst_tractograms,
@@ -1040,12 +1037,9 @@ def cmd_extract(args: argparse.Namespace) -> None:
         from dipy.io.streamline import load_tractogram
     except ImportError as e:
         print(f"Error importing extraction modules: {e}")
-        print("Make sure all extraction module dependencies are installed.")
-        return
+        return None
     
-    # -------------------------------------------------------------------------
-    # Step 1: Load inputs
-    # -------------------------------------------------------------------------
+    # Load inputs
     print(f"Loading tractogram: {args.tractogram}")
     try:
         sft = load_tractogram(str(args.tractogram), 'same')
@@ -1053,18 +1047,16 @@ def cmd_extract(args: argparse.Namespace) -> None:
         print(f"  Loaded {len(streamlines):,} streamlines")
     except Exception as e:
         print(f"Error loading tractogram: {e}")
-        return
+        return None
     
     print(f"Loading FA map: {args.fa}")
     try:
         fa_data, fa_affine = load_nifti(str(args.fa))
     except Exception as e:
         print(f"Error loading FA map: {e}")
-        return
+        return None
     
-    # -------------------------------------------------------------------------
-    # Step 2: Registration (MNI → Subject)
-    # -------------------------------------------------------------------------
+    # Step 1: Registration
     print("\n" + "="*60)
     print("Step 1: Registering MNI template to subject space")
     print("="*60)
@@ -1072,25 +1064,19 @@ def cmd_extract(args: argparse.Namespace) -> None:
     level_iters_affine = [1000, 100, 10] if args.fast_registration else [10000, 1000, 100]
     level_iters_syn = [5, 5, 3] if args.fast_registration else [10, 10, 5]
     
-    if args.fast_registration:
-        print("⚡ Fast registration mode enabled (reduced iterations)")
-    
     try:
         reg_result = register_mni_to_subject(
             subject_fa_path=args.fa,
             output_dir=args.out,
-            # subject_id=args.subject_id,
             level_iters_affine=level_iters_affine,
             level_iters_syn=level_iters_syn,
             verbose=verbose
         )
     except Exception as e:
         print(f"Error during registration: {e}")
-        return
+        return None
     
-    # -------------------------------------------------------------------------
-    # Step 3: Warp Harvard-Oxford atlases
-    # -------------------------------------------------------------------------
+    # Step 2: Warp atlases
     print("\n" + "="*60)
     print("Step 2: Warping Harvard-Oxford atlases to subject space")
     print("="*60)
@@ -1104,19 +1090,17 @@ def cmd_extract(args: argparse.Namespace) -> None:
         )
     except Exception as e:
         print(f"Error warping atlases: {e}")
-        return
+        return None
     
-    # -------------------------------------------------------------------------
-    # Step 4: Create ROI masks
-    # -------------------------------------------------------------------------
+    # Step 3: Create ROI masks
     print("\n" + "="*60)
     print("Step 3: Creating CST ROI masks")
     print("="*60)
     
     try:
         masks = create_cst_roi_masks(
-            warped_cortical=warped['cortical_warped'],      # Changed from warped['cortical']
-            warped_subcortical=warped['subcortical_warped'], # Changed from warped['subcortical']
+            warped_cortical=warped['cortical_warped'],
+            warped_subcortical=warped['subcortical_warped'],
             subject_affine=fa_affine,
             roi_config=CST_ROI_CONFIG,
             dilate_brainstem=args.dilate_brainstem,
@@ -1127,11 +1111,9 @@ def cmd_extract(args: argparse.Namespace) -> None:
         )
     except Exception as e:
         print(f"Error creating ROI masks: {e}")
-        return
+        return None
     
-    # -------------------------------------------------------------------------
-    # Step 5: Extract bilateral CST
-    # -------------------------------------------------------------------------
+    # Step 4: Extract CST
     print("\n" + "="*60)
     print("Step 4: Extracting bilateral CST")
     print("="*60)
@@ -1147,11 +1129,9 @@ def cmd_extract(args: argparse.Namespace) -> None:
         )
     except Exception as e:
         print(f"Error during CST extraction: {e}")
-        return
+        return None
     
-    # -------------------------------------------------------------------------
-    # Step 6: Save outputs
-    # -------------------------------------------------------------------------
+    # Step 5: Save outputs
     print("\n" + "="*60)
     print("Step 5: Saving extracted tractograms")
     print("="*60)
@@ -1166,53 +1146,12 @@ def cmd_extract(args: argparse.Namespace) -> None:
             verbose=verbose
         )
         
-        # Save extraction report
         save_extraction_report(cst_result, output_paths, args.out, args.subject_id)
     except Exception as e:
         print(f"Error saving outputs: {e}")
-        return
+        return None
     
-    # -------------------------------------------------------------------------
-    # Step 7: Generate visualizations (optional)
-    # -------------------------------------------------------------------------
-    if args.save_visualizations:
-        print("\n" + "="*60)
-        print("Step 6: Generating QC visualizations")
-        print("="*60)
-        
-        try:
-            # ROI mask visualization
-            viz_path = visualize_roi_masks(
-                masks=masks,
-                subject_fa=fa_data,
-                output_dir=args.out,
-                subject_id=args.subject_id,
-                verbose=verbose
-            )
-            print(f"✓ ROI visualization: {viz_path}")
-            
-            # CST extraction visualization
-            try:
-                from csttool.extract.modules.visualizations import plot_cst_extraction
-                cst_viz_path = plot_cst_extraction(
-                    cst_result=cst_result,
-                    fa=fa_data,
-                    affine=fa_affine,
-                    output_dir=args.out,
-                    subject_id=args.subject_id,
-                    verbose=verbose
-                )
-                print(f"✓ CST extraction visualization: {cst_viz_path}")
-            except ImportError:
-                # Fallback if visualization module doesn't have this function yet
-                pass
-                
-        except Exception as e:
-            print(f"Warning: Could not generate visualizations: {e}")
-    
-    # -------------------------------------------------------------------------
     # Summary
-    # -------------------------------------------------------------------------
     print(f"\n{'='*60}")
     print("EXTRACTION COMPLETE")
     print(f"{'='*60}")
@@ -1221,30 +1160,30 @@ def cmd_extract(args: argparse.Namespace) -> None:
     print(f"Right CST: {cst_result['stats']['cst_right_count']:,} streamlines")
     print(f"Total:     {cst_result['stats']['cst_total_count']:,} streamlines")
     print(f"Extraction rate: {cst_result['stats']['extraction_rate']:.2f}%")
-    print(f"\nOutputs saved to: {args.out}")
     print(f"{'='*60}")
+    
+    return {
+        'cst_left_path': output_paths.get('cst_left'),
+        'cst_right_path': output_paths.get('cst_right'),
+        'cst_combined_path': output_paths.get('cst_combined'),
+        'stats': cst_result['stats']
+    }
 
 
-def cmd_metrics(args: argparse.Namespace) -> None:
+def cmd_metrics(args: argparse.Namespace) -> dict | None:
     """
     Compute bilateral CST metrics and generate reports.
-    
-    Outputs:
-        - JSON report (complete metrics)
-        - CSV summary (for group analysis)
-        - PDF report (optional, with visualizations)
-        - Visualization plots
     """
     verbose = getattr(args, 'verbose', True)
     
     # Validate inputs
     if not args.cst_left.exists():
         print(f"Error: Left CST tractogram not found: {args.cst_left}")
-        return
+        return None
     
     if not args.cst_right.exists():
         print(f"Error: Right CST tractogram not found: {args.cst_right}")
-        return
+        return None
     
     args.out.mkdir(parents=True, exist_ok=True)
     
@@ -1266,11 +1205,9 @@ def cmd_metrics(args: argparse.Namespace) -> None:
         )
     except ImportError as e:
         print(f"Error importing metrics modules: {e}")
-        return
+        return None
     
-    # -------------------------------------------------------------------------
     # Load tractograms
-    # -------------------------------------------------------------------------
     print(f"Loading left CST: {args.cst_left}")
     try:
         sft_left = load_tractogram(str(args.cst_left), 'same')
@@ -1278,7 +1215,7 @@ def cmd_metrics(args: argparse.Namespace) -> None:
         print(f"  Loaded {len(streamlines_left):,} streamlines")
     except Exception as e:
         print(f"Error loading left CST: {e}")
-        return
+        return None
     
     print(f"Loading right CST: {args.cst_right}")
     try:
@@ -1287,7 +1224,7 @@ def cmd_metrics(args: argparse.Namespace) -> None:
         print(f"  Loaded {len(streamlines_right):,} streamlines")
     except Exception as e:
         print(f"Error loading right CST: {e}")
-        return
+        return None
     
     # Load scalar maps
     fa_map, fa_affine = None, None
@@ -1307,12 +1244,9 @@ def cmd_metrics(args: argparse.Namespace) -> None:
         else:
             print(f"Warning: MD map not found: {args.md}")
     
-    # Use tractogram affine if FA affine not available
     affine = fa_affine if fa_affine is not None else sft_left.affine
     
-    # -------------------------------------------------------------------------
-    # Analyze each hemisphere
-    # -------------------------------------------------------------------------
+    # Analyze hemispheres
     print("\n" + "="*60)
     print("Analyzing LEFT CST")
     print("="*60)
@@ -1328,7 +1262,7 @@ def cmd_metrics(args: argparse.Namespace) -> None:
             print_hemisphere_summary(left_metrics)
     except Exception as e:
         print(f"Error analyzing left CST: {e}")
-        return
+        return None
     
     print("\n" + "="*60)
     print("Analyzing RIGHT CST")
@@ -1345,11 +1279,9 @@ def cmd_metrics(args: argparse.Namespace) -> None:
             print_hemisphere_summary(right_metrics)
     except Exception as e:
         print(f"Error analyzing right CST: {e}")
-        return
+        return None
     
-    # -------------------------------------------------------------------------
     # Bilateral comparison
-    # -------------------------------------------------------------------------
     print("\n" + "="*60)
     print("Computing bilateral comparison")
     print("="*60)
@@ -1357,14 +1289,15 @@ def cmd_metrics(args: argparse.Namespace) -> None:
         comparison = compare_bilateral_cst(left_metrics, right_metrics)
     except Exception as e:
         print(f"Error during bilateral comparison: {e}")
-        return
+        return None
     
-    # -------------------------------------------------------------------------
     # Save reports
-    # -------------------------------------------------------------------------
     print("\n" + "="*60)
     print("Generating reports")
     print("="*60)
+    
+    json_path = None
+    csv_path = None
     
     try:
         json_path = save_json_report(comparison, args.out, args.subject_id)
@@ -1378,12 +1311,7 @@ def cmd_metrics(args: argparse.Namespace) -> None:
     except Exception as e:
         print(f"Error saving CSV summary: {e}")
     
-    # -------------------------------------------------------------------------
-    # Generate visualizations (always enabled for metrics, or with flag)
-    # -------------------------------------------------------------------------
-    # Metrics always generates visualizations by default
-    save_viz = getattr(args, 'save_visualizations', True) or True
-    
+    # Generate visualizations
     viz_dir = args.out / "visualizations"
     viz_dir.mkdir(exist_ok=True)
     
@@ -1406,20 +1334,16 @@ def cmd_metrics(args: argparse.Namespace) -> None:
     except Exception as e:
         print(f"Warning: Could not generate bilateral comparison: {e}")
     
-    # -------------------------------------------------------------------------
     # Generate PDF if requested
-    # -------------------------------------------------------------------------
-    if args.generate_pdf:
+    pdf_path = None
+    if getattr(args, 'generate_pdf', False):
         try:
             pdf_path = save_pdf_report(comparison, viz_paths, args.out, args.subject_id)
             print(f"✓ PDF report: {pdf_path}")
         except Exception as e:
             print(f"Warning: Could not generate PDF report: {e}")
-            print("  (You may need to install reportlab: pip install reportlab)")
     
-    # -------------------------------------------------------------------------
     # Summary
-    # -------------------------------------------------------------------------
     print(f"\n{'='*60}")
     print("METRICS COMPLETE")
     print(f"{'='*60}")
@@ -1437,8 +1361,375 @@ def cmd_metrics(args: argparse.Namespace) -> None:
         if 'fa' in comparison['asymmetry']:
             print(f"  LI:    {comparison['asymmetry']['fa']['laterality_index']:.3f}")
     
-    print(f"\nOutputs saved to: {args.out}")
     print(f"{'='*60}")
+    
+    return {
+        'json_path': json_path,
+        'csv_path': csv_path,
+        'pdf_path': pdf_path,
+        'comparison': comparison
+    }
+
+
+def cmd_run(args: argparse.Namespace) -> None:
+    """
+    Run complete CST analysis pipeline.
+    
+    Steps:
+        1. check     - Verify environment and dependencies
+        2. import    - Convert DICOM to NIfTI (or validate existing NIfTI)
+        3. preprocess - Denoise, skull strip, (optional) motion correct
+        4. track     - Whole-brain deterministic tractography
+        5. extract   - Atlas-based bilateral CST extraction
+        6. metrics   - Compute metrics and generate reports
+    """
+    
+    verbose = getattr(args, 'verbose', False)
+    continue_on_error = getattr(args, 'continue_on_error', False)
+    
+    # Create output directory structure
+    args.out.mkdir(parents=True, exist_ok=True)
+    
+    # Determine subject ID
+    subject_id = args.subject_id
+    if not subject_id:
+        if args.dicom:
+            subject_id = args.dicom.name
+        elif args.nifti:
+            subject_id = extract_stem_from_filename(str(args.nifti))
+        else:
+            subject_id = "subject"
+    
+    # Initialize pipeline tracking
+    pipeline_start = time()
+    step_times = {}
+    step_results = {}
+    failed_steps = []
+    
+    print("\n" + "="*70)
+    print("CSTTOOL - COMPLETE CST ANALYSIS PIPELINE")
+    print("="*70)
+    print(f"Subject ID:     {subject_id}")
+    print(f"Output:         {args.out}")
+    print(f"Started:        {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print("="*70)
+    
+    # =========================================================================
+    # STEP 1: CHECK
+    # =========================================================================
+    if not getattr(args, 'skip_check', False):
+        print("\n" + "▶"*3 + " STEP 1/6: ENVIRONMENT CHECK " + "◀"*3)
+        t0 = time()
+        
+        try:
+            # Create a mock args object for cmd_check
+            check_args = argparse.Namespace()
+            check_ok = cmd_check(check_args)
+            step_results['check'] = {'success': check_ok}
+            
+            if not check_ok and not continue_on_error:
+                print("\n✗ Environment check failed. Fix dependencies and retry.")
+                return
+                
+        except Exception as e:
+            print(f"✗ Check failed: {e}")
+            failed_steps.append('check')
+            step_results['check'] = {'success': False, 'error': str(e)}
+            if not continue_on_error:
+                return
+        
+        step_times['check'] = time() - t0
+    else:
+        print("\n" + "⏭ STEP 1/6: SKIPPING ENVIRONMENT CHECK")
+        step_results['check'] = {'success': True, 'skipped': True}
+    
+    # =========================================================================
+    # STEP 2: IMPORT
+    # =========================================================================
+    print("\n" + "▶"*3 + " STEP 2/6: IMPORT DATA " + "◀"*3)
+    t0 = time()
+    
+    nifti_path = None
+    
+    try:
+        if args.nifti and args.nifti.exists():
+            # Use provided NIfTI directly
+            nifti_path = args.nifti
+            print(f"Using existing NIfTI: {nifti_path}")
+            step_results['import'] = {'success': True, 'nifti_path': str(nifti_path)}
+        elif args.dicom:
+            # Run import from DICOM
+            import_args = argparse.Namespace(
+                dicom=args.dicom,
+                nifti=None,
+                out=args.out,
+                subject_id=subject_id,
+                series=getattr(args, 'series', None),
+                scan_only=False,
+                verbose=verbose
+            )
+            
+            import_result = cmd_import(import_args)
+            
+            if import_result and import_result.get('nifti_path'):
+                nifti_path = Path(import_result['nifti_path'])
+                step_results['import'] = {'success': True, 'result': import_result}
+            else:
+                raise RuntimeError("Import failed to produce NIfTI file")
+        else:
+            raise ValueError("Must provide --dicom or --nifti")
+            
+    except Exception as e:
+        print(f"✗ Import failed: {e}")
+        failed_steps.append('import')
+        step_results['import'] = {'success': False, 'error': str(e)}
+        if not continue_on_error:
+            _save_pipeline_report(args.out, subject_id, step_results, step_times, failed_steps, pipeline_start)
+            return
+    
+    step_times['import'] = time() - t0
+    
+    # =========================================================================
+    # STEP 3: PREPROCESS
+    # =========================================================================
+    print("\n" + "▶"*3 + " STEP 3/6: PREPROCESSING " + "◀"*3)
+    t0 = time()
+    
+    preproc_path = None
+    
+    try:
+        if nifti_path is None:
+            raise RuntimeError("No NIfTI available from import step")
+        
+        preproc_args = argparse.Namespace(
+            dicom=None,
+            nifti=nifti_path,
+            out=args.out,
+            coil_count=getattr(args, 'coil_count', 4),
+            show_plots=getattr(args, 'show_plots', False),
+            perform_motion_correction=getattr(args, 'perform_motion_correction', False),
+            verbose=verbose
+        )
+        
+        preproc_result = cmd_preprocess(preproc_args)
+        
+        if preproc_result and preproc_result.get('preprocessed_path'):
+            preproc_path = Path(preproc_result['preprocessed_path'])
+            step_results['preprocess'] = {'success': True, 'result': preproc_result}
+        else:
+            raise RuntimeError("Preprocessing failed")
+            
+    except Exception as e:
+        print(f"✗ Preprocessing failed: {e}")
+        failed_steps.append('preprocess')
+        step_results['preprocess'] = {'success': False, 'error': str(e)}
+        if not continue_on_error:
+            _save_pipeline_report(args.out, subject_id, step_results, step_times, failed_steps, pipeline_start)
+            return
+    
+    step_times['preprocess'] = time() - t0
+    
+    # =========================================================================
+    # STEP 4: TRACK
+    # =========================================================================
+    print("\n" + "▶"*3 + " STEP 4/6: TRACTOGRAPHY " + "◀"*3)
+    t0 = time()
+    
+    tractogram_path = None
+    fa_path = None
+    md_path = None
+    
+    try:
+        if preproc_path is None:
+            raise RuntimeError("No preprocessed data available")
+        
+        track_out = args.out / "tracking"
+        track_args = argparse.Namespace(
+            nifti=preproc_path,
+            subject_id=subject_id,
+            fa_thr=getattr(args, 'fa_thr', 0.2),
+            seed_density=getattr(args, 'seed_density', 1),
+            step_size=getattr(args, 'step_size', 0.5),
+            sh_order=getattr(args, 'sh_order', 6),
+            show_plots=getattr(args, 'show_plots', False),
+            verbose=verbose,
+            out=track_out
+        )
+        
+        track_result = cmd_track(track_args)
+        
+        if track_result:
+            tractogram_path = Path(track_result['tractogram_path'])
+            fa_path = Path(track_result['fa_path'])
+            md_path = Path(track_result['md_path'])
+            step_results['track'] = {'success': True, 'result': track_result}
+        else:
+            raise RuntimeError("Tracking failed")
+            
+    except Exception as e:
+        print(f"✗ Tracking failed: {e}")
+        failed_steps.append('track')
+        step_results['track'] = {'success': False, 'error': str(e)}
+        if not continue_on_error:
+            _save_pipeline_report(args.out, subject_id, step_results, step_times, failed_steps, pipeline_start)
+            return
+    
+    step_times['track'] = time() - t0
+    
+    # =========================================================================
+    # STEP 5: EXTRACT
+    # =========================================================================
+    print("\n" + "▶"*3 + " STEP 5/6: CST EXTRACTION " + "◀"*3)
+    t0 = time()
+    
+    cst_left_path = None
+    cst_right_path = None
+    
+    try:
+        if tractogram_path is None or fa_path is None:
+            raise RuntimeError("No tractogram or FA map available")
+        
+        extract_out = args.out / "extraction"
+        extract_args = argparse.Namespace(
+            tractogram=tractogram_path,
+            fa=fa_path,
+            subject_id=subject_id,
+            min_length=getattr(args, 'min_length', 20.0),
+            max_length=getattr(args, 'max_length', 200.0),
+            dilate_brainstem=getattr(args, 'dilate_brainstem', 2),
+            dilate_motor=getattr(args, 'dilate_motor', 1),
+            fast_registration=getattr(args, 'fast_registration', False),
+            verbose=verbose,
+            out=extract_out
+        )
+        
+        extract_result = cmd_extract(extract_args)
+        
+        if extract_result and extract_result.get('cst_left_path') and extract_result.get('cst_right_path'):
+            cst_left_path = Path(extract_result['cst_left_path'])
+            cst_right_path = Path(extract_result['cst_right_path'])
+            step_results['extract'] = {'success': True, 'result': extract_result}
+        else:
+            raise RuntimeError("CST extraction failed or produced no streamlines")
+            
+    except Exception as e:
+        print(f"✗ CST extraction failed: {e}")
+        failed_steps.append('extract')
+        step_results['extract'] = {'success': False, 'error': str(e)}
+        if not continue_on_error:
+            _save_pipeline_report(args.out, subject_id, step_results, step_times, failed_steps, pipeline_start)
+            return
+    
+    step_times['extract'] = time() - t0
+    
+    # =========================================================================
+    # STEP 6: METRICS
+    # =========================================================================
+    print("\n" + "▶"*3 + " STEP 6/6: METRICS & REPORTS " + "◀"*3)
+    t0 = time()
+    
+    try:
+        if cst_left_path is None or cst_right_path is None:
+            raise RuntimeError("No CST tractograms available")
+        
+        metrics_out = args.out / "metrics"
+        metrics_args = argparse.Namespace(
+            cst_left=cst_left_path,
+            cst_right=cst_right_path,
+            fa=fa_path,
+            md=md_path,
+            subject_id=subject_id,
+            generate_pdf=getattr(args, 'generate_pdf', False),
+            verbose=verbose,
+            out=metrics_out
+        )
+        
+        metrics_result = cmd_metrics(metrics_args)
+        
+        if metrics_result:
+            step_results['metrics'] = {'success': True, 'result': metrics_result}
+        else:
+            raise RuntimeError("Metrics computation failed")
+            
+    except Exception as e:
+        print(f"✗ Metrics failed: {e}")
+        failed_steps.append('metrics')
+        step_results['metrics'] = {'success': False, 'error': str(e)}
+    
+    step_times['metrics'] = time() - t0
+    
+    # =========================================================================
+    # FINAL SUMMARY
+    # =========================================================================
+    total_time = time() - pipeline_start
+    
+    # Save pipeline report
+    report_path = _save_pipeline_report(args.out, subject_id, step_results, step_times, failed_steps, pipeline_start)
+    
+    print("\n" + "="*70)
+    print("PIPELINE COMPLETE")
+    print("="*70)
+    print(f"Subject ID:     {subject_id}")
+    print(f"Total time:     {total_time/60:.1f} minutes ({total_time:.0f} seconds)")
+    print(f"\nStep timing:")
+    for step, elapsed in step_times.items():
+        status = "✓" if step not in failed_steps else "✗"
+        print(f"  {status} {step:12s}: {elapsed:.1f}s")
+    
+    if failed_steps:
+        print(f"\n⚠️  Failed steps: {', '.join(failed_steps)}")
+    else:
+        print(f"\n✓ All steps completed successfully!")
+    
+    print(f"\nOutputs:")
+    print(f"  Pipeline report: {report_path}")
+    if step_results.get('metrics', {}).get('success'):
+        print(f"  Metrics:         {args.out / 'metrics'}")
+    if step_results.get('extract', {}).get('success'):
+        print(f"  CST tractograms: {args.out / 'extraction'}")
+    
+    print("="*70)
+
+
+def _save_pipeline_report(
+    output_dir: Path,
+    subject_id: str,
+    step_results: dict,
+    step_times: dict,
+    failed_steps: list,
+    start_time: float
+) -> Path:
+    """Save pipeline execution report as JSON."""
+    
+    output_dir.mkdir(parents=True, exist_ok=True)
+    log_dir = output_dir / "logs"
+    log_dir.mkdir(exist_ok=True)
+    
+    report = {
+        'subject_id': subject_id,
+        'pipeline_version': __version__,
+        'execution': {
+            'start_time': datetime.fromtimestamp(start_time).isoformat(),
+            'end_time': datetime.now().isoformat(),
+            'total_seconds': time() - start_time,
+            'success': len(failed_steps) == 0
+        },
+        'step_times': step_times,
+        'failed_steps': failed_steps,
+        'step_results': {
+            step: {
+                'success': result.get('success', False),
+                'error': result.get('error') if 'error' in result else None
+            }
+            for step, result in step_results.items()
+        }
+    }
+    
+    report_path = log_dir / f"{subject_id}_pipeline_report.json"
+    with open(report_path, 'w') as f:
+        json.dump(report, f, indent=2, default=str)
+    
+    return report_path
 
 
 if __name__ == "__main__":
