@@ -335,7 +335,8 @@ def resolve_nifti(args: argparse.Namespace) -> Path:
     # DICOM case
     if args.dicom and preproc.is_dicom_dir(args.dicom):
         print("Valid DICOM directory. Converting to NIfTI...")
-        nii, _bval, _bvec = preproc.convert_to_nifti(args.dicom, args.out)
+        nii_str, _bval, _bvec = preproc.convert_to_nifti(args.dicom, args.out)
+        nii = Path(nii_str)  # Convert string to Path
 
     else:
         # Provided DICOM path is invalid
@@ -345,7 +346,7 @@ def resolve_nifti(args: argparse.Namespace) -> Path:
 
         # Use explicit NIfTI if given
         if args.nifti:
-            nii = args.nifti
+            nii = args.nifti if isinstance(args.nifti, Path) else Path(args.nifti)
         else:
             # Try to find a NIfTI in the output directory
             print(f"Attempting to find NIfTI in {args.out}...")
