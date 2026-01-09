@@ -81,7 +81,12 @@ def main() -> None:
     p_preproc.add_argument(
         "--show-plots",
         action="store_true",
-        help="Enable QC plots for denoising and segmentation."
+        help="Enable interactive QC plots (displayed, not saved)."
+    )
+    p_preproc.add_argument(
+        "--save-visualizations",
+        action="store_true",
+        help="Save QC visualizations to output directory."
     )
     p_preproc.add_argument(
         "--perform-motion-correction",
@@ -141,7 +146,12 @@ def main() -> None:
     p_track.add_argument(
         "--show-plots",
         action="store_true",
-        help="Enable QC plots for segmentation and tractography.",
+        help="Enable interactive QC plots (displayed, not saved).",
+    )
+    p_track.add_argument(
+        "--save-visualizations",
+        action="store_true",
+        help="Save QC visualizations to output directory."
     )
     p_track.add_argument(
         "--verbose",
@@ -211,6 +221,11 @@ def main() -> None:
         help="Use reduced iterations for faster registration (testing mode)"
     )
     p_extract.add_argument(
+        "--save-visualizations",
+        action="store_true",
+        help="Save QC visualizations to output directory."
+    )
+    p_extract.add_argument(
         "--verbose",
         action="store_true",
         help="Print detailed processing information."
@@ -262,6 +277,11 @@ def main() -> None:
         "--generate-pdf",
         action="store_true",
         help="Generate PDF clinical report"
+    )
+    p_metrics.add_argument(
+        "--save-visualizations",
+        action="store_true",
+        help="Save QC visualizations to output directory (enabled by default for metrics)."
     )
     p_metrics.add_argument(
         "--verbose",
@@ -465,6 +485,12 @@ def cmd_check(args: argparse.Namespace) -> None:
         print(f"NumPy: {numpy.__version__}")
     except ImportError:
         print("NumPy: NOT FOUND")
+    
+    try:
+        import matplotlib
+        print(f"Matplotlib: {matplotlib.__version__}")
+    except ImportError:
+        print("Matplotlib: NOT FOUND")
 
 
 def cmd_import(args: argparse.Namespace) -> None:
@@ -497,6 +523,9 @@ def cmd_preprocess(args: argparse.Namespace) -> None:
     args.out.mkdir(parents=True, exist_ok=True)
 
     data, affine, _hdr, gtab = load_with_preproc(nii)
+    
+    # Keep original data for visualization comparison
+    data_original = data.copy() if args.save_visualizations else None
 
     stem = nii.name.replace(".nii.gz", "").replace(".nii", "")
 
@@ -507,6 +536,9 @@ def cmd_preprocess(args: argparse.Namespace) -> None:
         brain_mask=None,
         visualize=args.show_plots,
     )
+    
+    # Keep denoised data for visualization
+    data_denoised = denoised.copy() if args.save_visualizations else None
 
     print("Step 2: Brain masking with median Otsu")
     masked_data, brain_mask = preproc.background_segmentation(
@@ -515,6 +547,7 @@ def cmd_preprocess(args: argparse.Namespace) -> None:
         visualize=args.show_plots,
     )
 
+    reg_affines = None
     if args.perform_motion_correction:
         print("Step 3: Between volume motion correction")
         try:
@@ -550,6 +583,34 @@ def cmd_preprocess(args: argparse.Namespace) -> None:
         nii, str(args.out), stem, motion_correction_applied
     )
 
+    # Generate visualizations if requested
+    if args.save_visualizations:
+        print("\nStep 6: Generating QC visualizations")
+        try:
+            from csttool.preprocess.modules.visualizations import (
+                save_all_preprocessing_visualizations
+            )
+            
+            viz_paths = save_all_preprocessing_visualizations(
+                data_original=data_original,
+                data_denoised=data_denoised,
+                data_preprocessed=preprocessed,
+                brain_mask=brain_mask,
+                gtab=gtab,
+                output_dir=args.out,
+                stem=stem,
+                reg_affines=reg_affines,
+                motion_correction_applied=motion_correction_applied,
+                verbose=True
+            )
+            
+            print(f"\nVisualizations saved:")
+            for name, path in viz_paths.items():
+                if path:
+                    print(f"  {name}: {path}")
+        except Exception as e:
+            print(f"Warning: Could not generate visualizations: {e}")
+
     print(f"\n✓ Preprocessing complete. Output: {output_path}")
 
 
@@ -562,6 +623,7 @@ def cmd_track(args: argparse.Namespace) -> None:
         - FA map (.nii.gz)
         - MD map (.nii.gz)
         - Processing report (.json)
+        - Visualizations (optional, with --save-visualizations)
     """
     preproc_nii = args.nifti
     verbose = getattr(args, 'verbose', False)
@@ -706,6 +768,43 @@ def cmd_track(args: argparse.Namespace) -> None:
         return
 
     # -------------------------------------------------------------------------
+    # Step 7: Generate visualizations (optional)
+    # -------------------------------------------------------------------------
+    if args.save_visualizations:
+        print("\nStep 7: Generating QC visualizations")
+        try:
+            from csttool.tracking.modules.visualizations import (
+                save_all_tracking_visualizations
+            )
+            
+            viz_paths = save_all_tracking_visualizations(
+                streamlines=streamlines,
+                fa=fa,
+                md=md,
+                white_matter=white_matter,
+                brain_mask=brain_mask,
+                seeds=seeds,
+                affine=affine,
+                output_dir=args.out,
+                stem=stem,
+                tenfit=tenfit,
+                fa_thresh=args.fa_thr,
+                tracking_params=tracking_params,
+                verbose=True
+            )
+            
+            outputs['visualizations'] = viz_paths
+            
+            print(f"\nVisualizations saved:")
+            for name, path in viz_paths.items():
+                if path:
+                    print(f"  {name}: {path}")
+        except Exception as e:
+            print(f"Warning: Could not generate visualizations: {e}")
+            import traceback
+            traceback.print_exc()
+
+    # -------------------------------------------------------------------------
     # Summary
     # -------------------------------------------------------------------------
     print(f"\n{'='*60}")
@@ -714,7 +813,10 @@ def cmd_track(args: argparse.Namespace) -> None:
     print(f"Whole-brain streamlines: {len(streamlines):,}")
     print(f"\nOutputs:")
     for key, path in outputs.items():
-        print(f"  {key}: {path}")
+        if key != 'visualizations':
+            print(f"  {key}: {path}")
+    if 'visualizations' in outputs:
+        print(f"  visualizations: {args.out / 'visualizations'}")
     print(f"{'='*60}")
 
 
@@ -752,7 +854,10 @@ def cmd_extract(args: argparse.Namespace) -> None:
             warp_harvard_oxford_to_subject,
             CST_ROI_CONFIG
         )
-        from csttool.extract.modules.create_roi_masks import create_cst_roi_masks
+        from csttool.extract.modules.create_roi_masks import (
+            create_cst_roi_masks,
+            visualize_roi_masks
+        )
         from csttool.extract.modules.endpoint_filtering import (
             extract_bilateral_cst,
             save_cst_tractograms,
@@ -895,6 +1000,44 @@ def cmd_extract(args: argparse.Namespace) -> None:
     except Exception as e:
         print(f"Error saving outputs: {e}")
         return
+    
+    # -------------------------------------------------------------------------
+    # Step 7: Generate visualizations (optional)
+    # -------------------------------------------------------------------------
+    if args.save_visualizations:
+        print("\n" + "="*60)
+        print("Step 6: Generating QC visualizations")
+        print("="*60)
+        
+        try:
+            # ROI mask visualization
+            viz_path = visualize_roi_masks(
+                masks=masks,
+                subject_fa=fa_data,
+                output_dir=args.out,
+                subject_id=args.subject_id,
+                verbose=verbose
+            )
+            print(f"✓ ROI visualization: {viz_path}")
+            
+            # CST extraction visualization
+            try:
+                from csttool.extract.modules.visualizations import plot_cst_extraction
+                cst_viz_path = plot_cst_extraction(
+                    cst_result=cst_result,
+                    fa=fa_data,
+                    affine=fa_affine,
+                    output_dir=args.out,
+                    subject_id=args.subject_id,
+                    verbose=verbose
+                )
+                print(f"✓ CST extraction visualization: {cst_viz_path}")
+            except ImportError:
+                # Fallback if visualization module doesn't have this function yet
+                pass
+                
+        except Exception as e:
+            print(f"Warning: Could not generate visualizations: {e}")
     
     # -------------------------------------------------------------------------
     # Summary
@@ -1065,8 +1208,11 @@ def cmd_metrics(args: argparse.Namespace) -> None:
         print(f"Error saving CSV summary: {e}")
     
     # -------------------------------------------------------------------------
-    # Generate visualizations
+    # Generate visualizations (always enabled for metrics, or with flag)
     # -------------------------------------------------------------------------
+    # Metrics always generates visualizations by default
+    save_viz = getattr(args, 'save_visualizations', True) or True
+    
     viz_dir = args.out / "visualizations"
     viz_dir.mkdir(exist_ok=True)
     
