@@ -107,10 +107,6 @@ For Windows, replace `source .venv/bin/activate` with `.venv\Scripts\Activate.ps
 
 For Debian/Ubuntu-based Linux systems, ensure that the `python3-venv` package is installed via `apt install python3.12-venv`.
 
-## Testing
-
-Each submodule will have its own `/test` folder. The root level `/test` folder houses the CLI `.sh` test script.
-
 ## Usage examples
 
 ### Preprocess data
