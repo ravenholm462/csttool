@@ -50,7 +50,7 @@ The skeleton consists of two files:
 
 ## Preprocessing
 
-The preprocessing pipeline performs the following steps:
+The ![preprocessing pipeline](https://github.com/ravenholm462/csttool/tree/main/diagrams/png/preprocessing.png) performs the following steps:
 
 1. Load NIfTI + bvals/bvecs and build a gradient table
 2. Estimate noise and denoise with NLMEANS
@@ -60,7 +60,7 @@ The preprocessing pipeline performs the following steps:
 
 ## Tracking
 
-The tracking pipeline performs the following steps:
+The ![tracking pipeline](https://github.com/ravenholm462/csttool/tree/main/diagrams/png/tracking.png) performs the following steps:
 
 1. Tensor fitting and scalar measures (FA, MD)
 2. Direction field estimation with a CSA ODF model
@@ -70,7 +70,7 @@ The tracking pipeline performs the following steps:
 
 ## Extraction
 
-The extraction pipeline performs the following steps:
+The ![extraction pipeline](https://github.com/ravenholm462/csttool/tree/main/diagrams/png/extraction.png) performs the following steps:
 
 1. Performs spatial registration of the moving image (subject) to a static image (MNI 152 template)
 2. Warps Harvard-Oxford parcellation atlas to subject native space using registration mapping
@@ -80,7 +80,7 @@ The extraction pipeline performs the following steps:
 
 ## Metrics
 
-The metrics pipeline performs the following steps:
+The ![metrics pipeline](https://github.com/ravenholm462/csttool/tree/main/diagrams/png/metrics.png) performs the following steps:
 
 1. Performs unilateral analysis of left and right CST (morphology, FA, MD, tract profile)
 2. Performs bilateral analysis of entire CST (assymetry metrics, volume laterlaity, FA/MD laterality)
