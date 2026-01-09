@@ -5,8 +5,8 @@ from pathlib import Path
 
 from . import __version__
 import csttool.preprocess.funcs as preproc
-import csttool.tracking.funcs as trk
-import csttool.metrics.funcs as metr
+import csttool.tracking.modules as trk
+import csttool.metrics.modules as metr
 
 from dipy.io import read_bvals_bvecs
 from dipy.core.gradients import gradient_table
@@ -178,16 +178,22 @@ def main() -> None:
     )
     p_extract.set_defaults(func=cmd_extract)
 
-    # Metrics subtool
+    #Metrics subtool
     p_metrics = subparsers.add_parser(
         "metrics",
-        help="Compute metrics on tractography results"
+        help="Compute bilateral CST metrics and generate reports"
     )
     p_metrics.add_argument(
-        "--tractogram",
+        "--cst-left",
         type=Path,
         required=True,
-        help="Path to .trk tractogram file"
+        help="Path to left CST tractogram (.trk)"
+    )
+    p_metrics.add_argument(
+        "--cst-right",
+        type=Path,
+        required=True,
+        help="Path to right CST tractogram (.trk)"
     )
     p_metrics.add_argument(
         "--fa",
@@ -195,15 +201,26 @@ def main() -> None:
         help="FA map for microstructural analysis"
     )
     p_metrics.add_argument(
-        "--md", 
+        "--md",
         type=Path,
         help="MD map for microstructural analysis"
+    )
+    p_metrics.add_argument(
+        "--subject-id",
+        type=str,
+        default="subject",
+        help="Subject identifier for reports"
+    )
+    p_metrics.add_argument(
+        "--generate-pdf",
+        action="store_true",
+        help="Generate PDF clinical report"
     )
     p_metrics.add_argument(
         "--out",
         type=Path,
         required=True,
-        help="Output directory for metrics"
+        help="Output directory for metrics and reports"
     )
     p_metrics.set_defaults(func=cmd_metrics)
 
@@ -651,6 +668,7 @@ def cmd_track(args: argparse.Namespace) -> None:
 
 def cmd_extract(args):
     """Extract bilateral CST using atlas-based ROI filtering."""
+    import nibabel as nib
     from csttool.extract.modules.registration import register_mni_to_subject
     from csttool.extract.modules.warp_atlas_to_subject import (
         fetch_harvard_oxford, 
@@ -748,39 +766,90 @@ def cmd_extract(args):
     print(f"Right CST: {cst_result['stats']['cst_right_count']:,} streamlines")
 
 def cmd_metrics(args):
-    """Compute CST metrics from tractography results."""
+    """Compute bilateral CST metrics and generate reports."""
     from dipy.io.streamline import load_tractogram
     from dipy.io.image import load_nifti
+    from csttool.metrics import (
+        analyze_cst_hemisphere,
+        compare_bilateral_cst,
+        print_bilateral_summary
+    )
+    from csttool.metrics.modules.reports import (
+        save_json_report,
+        save_csv_summary,
+        save_pdf_report,
+        generate_complete_report
+    )
+    from csttool.metrics import (
+        plot_tract_profiles,
+        plot_bilateral_comparison,
+        create_summary_figure
+    )
     
-    # Load tractogram
-    print(f"Loading tractogram: {args.tractogram}")
-    sft = load_tractogram(str(args.tractogram), 'same')
-    streamlines = sft.streamlines
+    args.out.mkdir(parents=True, exist_ok=True)
+    
+    # Load tractograms
+    print(f"Loading left CST: {args.cst_left}")
+    sft_left = load_tractogram(str(args.cst_left), 'same')
+    streamlines_left = sft_left.streamlines
+    
+    print(f"Loading right CST: {args.cst_right}")
+    sft_right = load_tractogram(str(args.cst_right), 'same')
+    streamlines_right = sft_right.streamlines
     
     # Load scalar maps
     fa_map, fa_affine = load_nifti(str(args.fa)) if args.fa else (None, None)
-    md_map, md_affine = load_nifti(str(args.md)) if args.md else (None, None)
+    md_map, _ = load_nifti(str(args.md)) if args.md else (None, None)
     
-    # Use tractogram affine
-    affine = sft.affine
+    affine = sft_left.affine
     
-    print(f"Analyzing {len(streamlines)} streamlines...")
+    # Analyze each hemisphere
+    print("\nAnalyzing LEFT CST...")
+    left_metrics = analyze_cst_hemisphere(
+        streamlines=streamlines_left,
+        fa_map=fa_map,
+        md_map=md_map,
+        affine=affine,
+        hemisphere='left'
+    )
     
-    # Compute metrics
-    metrics = metr.analyze_cst_bundle(streamlines, fa_map, md_map, affine)
+    print("\nAnalyzing RIGHT CST...")
+    right_metrics = analyze_cst_hemisphere(
+        streamlines=streamlines_right,
+        fa_map=fa_map,
+        md_map=md_map,
+        affine=affine,
+        hemisphere='right'
+    )
     
-    # Save results
-    args.out.mkdir(parents=True, exist_ok=True)
-    output_file = args.out / "cst_metrics.json"
+    # Bilateral comparison
+    comparison = compare_bilateral_cst(left_metrics, right_metrics)
     
-    import json
-    with open(output_file, 'w') as f:
-        json.dump(metrics, f, indent=2)
+    # Save reports
+    json_path = save_json_report(comparison, args.out, args.subject_id)
+    csv_path = save_csv_summary(comparison, args.out, args.subject_id)
     
-    print(f"✓ Metrics saved to {output_file}")
+    # Generate visualizations
+    viz_dir = args.out / "visualizations"
+    viz_dir.mkdir(exist_ok=True)
     
-    # Print summary
-    metr.print_metrics_summary(metrics)
+    viz_paths = {}
+    if fa_map is not None:
+        viz_paths['tract_profiles'] = plot_tract_profiles(
+            left_metrics, right_metrics, viz_dir, args.subject_id, scalar='fa'
+        )
+    viz_paths['bilateral_comparison'] = plot_bilateral_comparison(
+        comparison, viz_dir, args.subject_id
+    )
+    
+    # Generate PDF if requested
+    if args.generate_pdf:
+        pdf_path = save_pdf_report(comparison, viz_paths, args.out, args.subject_id)
+        print(f"✓ PDF report: {pdf_path}")
+    
+    print(f"\n{'='*50}")
+    print("METRICS COMPLETE")
+    print(f"{'='*50}")
 
 if __name__ == "__main__":
     main()
