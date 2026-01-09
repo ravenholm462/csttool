@@ -14,26 +14,18 @@ The core ideas behind `csttool` are:
 v0.0.1
 
 ```
+├── diagrams
 ├── LICENSE
 ├── pyproject.toml
 ├── README.md
 ├── src
 │   └── csttool
 │       ├── cli.py
+│       ├── extract
 │       ├── __init__.py
 │       ├── metrics
-│       │   └── __init__.py
 │       ├── preprocess
-│       │   ├── funcs.py
-│       │   ├── __init__.py
-│       │   └── tests
-│       │       └── pipeline_test.py
 │       └── tracking
-│           ├── funcs.py
-│           ├── __init__.py
-└── tests
-    ├── cli_test.sh
-    ├── __init__.py
 ```
 
 ## Config file
@@ -54,31 +46,46 @@ The skeleton consists of two files:
 2. `src/csttool/cli.py`
    - Defines the main entry point for the command line interface
    - Python's built-in `argparse` module to handle commands and arguments
-   - Uses subparsers to create modular commands within the main parser, each bound to its own Python function. Each command implements one workflow step (e.g. `check`, `preprocess`, `track`, `metrics`).
+   - Uses subparsers to create modular commands within the main parser, each bound to its own Python function. Each command implements one workflow step (e.g. `check`, `import`, `preprocess`, `track`, `extract`, `metrics`).
 
 ## Preprocessing
 
-The preprocessing pipeline performs the following steps:
+The ![preprocessing pipeline](https://github.com/ravenholm462/csttool/tree/main/diagrams/png/preprocessing.png) performs the following steps:
 
 1. Load NIfTI + bvals/bvecs and build a gradient table
 2. Estimate noise and denoise with NLMEANS
 3. Compute a brain mask with median Otsu on b0 volumes
-4. Perform between volume motion correction
-5. Save the preprocessed data to disk
+4. Perform between volume motion correction (optional)
+5. Save the preprocessed data, generate visualizations
 
 ## Tracking
 
-The tracking pipeline performs the following steps:
+The ![tracking pipeline](https://github.com/ravenholm462/csttool/tree/main/diagrams/png/tracking.png) performs the following steps:
 
 1. Tensor fitting and scalar measures (FA, MD)
 2. Direction field estimation with a CSA ODF model
 3. FA based stopping criterion and seed generation
 4. Deterministic local tracking
-5. Tractogram saving helper
+5. Save generated whole-brain tractogram, generate visualizations
 
-## Analysis
+## Extraction
 
-Coming soon.
+The ![extraction pipeline](https://github.com/ravenholm462/csttool/tree/main/diagrams/png/extraction.png) performs the following steps:
+
+1. Performs spatial registration of the moving image (subject) to a static image (MNI 152 template)
+2. Warps Harvard-Oxford parcellation atlas to subject native space using registration mapping
+3. Create ROI masks to isolate the corticospinal tract (brainsteam, motor left, motor right)
+4. Filter all streamlines from the whole-brain tractogram not passing through the ROIs
+5. Save extracted CST tractograms, generate visualizations
+
+## Metrics
+
+The ![metrics pipeline](https://github.com/ravenholm462/csttool/tree/main/diagrams/png/metrics.png) performs the following steps:
+
+1. Performs unilateral analysis of left and right CST (morphology, FA, MD, tract profile)
+2. Performs bilateral analysis of entire CST (assymetry metrics, volume laterlaity, FA/MD laterality)
+3. Generates reports
+4. Generates visualizations
 
 ## How to run
 
@@ -99,10 +106,6 @@ csttool check
 For Windows, replace `source .venv/bin/activate` with `.venv\Scripts\Activate.ps1`
 
 For Debian/Ubuntu-based Linux systems, ensure that the `python3-venv` package is installed via `apt install python3.12-venv`.
-
-## Testing
-
-Each submodule will have its own `/test` folder. The root level `/test` folder houses the CLI `.sh` test script.
 
 ## Usage examples
 
