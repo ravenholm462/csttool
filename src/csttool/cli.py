@@ -64,6 +64,50 @@ def main() -> None:
     add_io_arguments(p_import)
     p_import.set_defaults(func=cmd_import)
 
+    p_import = subparsers.add_parser(
+        "import",
+        help="Import DICOM data or load NIfTI with series selection and validation"
+    )
+    p_import.add_argument(
+        "--dicom",
+        type=Path,
+        help="Path to DICOM directory (can be study root with multiple series)"
+    )
+    p_import.add_argument(
+        "--nifti",
+        type=Path,
+        help="Path to existing NIfTI file (skip DICOM conversion)"
+    )
+    p_import.add_argument(
+        "--out",
+        type=Path,
+        required=True,
+        help="Output directory for converted files"
+    )
+    p_import.add_argument(
+        "--subject-id",
+        type=str,
+        default=None,
+        help="Subject identifier for output naming"
+    )
+    p_import.add_argument(
+        "--series",
+        type=int,
+        default=None,
+        help="Series number to convert (as shown in scan output, 1-indexed)"
+    )
+    p_import.add_argument(
+        "--scan-only",
+        action="store_true",
+        help="Only scan and analyze series, don't convert"
+    )
+    p_import.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Print detailed processing information"
+    )
+    p_import.set_defaults(func=cmd_import)
+
     # -------------------------------------------------------------------------
     # preprocess subtool
     # -------------------------------------------------------------------------
@@ -493,24 +537,153 @@ def cmd_check(args: argparse.Namespace) -> None:
     except ImportError:
         print("Matplotlib: NOT FOUND")
 
-
 def cmd_import(args: argparse.Namespace) -> None:
-    """Import DICOM data or load an existing NIfTI dataset and print basic info."""
+    """
+    Import DICOM data or load existing NIfTI.
+    
+    Enhanced version with:
+    - Multi-series scanning and analysis
+    - Automatic best series selection
+    - Suitability scoring for tractography
+    - Organized output structure
+    """
+    # Import ingest module
     try:
-        nii = resolve_nifti(args)
+        from csttool.ingest import (
+            run_ingest_pipeline,
+            scan_study,
+            analyze_all_series,
+            recommend_series,
+            print_series_summary
+        )
+    except ImportError as e:
+        print(f"Error: Could not import ingest module: {e}")
+        print("Make sure csttool is properly installed with the ingest module.")
+        print("\nFalling back to legacy import behavior...")
+        cmd_import_legacy(args)
+        return
+    
+    verbose = getattr(args, 'verbose', True)
+    
+    # -------------------------------------------------------------------------
+    # Case 1: NIfTI provided directly (skip conversion)
+    # -------------------------------------------------------------------------
+    if args.nifti:
+        if not args.nifti.exists():
+            print(f"Error: NIfTI file not found: {args.nifti}")
+            return
+        
+        print(f"Using existing NIfTI: {args.nifti}")
+        
+        # Just print info about the file
+        try:
+            import nibabel as nib
+            img = nib.load(str(args.nifti))
+            print(f"\nDataset Information:")
+            print(f"  Shape: {img.shape}")
+            print(f"  Voxel size: {img.header.get_zooms()[:3]}")
+            
+            # Check for gradient files
+            stem = args.nifti.stem.replace('.nii', '')
+            bval = args.nifti.parent / f"{stem}.bval"
+            bvec = args.nifti.parent / f"{stem}.bvec"
+            
+            if bval.exists() and bvec.exists():
+                print(f"  Gradient files found: {bval.name}, {bvec.name}")
+                
+                # Load and report b-values
+                bvals, _ = read_bvals_bvecs(str(bval), str(bvec))
+                print(f"  B-values: {sorted(set(bvals.astype(int)))}")
+                print(f"  Gradient directions: {len(bvals)}")
+            else:
+                print("  ⚠️ No gradient files found alongside NIfTI")
+        except Exception as e:
+            print(f"  Warning: Could not read NIfTI info: {e}")
+        
+        return
+    
+    # -------------------------------------------------------------------------
+    # Case 2: DICOM directory provided
+    # -------------------------------------------------------------------------
+    if not args.dicom:
+        print("Error: Provide either --dicom or --nifti")
+        return
+    
+    if not args.dicom.exists():
+        print(f"Error: DICOM directory not found: {args.dicom}")
+        return
+    
+    # -------------------------------------------------------------------------
+    # Scan-only mode
+    # -------------------------------------------------------------------------
+    if args.scan_only:
+        print("=" * 60)
+        print("DICOM STUDY SCAN")
+        print("=" * 60)
+        
+        series_list = scan_study(args.dicom, verbose=verbose)
+        
+        if not series_list:
+            print("\nNo DICOM series found.")
+            return
+        
+        print_series_summary(series_list)
+        
+        # Analyze all series
+        print("\nAnalyzing series for tractography suitability...")
+        analyses = analyze_all_series(series_list, verbose=verbose)
+        
+        # Show recommendation
+        recommend_series(analyses, verbose=True)
+        
+        print("\nTo convert a specific series, run:")
+        print(f"  csttool import --dicom {args.dicom} --series <N> --out <output_dir>")
+        return
+    
+    # -------------------------------------------------------------------------
+    # Full conversion pipeline
+    # -------------------------------------------------------------------------
+    args.out.mkdir(parents=True, exist_ok=True)
+    
+    try:
+        outputs = run_ingest_pipeline(
+            study_dir=args.dicom,
+            output_dir=args.out,
+            subject_id=args.subject_id,
+            series_index=args.series,
+            auto_select=True,
+            verbose=verbose
+        )
+        
+        # Print next steps
+        print("\n📋 Next step: Preprocessing")
+        print(f"   csttool preprocess --nifti {outputs['nifti_path']} --out {args.out}")
+        
     except FileNotFoundError as e:
         print(f"Error: {e}")
-        return
+    except ValueError as e:
+        print(f"Error: {e}")
+        print("\nUse --scan-only to see available series, then specify with --series <N>")
+    except RuntimeError as e:
+        print(f"Error: {e}")
 
-    data, _affine, hdr, gtab = load_with_preproc(nii)
+# def cmd_import(args: argparse.Namespace) -> None:
+#     """Import DICOM data or load an existing NIfTI dataset and print basic info."""
+#     try:
+#         nii = resolve_nifti(args)
+#     except FileNotFoundError as e:
+#         print(f"Error: {e}")
+#         return
 
-    print(f"\nDataset Information:")
-    print(f"  File: {nii}")
-    print(f"  Data shape: {data.shape}")
-    print(f"  Gradient directions: {len(gtab.bvals)}")
-    voxel_size = tuple(float(v) for v in hdr.get_zooms()[:3])
-    print(f"  Voxel size (mm): {voxel_size}")
-    print(f"  B-values: {sorted(set(gtab.bvals.astype(int)))}")
+#     data, _affine, hdr, gtab = load_with_preproc(nii)
+
+#     print(f"\nDataset Information:")
+#     print(f"  File: {nii}")
+#     print(f"  Data shape: {data.shape}")
+#     print(f"  Gradient directions: {len(gtab.bvals)}")
+#     voxel_size = tuple(float(v) for v in hdr.get_zooms()[:3])
+#     print(f"  Voxel size (mm): {voxel_size}")
+#     print(f"  B-values: {sorted(set(gtab.bvals.astype(int)))}")
 
 
 def cmd_preprocess(args: argparse.Namespace) -> None:
