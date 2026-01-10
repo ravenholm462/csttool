@@ -509,3 +509,26 @@ def save_denoised_data(data, affine, out_dir, stem):
     nib.save(nib.Nifti1Image(data, affine), denoised_path)
     
     return denoised_path
+
+def save_preprocessing_report(stem, out_dir, motion_correction_applied, params=None):
+    """Save preprocessing report as JSON."""
+    import json
+    from pathlib import Path
+    from datetime import datetime
+    
+    out_dir = Path(out_dir) / "preprocessed"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    
+    report = {
+        'subject_id': stem,
+        'timestamp': datetime.now().isoformat(),
+        'motion_correction_applied': motion_correction_applied,
+        'parameters': params or {}
+    }
+    
+    report_path = out_dir / f"{stem}_preprocessing_report.json"
+    with open(report_path, 'w') as f:
+        json.dump(report, f, indent=2)
+    
+    print(f"✓ Preprocessing report saved to: {report_path}")
+    return report_path
