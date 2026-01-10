@@ -11,7 +11,7 @@
 
 ### Import
 
-- [ ] Input DICOMS of one subject are represented as multiple series. The tool does not account for this currently. Resolve proper data import.
+- [X] Input DICOMS of one subject are represented as multiple series. The tool does not account for this currently. Resolve proper data import.
 
 ### Preprocessing
 
@@ -33,5 +33,5 @@
 
 - [ ] Revise PDF report (content, formatting, missing visuals).
 - [ ] Fractional anisotropy PDF - add positional markings to the x axis (i.e. brainstem at the beginning, motor cortex at the end) to make orientation easier
-- [ ] Delete clinical interpretation text. It is not a clinical tool yet.
-- [ ] Add QC visualizations to the report (e.g. the isolated CST over the brain images, all 3 planes, see extraction visualizations)
+- [X] Delete clinical interpretation text. It is not a clinical tool yet.
+- [ ] Add QC visualizations to the report (e.g. the isolated CST, all 3 planes, see extraction visualizations)

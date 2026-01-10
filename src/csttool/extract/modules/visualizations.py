@@ -431,9 +431,9 @@ def create_extraction_summary(
     
     # Row 1: CST streamlines only (no FA background)
     streamline_views = [
-        ('Sagittal', 1, 2),  # Y vs Z
-        ('Coronal', 0, 2),   # X vs Z
         ('Axial', 0, 1),     # X vs Y
+        ('Coronal', 0, 2),   # X vs Z
+        ('Sagittal', 1, 2)  # Y vs Z
     ]
     
     for col, (name, d1, d2) in enumerate(streamline_views):
