@@ -31,3 +31,6 @@
 ### Metrics
 
 - [ ] Revise PDF report (content, formatting, missing visuals).
+- [ ] Fractional anisotropy PDF - add positional markings to the x axis (i.e. brainstem at the beginning, motor cortex at the end) to make orientation easier
+- [ ] Delete clinical interpretation text. It is not a clinical tool yet.
+- [ ] Add QC visualizations to the report (e.g. the isolated CST over the brain images, all 3 planes, see extraction visualizations)
