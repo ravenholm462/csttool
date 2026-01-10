@@ -188,7 +188,8 @@ def compute_affine_registration(
     translation = affreg.optimize(
         static_image, moving_image,
         TranslationTransform3D(), None,
-        static_affine, moving_affine,
+        static_grid2world=static_affine, 
+        moving_grid2world=moving_affine,
         starting_affine=c_of_mass.affine
     )
 
@@ -198,7 +199,8 @@ def compute_affine_registration(
     rigid = affreg.optimize(
         static_image, moving_image,
         RigidTransform3D(), None,
-        static_affine, moving_affine,
+        static_grid2world=static_affine, 
+        moving_grid2world=moving_affine,
         starting_affine=translation.affine
     )
 
@@ -208,7 +210,8 @@ def compute_affine_registration(
     affine = affreg.optimize(
         static_image, moving_image,
         AffineTransform3D(), None,
-        static_affine, moving_affine,
+        static_grid2world=static_affine, 
+        moving_grid2world=moving_affine,
         starting_affine=rigid.affine
     )
 
