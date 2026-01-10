@@ -311,11 +311,14 @@ def warp_harvard_oxford_to_subject(
     if save_warped:
         if verbose:
             print("\nSaving warped atlases...")
+
+        nifti_dir = output_dir / "nifti"
+        nifti_dir.mkdir(parents=True, exist_ok=True)
         
         prefix = f"{subject_id}_" if subject_id else ""
         
         # Save subcortical
-        subcort_path = output_dir / f"{prefix}harvard_oxford_subcortical_warped.nii.gz"
+        subcort_path = nifti_dir / f"{prefix}harvard_oxford_subcortical_warped.nii.gz"
         nib.save(
             nib.Nifti1Image(subcortical_warped, subject_affine),
             subcort_path
@@ -325,7 +328,7 @@ def warp_harvard_oxford_to_subject(
             print(f"    ✓ Subcortical: {subcort_path}")
         
         # Save cortical
-        cort_path = output_dir / f"{prefix}harvard_oxford_cortical_warped.nii.gz"
+        cort_path = nifti_dir / f"{prefix}harvard_oxford_cortical_warped.nii.gz"
         nib.save(
             nib.Nifti1Image(cortical_warped, subject_affine),
             cort_path
