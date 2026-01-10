@@ -294,11 +294,14 @@ def create_cst_roi_masks(
     if save_masks:
         if verbose:
             print("\nSaving ROI masks...")
+
+        nifti_dir = output_dir / "nifti"
+        nifti_dir.mkdir(parents=True, exist_ok=True)
         
         prefix = f"{subject_id}_" if subject_id else ""
         
         # Save brainstem
-        brainstem_path = output_dir / f"{prefix}roi_brainstem.nii.gz"
+        brainstem_path = nifti_dir / f"{prefix}roi_brainstem.nii.gz"
         nib.save(
             nib.Nifti1Image(brainstem_mask.astype(np.uint8), subject_affine),
             brainstem_path
@@ -308,7 +311,7 @@ def create_cst_roi_masks(
             print(f"    ✓ Brainstem: {brainstem_path}")
         
         # Save motor left
-        motor_left_path = output_dir / f"{prefix}roi_motor_left.nii.gz"
+        motor_left_path = nifti_dir / f"{prefix}roi_motor_left.nii.gz"
         nib.save(
             nib.Nifti1Image(motor_left_mask.astype(np.uint8), subject_affine),
             motor_left_path
@@ -318,7 +321,7 @@ def create_cst_roi_masks(
             print(f"    ✓ Motor Left: {motor_left_path}")
         
         # Save motor right
-        motor_right_path = output_dir / f"{prefix}roi_motor_right.nii.gz"
+        motor_right_path = nifti_dir / f"{prefix}roi_motor_right.nii.gz"
         nib.save(
             nib.Nifti1Image(motor_right_mask.astype(np.uint8), subject_affine),
             motor_right_path
@@ -333,7 +336,7 @@ def create_cst_roi_masks(
         combined[motor_left_mask] = 2
         combined[motor_right_mask] = 3
         
-        combined_path = output_dir / f"{prefix}roi_cst_combined.nii.gz"
+        combined_path = nifti_dir / f"{prefix}roi_cst_combined.nii.gz"
         nib.save(
             nib.Nifti1Image(combined, subject_affine),
             combined_path
