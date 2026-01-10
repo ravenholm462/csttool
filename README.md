@@ -109,16 +109,8 @@ For Debian/Ubuntu-based Linux systems, ensure that the `python3-venv` package is
 
 ## Usage examples
 
-### Preprocess data
-
 ```bash
-csttool preprocess --nifti /data/sub01_dwi.nii.gz --out /data/output
-```
-
-### Run deterministic tracking
-
-```
-csttool track --nifti /data/output/sub01_dwi_preproc.nii.gz --out /data/output
+csttool run --dicom /path/to/dicom --out /path/to/out --save-visualizations --generate-pdf
 ```
 
 
