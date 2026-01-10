@@ -352,14 +352,15 @@ def save_cst_tractograms(
         Paths to saved tractogram files.
     """
     output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
+    trk_dir = output_dir / "trk"
+    trk_dir.mkdir(parents=True, exist_ok=True)
     
     prefix = f"{subject_id}_" if subject_id else ""
     paths = {}
     
     # Save Left CST
     if len(cst_result['cst_left']) > 0:
-        left_path = output_dir / f"{prefix}cst_left.trk"
+        left_path = trk_dir / f"{prefix}cst_left.trk"
         sft_left = StatefulTractogram(cst_result['cst_left'], reference_img, Space.RASMM)
         save_tractogram(sft_left, str(left_path))
         paths['cst_left'] = left_path
@@ -372,7 +373,7 @@ def save_cst_tractograms(
     
     # Save Right CST
     if len(cst_result['cst_right']) > 0:
-        right_path = output_dir / f"{prefix}cst_right.trk"
+        right_path = trk_dir / f"{prefix}cst_right.trk"
         sft_right = StatefulTractogram(cst_result['cst_right'], reference_img, Space.RASMM)
         save_tractogram(sft_right, str(right_path))
         paths['cst_right'] = right_path
@@ -385,7 +386,7 @@ def save_cst_tractograms(
     
     # Save Combined CST
     if len(cst_result['cst_combined']) > 0:
-        combined_path = output_dir / f"{prefix}cst_bilateral.trk"
+        combined_path = trk_dir / f"{prefix}cst_bilateral.trk"
         sft_combined = StatefulTractogram(cst_result['cst_combined'], reference_img, Space.RASMM)
         save_tractogram(sft_combined, str(combined_path))
         paths['cst_combined'] = combined_path
