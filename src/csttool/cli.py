@@ -451,6 +451,11 @@ def main() -> None:
         help="Show QC plots during processing"
     )
     p_run.add_argument(
+        "--save-visualizations",
+        action="store_true",
+        help="Save QC visualizations for each pipeline stage"
+    )
+    p_run.add_argument(
         "--verbose",
         action="store_true",
         help="Print detailed processing information"
@@ -836,6 +841,21 @@ def cmd_preprocess(args: argparse.Namespace) -> dict | None:
     preproc.copy_gradient_files(
         nii, str(args.out), stem, motion_correction_applied
     )
+
+    if getattr(args, 'save_visualizations', False):
+        from csttool.preprocess.modules import save_all_preprocessing_visualizations
+        save_all_preprocessing_visualizations(
+            data_original=data,
+            data_denoised=denoised,
+            data_preprocessed=preprocessed,
+            brain_mask=brain_mask,
+            gtab=gtab,
+            output_dir=args.out,
+            stem=stem,
+            reg_affines=reg_affines if motion_correction_applied else None,
+            motion_correction_applied=motion_correction_applied,
+            # verbose=verbose
+        )
     
     # Save brain mask
     mask_path = preproc.save_brain_mask(brain_mask, affine, str(args.out), stem)
@@ -982,6 +1002,25 @@ def cmd_track(args: argparse.Namespace) -> dict | None:
     except Exception as e:
         print(f"Error saving outputs: {e}")
         return None
+    
+    # After save_tracking_outputs() and before the summary print
+    if getattr(args, 'save_visualizations', False):
+        from csttool.tracking.modules import save_all_tracking_visualizations
+        save_all_tracking_visualizations(
+            streamlines=streamlines,
+            fa=fa,
+            md=md,
+            white_matter=white_matter,
+            brain_mask=brain_mask,
+            seeds=seeds,
+            affine=affine,
+            output_dir=args.out,
+            stem=stem,
+            tenfit=tenfit,
+            fa_thresh=args.fa_thr,
+            tracking_params=tracking_params,
+            verbose=verbose
+        )
 
     # Summary
     print(f"\n{'='*60}")
@@ -1150,6 +1189,19 @@ def cmd_extract(args: argparse.Namespace) -> dict | None:
     except Exception as e:
         print(f"Error saving outputs: {e}")
         return None
+    
+    if getattr(args, 'save_visualizations', False):
+        from csttool.extract.modules import save_all_extraction_visualizations
+        save_all_extraction_visualizations(
+            cst_result=cst_result,
+            fa=fa_data,
+            masks=masks,
+            affine=fa_affine,
+            output_dir=args.out,
+            subject_id=args.subject_id,
+            # mni_warped=registration_result.get('mni_warped')
+            verbose=verbose
+        )
     
     # Summary
     print(f"\n{'='*60}")
@@ -1507,6 +1559,7 @@ def cmd_run(args: argparse.Namespace) -> None:
             out=args.out,
             coil_count=getattr(args, 'coil_count', 4),
             show_plots=getattr(args, 'show_plots', False),
+            save_visualizations=getattr(args, 'save_visualizations', False),
             perform_motion_correction=getattr(args, 'perform_motion_correction', False),
             verbose=verbose
         )
@@ -1551,6 +1604,7 @@ def cmd_run(args: argparse.Namespace) -> None:
             seed_density=getattr(args, 'seed_density', 1),
             step_size=getattr(args, 'step_size', 0.5),
             sh_order=getattr(args, 'sh_order', 6),
+            save_visualizations=getattr(args, 'save_visualizations', False),
             show_plots=getattr(args, 'show_plots', False),
             verbose=verbose,
             out=track_out
@@ -1599,6 +1653,7 @@ def cmd_run(args: argparse.Namespace) -> None:
             dilate_brainstem=getattr(args, 'dilate_brainstem', 2),
             dilate_motor=getattr(args, 'dilate_motor', 1),
             fast_registration=getattr(args, 'fast_registration', False),
+            save_visualizations=getattr(args, 'save_visualizations', False),
             verbose=verbose,
             out=extract_out
         )
@@ -1640,6 +1695,7 @@ def cmd_run(args: argparse.Namespace) -> None:
             md=md_path,
             subject_id=subject_id,
             generate_pdf=getattr(args, 'generate_pdf', False),
+            save_visualizations=getattr(args, 'save_visualizations', False),
             verbose=verbose,
             out=metrics_out
         )
