@@ -25,7 +25,7 @@
 
 ### Extraction
 
-- [ ] Output architecture too messy. Fix.
+- [X] Output architecture too messy. Fix.
 - [ ] Visualizations of LFS/RHS CST too messy, same as for full brain tractogram. Fix.
 
 ### Metrics
