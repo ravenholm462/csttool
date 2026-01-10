@@ -174,7 +174,7 @@ def save_pdf_report(
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     
-    pdf_path = output_dir / f"{subject_id}_clinical_report.pdf"
+    pdf_path = output_dir / f"{subject_id}_report.pdf"
     
     # Create document
     doc = SimpleDocTemplate(str(pdf_path), pagesize=A4)
@@ -273,12 +273,6 @@ def save_pdf_report(
     story.append(table)
     story.append(Spacer(1, 0.3*inch))
     
-    # Interpretation
-    story.append(Paragraph("Clinical Interpretation", heading_style))
-    interpretation_text = generate_interpretation_text(asym)
-    story.append(Paragraph(interpretation_text, styles['Normal']))
-    story.append(Spacer(1, 0.2*inch))
-    
     # Add visualizations if available
     if visualization_paths:
         story.append(PageBreak())
@@ -297,44 +291,6 @@ def save_pdf_report(
     doc.build(story)
     print(f"✓ PDF report saved: {pdf_path}")
     return pdf_path
-
-
-def generate_interpretation_text(asymmetry):
-    """
-    Generate clinical interpretation text based on asymmetry metrics.
-    
-    Parameters
-    ----------
-    asymmetry : dict
-        Asymmetry metrics from bilateral comparison
-        
-    Returns
-    -------
-    text : str
-        Clinical interpretation text
-    """
-    
-    significant_asymmetries = []
-    
-    # Check each metric
-    for metric_name, metric_data in asymmetry.items():
-        if isinstance(metric_data, dict) and 'laterality_index' in metric_data:
-            li = abs(metric_data['laterality_index'])
-            if li > 0.10:  # Threshold for significance
-                direction = "left" if metric_data['laterality_index'] > 0 else "right"
-                significant_asymmetries.append(f"{metric_name} ({direction}-sided, LI={metric_data['laterality_index']:+.3f})")
-    
-    if not significant_asymmetries:
-        text = ("Bilateral CST analysis reveals symmetric white matter integrity between hemispheres. "
-                "All laterality indices are within normal ranges (|LI| < 0.10), suggesting "
-                "balanced corticospinal tract development and preservation.")
-    else:
-        text = ("Bilateral CST analysis reveals the following asymmetries: " +
-                ", ".join(significant_asymmetries) + ". "
-                "These findings may warrant clinical correlation and follow-up assessment.")
-    
-    return text
-
 
 def generate_complete_report(
     comparison,
