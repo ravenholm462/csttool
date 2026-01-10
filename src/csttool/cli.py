@@ -850,7 +850,7 @@ def cmd_preprocess(args: argparse.Namespace) -> dict | None:
             data_preprocessed=preprocessed,
             brain_mask=brain_mask,
             gtab=gtab,
-            output_dir=args.out,
+            output_dir=args.out / "preprocessed",
             stem=stem,
             reg_affines=reg_affines if motion_correction_applied else None,
             motion_correction_applied=motion_correction_applied,
