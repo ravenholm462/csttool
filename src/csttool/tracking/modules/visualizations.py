@@ -21,6 +21,76 @@ from matplotlib.colors import Normalize
 from pathlib import Path
 
 
+# =============================================================================
+# HELPER FUNCTION: Compute world-coordinate extent for imshow
+# =============================================================================
+
+def compute_world_extent(fa_shape, affine, slice_idx, view):
+    """
+    Compute proper world-coordinate extent for imshow to align FA with streamlines.
+    
+    Streamlines are in RASMM world coordinates, so the FA background must be
+    positioned using the full affine transformation (not just voxel size).
+    
+    Parameters
+    ----------
+    fa_shape : tuple
+        Shape of the 3D FA volume (i, j, k).
+    affine : ndarray
+        4x4 affine transformation matrix (voxel → world).
+    slice_idx : int
+        Index of the slice being displayed (in the fixed dimension).
+    view : str
+        One of 'sagittal', 'coronal', or 'axial'.
+        
+    Returns
+    -------
+    extent : list
+        [x_min, x_max, y_min, y_max] in world coordinates for use with imshow.
+        
+    Notes
+    -----
+    For each view:
+    - Sagittal: fixed dim 0 (i), showing dims 1 (j) vs 2 (k) → Y vs Z
+    - Coronal: fixed dim 1 (j), showing dims 0 (i) vs 2 (k) → X vs Z
+    - Axial: fixed dim 2 (k), showing dims 0 (i) vs 1 (j) → X vs Y
+    
+    We compute corners by transforming voxel coordinates through the affine.
+    """
+    if view == 'sagittal':
+        # Fixed i = slice_idx, showing j (Y) on x-axis, k (Z) on y-axis
+        # Corner voxels: (slice_idx, 0, 0) and (slice_idx, j_max, k_max)
+        corner_00 = affine @ np.array([slice_idx, 0, 0, 1])
+        corner_jk = affine @ np.array([slice_idx, fa_shape[1], fa_shape[2], 1])
+        x_extent = [corner_00[1], corner_jk[1]]  # Y range
+        y_extent = [corner_00[2], corner_jk[2]]  # Z range
+        
+    elif view == 'coronal':
+        # Fixed j = slice_idx, showing i (X) on x-axis, k (Z) on y-axis
+        corner_00 = affine @ np.array([0, slice_idx, 0, 1])
+        corner_ik = affine @ np.array([fa_shape[0], slice_idx, fa_shape[2], 1])
+        x_extent = [corner_00[0], corner_ik[0]]  # X range
+        y_extent = [corner_00[2], corner_ik[2]]  # Z range
+        
+    elif view == 'axial':
+        # Fixed k = slice_idx, showing i (X) on x-axis, j (Y) on y-axis
+        corner_00 = affine @ np.array([0, 0, slice_idx, 1])
+        corner_ij = affine @ np.array([fa_shape[0], fa_shape[1], slice_idx, 1])
+        x_extent = [corner_00[0], corner_ij[0]]  # X range
+        y_extent = [corner_00[1], corner_ij[1]]  # Y range
+        
+    else:
+        raise ValueError(f"Unknown view: {view}. Use 'sagittal', 'coronal', or 'axial'.")
+    
+    # Return as [left, right, bottom, top] for imshow extent
+    # Use min/max to handle both positive and negative affine components
+    return [min(x_extent), max(x_extent), min(y_extent), max(y_extent)]
+
+
+# =============================================================================
+# TENSOR MAPS VISUALIZATION
+# =============================================================================
+
 def plot_tensor_maps(
     fa,
     md,
@@ -98,41 +168,31 @@ def plot_tensor_maps(
     
     for row, (view_name, slice_idx, slicer, dim) in enumerate(views):
         # FA
-        fa_slice = slicer(fa)
-        axes[row, 0].imshow(fa_slice.T, cmap='gray', origin='lower', vmin=0, vmax=1)
+        axes[row, 0].imshow(slicer(fa).T, cmap='gray', origin='lower', vmin=0, vmax=1)
         if row == 0:
             axes[row, 0].set_title(f'FA\nmean={fa_brain.mean():.3f}')
         axes[row, 0].axis('off')
         
         # MD
-        md_slice = slicer(md)
-        # MD typically in range 0-0.003 mm²/s
-        md_vmax = np.percentile(md_brain, 99) if md_brain.size > 0 else 0.003
-        axes[row, 1].imshow(md_slice.T, cmap='hot', origin='lower', vmin=0, vmax=md_vmax)
+        axes[row, 1].imshow(slicer(md).T, cmap='hot', origin='lower', 
+                           vmin=0, vmax=np.percentile(md_brain, 99))
         if row == 0:
-            axes[row, 1].set_title(f'MD\nmean={md_brain.mean():.2e}')
+            axes[row, 1].set_title(f'MD (×10⁻³)\nmean={md_brain.mean()*1000:.2f}')
         axes[row, 1].axis('off')
         
-        # Brain mask overlay on FA
-        mask_slice = slicer(brain_mask)
-        axes[row, 2].imshow(fa_slice.T, cmap='gray', origin='lower', vmin=0, vmax=1)
-        axes[row, 2].contour(mask_slice.T, levels=[0.5], colors='cyan', linewidths=1)
+        # Brain mask overlay
+        axes[row, 2].imshow(slicer(fa).T, cmap='gray', origin='lower', vmin=0, vmax=1)
+        mask_overlay = np.ma.masked_where(slicer(brain_mask).T == 0, slicer(brain_mask).T)
+        axes[row, 2].imshow(mask_overlay, cmap='Blues', alpha=0.3, origin='lower')
         if row == 0:
-            axes[row, 2].set_title('FA + Brain Mask')
+            axes[row, 2].set_title(f'Brain Mask\n{brain_mask.sum():,} voxels')
         axes[row, 2].axis('off')
         
-        # RGB direction (if available)
+        # RGB if available
         if rgb is not None:
-            if dim == 2:  # Axial
-                rgb_slice = rgb[:, :, slice_idx, :]
-            elif dim == 1:  # Coronal
-                rgb_slice = rgb[:, slice_idx, :, :]
-            else:  # Sagittal
-                rgb_slice = rgb[slice_idx, :, :, :]
-            
-            axes[row, 3].imshow(np.transpose(rgb_slice, (1, 0, 2)), origin='lower')
+            axes[row, 3].imshow(slicer(rgb).transpose(1, 0, 2), origin='lower')
             if row == 0:
-                axes[row, 3].set_title('RGB Direction\n(R=L-R, G=A-P, B=S-I)')
+                axes[row, 3].set_title('Direction (RGB)')
             axes[row, 3].axis('off')
         
         # Add view label
@@ -152,6 +212,10 @@ def plot_tensor_maps(
     return fig_path
 
 
+# =============================================================================
+# WHITE MATTER MASK VISUALIZATION
+# =============================================================================
+
 def plot_white_matter_mask(
     fa,
     white_matter,
@@ -162,9 +226,9 @@ def plot_white_matter_mask(
     verbose=True
 ):
     """
-    Create white matter mask overlay visualization.
+    Create white matter mask QC visualization.
     
-    Shows white matter mask (FA > threshold) overlaid on FA map
+    Shows FA map with white matter mask overlay and brain mask contour
     in three orthogonal views.
     
     Parameters
@@ -256,6 +320,10 @@ def plot_white_matter_mask(
     return fig_path
 
 
+# =============================================================================
+# 2D STREAMLINE PROJECTIONS (CORRECTED)
+# =============================================================================
+
 def plot_streamlines_2d(
     streamlines,
     fa,
@@ -271,10 +339,13 @@ def plot_streamlines_2d(
     Shows streamlines projected onto three orthogonal planes
     with FA background for anatomical reference.
     
+    CORRECTED: Now properly aligns FA background with streamlines by computing
+    world-coordinate extent using the full affine transformation.
+    
     Parameters
     ----------
     streamlines : Streamlines
-        Tractography streamlines.
+        Tractography streamlines (in RASMM world coordinates).
     fa : ndarray
         3D FA map for background.
     affine : ndarray
@@ -318,34 +389,33 @@ def plot_streamlines_2d(
     mid_cor = fa.shape[1] // 2
     mid_sag = fa.shape[0] // 2
     
-    # Convert to world coordinates for slice positions
-    voxel_size = np.sqrt(np.sum(affine[:3, :3]**2, axis=0))
-    
     # Create figure
     fig, axes = plt.subplots(1, 3, figsize=(18, 6))
     fig.suptitle(f"Whole-Brain Tractography - {stem}\n"
                  f"{n_streamlines:,} streamlines (showing {n_vis:,})",
                  fontsize=14, fontweight='bold')
     
-    # Define views: (title, x_dim, y_dim, fa_slice, x_label, y_label, color)
+    # Define views: (title, view_name, slice_idx, fa_slice, x_dim, y_dim, x_label, y_label, color)
+    # x_dim and y_dim refer to world coordinate dimensions (0=X, 1=Y, 2=Z)
     views = [
-        ('Sagittal (Y-Z)', 1, 2, fa[mid_sag, :, :].T, 'Y (mm)', 'Z (mm)', 'blue'),
-        ('Coronal (X-Z)', 0, 2, fa[:, mid_cor, :].T, 'X (mm)', 'Z (mm)', 'green'),
-        ('Axial (X-Y)', 0, 1, fa[:, :, mid_ax].T, 'X (mm)', 'Y (mm)', 'red'),
+        ('Sagittal (Y-Z)', 'sagittal', mid_sag, fa[mid_sag, :, :].T, 1, 2, 'Y (mm)', 'Z (mm)', 'blue'),
+        ('Coronal (X-Z)', 'coronal', mid_cor, fa[:, mid_cor, :].T, 0, 2, 'X (mm)', 'Z (mm)', 'green'),
+        ('Axial (X-Y)', 'axial', mid_ax, fa[:, :, mid_ax].T, 0, 1, 'X (mm)', 'Y (mm)', 'red'),
     ]
     
-    for ax_idx, (title, dim1, dim2, fa_bg, xlabel, ylabel, color) in enumerate(views):
+    for ax_idx, (title, view_name, slice_idx, fa_bg, x_dim, y_dim, xlabel, ylabel, color) in enumerate(views):
         ax = axes[ax_idx]
         
-        # Plot FA background (need to compute extent in world coordinates)
-        extent = [0, fa_bg.shape[1] * voxel_size[dim1],
-                  0, fa_bg.shape[0] * voxel_size[dim2]]
+        # CORRECTED: Compute proper world-coordinate extent
+        extent = compute_world_extent(fa.shape, affine, slice_idx, view_name)
+        
+        # Plot FA background - now properly aligned with streamlines
         ax.imshow(fa_bg, cmap='gray', origin='lower', extent=extent, 
                   alpha=0.3, vmin=0, vmax=0.8)
         
-        # Plot streamlines
+        # Plot streamlines (already in world coordinates)
         for sl in vis_streamlines:
-            ax.plot(sl[:, dim1], sl[:, dim2], 
+            ax.plot(sl[:, x_dim], sl[:, y_dim], 
                    alpha=0.15, linewidth=0.3, color=color)
         
         ax.set_xlabel(xlabel)
@@ -365,6 +435,10 @@ def plot_streamlines_2d(
     
     return fig_path
 
+
+# =============================================================================
+# STREAMLINE STATISTICS VISUALIZATION
+# =============================================================================
 
 def plot_streamline_statistics(
     streamlines,
@@ -454,46 +528,40 @@ def plot_streamline_statistics(
     
     # Length vs number of points scatter
     ax3 = fig.add_subplot(gs[0, 2])
-    # Subsample for plotting efficiency
-    n_plot = min(5000, n_streamlines)
-    idx = np.random.choice(n_streamlines, n_plot, replace=False)
-    ax3.scatter(points_per_sl[idx], lengths[idx], alpha=0.3, s=5, c='purple')
-    ax3.set_xlabel('Points per Streamline')
-    ax3.set_ylabel('Length (mm)')
-    ax3.set_title('Length vs Resolution')
+    sample_idx = np.random.choice(n_streamlines, min(1000, n_streamlines), replace=False)
+    ax3.scatter(lengths[sample_idx], points_per_sl[sample_idx], 
+               alpha=0.3, s=10, color='purple')
+    ax3.set_xlabel('Length (mm)')
+    ax3.set_ylabel('Points')
+    ax3.set_title('Length vs Points')
     ax3.grid(True, alpha=0.3)
     
-    # Seed coverage map (axial view)
+    # Seed density visualization
     ax4 = fig.add_subplot(gs[1, 0])
     mid_ax = fa.shape[2] // 2
     ax4.imshow(fa[:, :, mid_ax].T, cmap='gray', origin='lower', vmin=0, vmax=0.8)
     
-    # Convert seeds to voxel coordinates and plot
-    if seeds is not None and len(seeds) > 0:
-        # Transform world coordinates to voxel
-        inv_affine = np.linalg.inv(affine)
-        seeds_vox = np.dot(seeds, inv_affine[:3, :3].T) + inv_affine[:3, 3]
-        
-        # Filter seeds near the axial slice
-        near_slice = np.abs(seeds_vox[:, 2] - mid_ax) < 3
-        seeds_slice = seeds_vox[near_slice]
-        
-        if len(seeds_slice) > 0:
-            ax4.scatter(seeds_slice[:, 0], seeds_slice[:, 1], 
-                       c='red', s=1, alpha=0.3)
+    # Convert seeds to voxel coordinates for plotting
+    inv_affine = np.linalg.inv(affine)
+    seeds_h = np.hstack([seeds, np.ones((len(seeds), 1))])
+    seeds_vox = (seeds_h @ inv_affine.T)[:, :3]
     
-    ax4.set_title(f'Seed Points (axial z={mid_ax})\n{len(seeds):,} total seeds')
+    # Plot seeds near the axial slice
+    near_slice = np.abs(seeds_vox[:, 2] - mid_ax) < 3
+    ax4.scatter(seeds_vox[near_slice, 0], seeds_vox[near_slice, 1], 
+               s=1, alpha=0.3, color='yellow')
+    ax4.set_title(f'Seed Points (axial, z≈{mid_ax})')
     ax4.axis('off')
     
     # Cumulative length distribution
     ax5 = fig.add_subplot(gs[1, 1])
     sorted_lengths = np.sort(lengths)
-    cumulative = np.arange(1, len(sorted_lengths) + 1) / len(sorted_lengths)
-    ax5.plot(sorted_lengths, cumulative, 'b-', linewidth=2)
-    ax5.axhline(0.5, color='gray', linestyle='--', alpha=0.5)
+    cumulative = np.arange(1, len(sorted_lengths) + 1) / len(sorted_lengths) * 100
+    ax5.plot(sorted_lengths, cumulative, color='steelblue', linewidth=2)
+    ax5.axhline(50, color='gray', linestyle='--', alpha=0.5)
     ax5.axvline(np.median(lengths), color='orange', linestyle='--', alpha=0.5)
     ax5.set_xlabel('Length (mm)')
-    ax5.set_ylabel('Cumulative Fraction')
+    ax5.set_ylabel('Cumulative %')
     ax5.set_title('Cumulative Length Distribution')
     ax5.grid(True, alpha=0.3)
     
@@ -538,6 +606,10 @@ def plot_streamline_statistics(
     
     return fig_path
 
+
+# =============================================================================
+# TRACKING SUMMARY
+# =============================================================================
 
 def create_tracking_summary(
     streamlines,
@@ -595,127 +667,118 @@ def create_tracking_summary(
     viz_dir.mkdir(parents=True, exist_ok=True)
     
     n_streamlines = len(streamlines)
-    lengths = np.array([length(s) for s in streamlines]) if n_streamlines > 0 else np.array([])
     
     # Create figure
     fig = plt.figure(figsize=(20, 12))
-    fig.suptitle(f"Tracking Summary - {stem}", fontsize=16, fontweight='bold')
+    fig.suptitle(f"Tractography Summary - {stem}", fontsize=16, fontweight='bold')
     
-    gs = fig.add_gridspec(3, 4, hspace=0.25, wspace=0.25)
+    gs = fig.add_gridspec(3, 4, hspace=0.3, wspace=0.3)
     
-    # Slice indices
+    # Get slice indices
     mid_ax = fa.shape[2] // 2
     mid_cor = fa.shape[1] // 2
     mid_sag = fa.shape[0] // 2
     
-    # Row 0: FA, MD, WM mask, Brain mask
-    ax = fig.add_subplot(gs[0, 0])
-    ax.imshow(fa[:, :, mid_ax].T, cmap='gray', origin='lower', vmin=0, vmax=1)
-    ax.set_title(f'FA (axial)\nmean={fa[brain_mask>0].mean():.3f}')
-    ax.axis('off')
+    # Row 0: FA, MD, WM mask in three views
+    ax_fa = fig.add_subplot(gs[0, 0])
+    ax_fa.imshow(fa[:, :, mid_ax].T, cmap='gray', origin='lower', vmin=0, vmax=1)
+    ax_fa.set_title('FA (Axial)')
+    ax_fa.axis('off')
     
-    ax = fig.add_subplot(gs[0, 1])
-    md_vmax = np.percentile(md[brain_mask>0], 99) if brain_mask.any() else 0.003
-    ax.imshow(md[:, :, mid_ax].T, cmap='hot', origin='lower', vmin=0, vmax=md_vmax)
-    ax.set_title(f'MD (axial)\nmean={md[brain_mask>0].mean():.2e}')
-    ax.axis('off')
+    ax_md = fig.add_subplot(gs[0, 1])
+    ax_md.imshow(md[:, :, mid_ax].T, cmap='hot', origin='lower')
+    ax_md.set_title('MD (Axial)')
+    ax_md.axis('off')
     
-    ax = fig.add_subplot(gs[0, 2])
-    ax.imshow(fa[:, :, mid_ax].T, cmap='gray', origin='lower', vmin=0, vmax=1)
-    wm_overlay = np.ma.masked_where(white_matter[:, :, mid_ax].T == 0, 
-                                     white_matter[:, :, mid_ax].T)
-    ax.imshow(wm_overlay, cmap='Blues', alpha=0.5, origin='lower')
-    ax.set_title(f'White Matter\n{white_matter.sum():,} voxels')
-    ax.axis('off')
+    ax_wm = fig.add_subplot(gs[0, 2])
+    ax_wm.imshow(fa[:, :, mid_ax].T, cmap='gray', origin='lower', vmin=0, vmax=1)
+    wm_overlay = np.ma.masked_where(white_matter[:, :, mid_ax].T == 0, white_matter[:, :, mid_ax].T)
+    ax_wm.imshow(wm_overlay, cmap='Blues', alpha=0.5, origin='lower')
+    ax_wm.set_title('WM Mask (Axial)')
+    ax_wm.axis('off')
     
-    ax = fig.add_subplot(gs[0, 3])
-    ax.imshow(fa[:, :, mid_ax].T, cmap='gray', origin='lower', vmin=0, vmax=1)
-    ax.contour(brain_mask[:, :, mid_ax].T, levels=[0.5], colors='cyan', linewidths=1.5)
-    ax.set_title(f'Brain Mask\n{brain_mask.sum():,} voxels')
-    ax.axis('off')
+    # Row 0, col 3: Parameters
+    ax_params = fig.add_subplot(gs[0, 3])
+    ax_params.axis('off')
     
-    # Row 1: 2D streamline projections
+    if tracking_params:
+        params_text = "TRACKING PARAMETERS\n" + "─" * 25 + "\n"
+        for key, val in tracking_params.items():
+            params_text += f"{key}: {val}\n"
+    else:
+        params_text = "TRACKING PARAMETERS\n" + "─" * 25 + "\nNot specified"
+    
+    ax_params.text(0.5, 0.5, params_text, transform=ax_params.transAxes,
+                  fontsize=10, fontfamily='monospace',
+                  verticalalignment='center', horizontalalignment='center',
+                  bbox=dict(boxstyle='round', facecolor='lightyellow', alpha=0.8))
+    
+    # Row 1: 2D streamline projections with CORRECTED extent
     if n_streamlines > 0:
-        max_vis = min(3000, n_streamlines)
-        indices = np.random.choice(n_streamlines, max_vis, replace=False)
+        n_vis = min(3000, n_streamlines)
+        indices = np.random.choice(n_streamlines, n_vis, replace=False)
         vis_sl = [streamlines[i] for i in indices]
         
-        voxel_size = np.sqrt(np.sum(affine[:3, :3]**2, axis=0))
-        
-        views = [
-            ('Sagittal', 1, 2, fa[mid_sag, :, :].T, 'blue'),
-            ('Coronal', 0, 2, fa[:, mid_cor, :].T, 'green'),
-            ('Axial', 0, 1, fa[:, :, mid_ax].T, 'red'),
+        views_2d = [
+            ('Sagittal', 'sagittal', mid_sag, fa[mid_sag, :, :].T, 1, 2, 'blue'),
+            ('Coronal', 'coronal', mid_cor, fa[:, mid_cor, :].T, 0, 2, 'green'),
+            ('Axial', 'axial', mid_ax, fa[:, :, mid_ax].T, 0, 1, 'red'),
         ]
         
-        for col, (name, d1, d2, bg, color) in enumerate(views):
+        for col, (title, view_name, slice_idx, fa_bg, d1, d2, color) in enumerate(views_2d):
             ax = fig.add_subplot(gs[1, col])
-            extent = [0, bg.shape[1] * voxel_size[d1], 0, bg.shape[0] * voxel_size[d2]]
-            ax.imshow(bg, cmap='gray', origin='lower', extent=extent, alpha=0.3, vmin=0, vmax=0.8)
+            
+            # CORRECTED: Use proper world-coordinate extent
+            extent = compute_world_extent(fa.shape, affine, slice_idx, view_name)
+            ax.imshow(fa_bg, cmap='gray', origin='lower', extent=extent,
+                     alpha=0.3, vmin=0, vmax=0.8)
+            
             for sl in vis_sl:
                 ax.plot(sl[:, d1], sl[:, d2], alpha=0.1, linewidth=0.3, color=color)
-            ax.set_title(f'{name}\n({max_vis:,} shown)')
+            
+            ax.set_title(f'{title}\n({n_vis:,} shown)')
             ax.set_aspect('equal')
-            ax.axis('off')
-    else:
-        for col in range(3):
-            ax = fig.add_subplot(gs[1, col])
-            ax.text(0.5, 0.5, 'No streamlines', ha='center', va='center', fontsize=12)
-            ax.axis('off')
+            ax.grid(True, alpha=0.2)
     
     # Row 1, col 3: Length histogram
-    ax = fig.add_subplot(gs[1, 3])
     if n_streamlines > 0:
-        ax.hist(lengths, bins=40, color='steelblue', edgecolor='white', alpha=0.8)
-        ax.axvline(np.mean(lengths), color='red', linestyle='--', linewidth=2)
-        ax.set_xlabel('Length (mm)')
-        ax.set_ylabel('Count')
-        ax.set_title(f'Length Distribution\nmean={np.mean(lengths):.1f} mm')
-    else:
-        ax.text(0.5, 0.5, 'No streamlines', ha='center', va='center', fontsize=12)
-    ax.grid(True, alpha=0.3)
+        lengths = np.array([length(s) for s in streamlines])
+        ax_hist = fig.add_subplot(gs[1, 3])
+        ax_hist.hist(lengths, bins=40, color='steelblue', edgecolor='white', alpha=0.8)
+        ax_hist.axvline(np.mean(lengths), color='red', linestyle='--', linewidth=2)
+        ax_hist.set_xlabel('Length (mm)')
+        ax_hist.set_ylabel('Count')
+        ax_hist.set_title('Length Distribution')
+        ax_hist.grid(True, alpha=0.3)
     
-    # Row 2: Statistics panel
-    ax = fig.add_subplot(gs[2, :])
-    ax.axis('off')
-    
-    # Build parameters string
-    if tracking_params:
-        params_str = (
-            f"Step Size: {tracking_params.get('step_size', 'N/A')} mm | "
-            f"FA Threshold: {tracking_params.get('fa_thresh', 'N/A')} | "
-            f"Seed Density: {tracking_params.get('seed_density', 'N/A')} | "
-            f"SH Order: {tracking_params.get('sh_order', 'N/A')}"
-        )
-    else:
-        params_str = "Parameters not available"
+    # Row 2: Statistics summary
+    ax_stats = fig.add_subplot(gs[2, :])
+    ax_stats.axis('off')
     
     if n_streamlines > 0:
-        length_stats = (
-            f"Length: mean={np.mean(lengths):.1f}, median={np.median(lengths):.1f}, "
-            f"range=[{np.min(lengths):.1f}, {np.max(lengths):.1f}] mm"
+        lengths = np.array([length(s) for s in streamlines])
+        stats_text = (
+            f"{'═' * 100}\n"
+            f"TRACTOGRAPHY SUMMARY\n"
+            f"{'═' * 100}\n\n"
+            f"Total Streamlines:     {n_streamlines:,}\n"
+            f"Total Seeds:           {len(seeds):,}\n"
+            f"Yield Rate:            {n_streamlines/len(seeds)*100:.1f}%\n\n"
+            f"Length (mm):           mean={np.mean(lengths):.1f}, "
+            f"median={np.median(lengths):.1f}, "
+            f"range=[{np.min(lengths):.1f}, {np.max(lengths):.1f}]\n\n"
+            f"White Matter:          {white_matter.sum():,} voxels "
+            f"({white_matter.sum()/brain_mask.sum()*100:.1f}% of brain)\n"
+            f"FA (brain mean):       {fa[brain_mask > 0].mean():.3f}\n"
+            f"{'═' * 100}"
         )
     else:
-        length_stats = "No streamlines generated"
+        stats_text = "No streamlines generated"
     
-    stats_text = (
-        f"{'═' * 100}\n"
-        f"TRACKING SUMMARY\n"
-        f"{'═' * 100}\n\n"
-        f"Parameters:      {params_str}\n\n"
-        f"Streamlines:     {n_streamlines:,}\n"
-        f"Seeds:           {len(seeds):,}\n"
-        f"Yield Rate:      {n_streamlines/len(seeds)*100:.1f}%\n\n"
-        f"{length_stats}\n\n"
-        f"FA Statistics:   mean={fa[brain_mask>0].mean():.3f}, std={fa[brain_mask>0].std():.3f}\n"
-        f"MD Statistics:   mean={md[brain_mask>0].mean():.2e}, std={md[brain_mask>0].std():.2e}\n"
-        f"{'═' * 100}"
-    )
-    
-    ax.text(0.5, 0.5, stats_text, transform=ax.transAxes,
-            fontsize=11, fontfamily='monospace',
-            verticalalignment='center', horizontalalignment='center',
-            bbox=dict(boxstyle='round', facecolor='lightyellow', alpha=0.8))
+    ax_stats.text(0.5, 0.5, stats_text, transform=ax_stats.transAxes,
+                 fontsize=11, fontfamily='monospace',
+                 verticalalignment='center', horizontalalignment='center',
+                 bbox=dict(boxstyle='round', facecolor='lightgreen', alpha=0.5))
     
     plt.tight_layout()
     
@@ -728,6 +791,10 @@ def create_tracking_summary(
     
     return fig_path
 
+
+# =============================================================================
+# CONVENIENCE FUNCTION: Save all visualizations
+# =============================================================================
 
 def save_all_tracking_visualizations(
     streamlines,
