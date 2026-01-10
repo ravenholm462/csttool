@@ -141,17 +141,23 @@ def plot_roi_masks(
         # Row 1: FA with ROI overlays
         axes[1, col].imshow(fa_slice.T, cmap='gray', origin='lower', vmin=0, vmax=0.8)
         
+        # Create colored overlays
         # Motor cortex left (blue)
-        ml_overlay = np.ma.masked_where(ml_slice.T == 0, ml_slice.T)
-        axes[1, col].imshow(ml_overlay, cmap='Blues', alpha=0.6, origin='lower')
+        ml_rgb = np.zeros((*ml_slice.T.shape, 4))  # RGBA array
+        ml_rgb[ml_slice.T > 0] = [0, 0, 1, 0.6]  # Blue with alpha
         
         # Motor cortex right (red)
-        mr_overlay = np.ma.masked_where(mr_slice.T == 0, mr_slice.T)
-        axes[1, col].imshow(mr_overlay, cmap='Reds', alpha=0.6, origin='lower')
+        mr_rgb = np.zeros((*mr_slice.T.shape, 4))
+        mr_rgb[mr_slice.T > 0] = [1, 0, 0, 0.6]  # Red with alpha
         
         # Brainstem (green)
-        bs_overlay = np.ma.masked_where(bs_slice.T == 0, bs_slice.T)
-        axes[1, col].imshow(bs_overlay, cmap='Greens', alpha=0.6, origin='lower')
+        bs_rgb = np.zeros((*bs_slice.T.shape, 4))
+        bs_rgb[bs_slice.T > 0] = [0, 1, 0, 0.6]  # Green with alpha
+        
+        # Apply overlays
+        axes[1, col].imshow(ml_rgb, origin='lower')
+        axes[1, col].imshow(mr_rgb, origin='lower')
+        axes[1, col].imshow(bs_rgb, origin='lower')
         
         axes[1, col].set_title(f'{view_name}\nROI overlay')
         axes[1, col].axis('off')
@@ -390,12 +396,23 @@ def create_extraction_summary(
         ax = fig.add_subplot(gs[0, col])
         ax.imshow(fa_slice.T, cmap='gray', origin='lower', vmin=0, vmax=0.8)
         
-        ml_overlay = np.ma.masked_where(ml_slice.T == 0, ml_slice.T)
-        ax.imshow(ml_overlay, cmap='Blues', alpha=0.6, origin='lower')
-        mr_overlay = np.ma.masked_where(mr_slice.T == 0, mr_slice.T)
-        ax.imshow(mr_overlay, cmap='Reds', alpha=0.6, origin='lower')
-        bs_overlay = np.ma.masked_where(bs_slice.T == 0, bs_slice.T)
-        ax.imshow(bs_overlay, cmap='Greens', alpha=0.6, origin='lower')
+        # Create RGB overlays with proper colors
+        # Motor cortex left (blue)
+        ml_rgb = np.zeros((*ml_slice.T.shape, 4))  # RGBA array
+        ml_rgb[ml_slice.T > 0] = [0, 0, 1, 0.6]  # Blue with alpha 0.6
+        
+        # Motor cortex right (red)
+        mr_rgb = np.zeros((*mr_slice.T.shape, 4))
+        mr_rgb[mr_slice.T > 0] = [1, 0, 0, 0.6]  # Red with alpha 0.6
+        
+        # Brainstem (green)
+        bs_rgb = np.zeros((*bs_slice.T.shape, 4))
+        bs_rgb[bs_slice.T > 0] = [0, 1, 0, 0.6]  # Green with alpha 0.6
+        
+        # Apply overlays
+        ax.imshow(ml_rgb, origin='lower')
+        ax.imshow(mr_rgb, origin='lower')
+        ax.imshow(bs_rgb, origin='lower')
         
         ax.set_title(f'{name}: ROI Masks')
         ax.axis('off')
