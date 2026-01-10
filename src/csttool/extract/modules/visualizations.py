@@ -1,15 +1,16 @@
 """
-visualizations.py
+visualizations.py - Extract Module
 
 Visualization functions for CST extraction QC.
 
 This module provides file-saving visualizations for:
-- Registration comparison (MNI to subject alignment)
-- ROI mask overlays
-- CST extraction results (bilateral streamlines)
-- Multi-panel extraction summary
+- Registration QC (MNI to subject)
+- ROI mask overlay
+- CST extraction results
+- Extraction summary
 
 All functions save figures to disk and return the path to the saved file.
+
 """
 
 import numpy as np
@@ -19,6 +20,74 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 
 
+# =============================================================================
+# HELPER FUNCTION: Compute world-coordinate extent for imshow
+# =============================================================================
+
+def compute_world_extent(fa_shape, affine, slice_idx, view):
+    """
+    Compute proper world-coordinate extent for imshow to align FA with streamlines.
+    
+    Streamlines are in RASMM world coordinates, so the FA background must be
+    positioned using the full affine transformation (not just voxel size).
+    
+    Parameters
+    ----------
+    fa_shape : tuple
+        Shape of the 3D FA volume (i, j, k).
+    affine : ndarray
+        4x4 affine transformation matrix (voxel → world).
+    slice_idx : int
+        Index of the slice being displayed (in the fixed dimension).
+    view : str
+        One of 'sagittal', 'coronal', or 'axial'.
+        
+    Returns
+    -------
+    extent : list
+        [x_min, x_max, y_min, y_max] in world coordinates for use with imshow.
+        
+    Notes
+    -----
+    For each view:
+    - Sagittal: fixed dim 0 (i), showing dims 1 (j) vs 2 (k) → Y vs Z
+    - Coronal: fixed dim 1 (j), showing dims 0 (i) vs 2 (k) → X vs Z
+    - Axial: fixed dim 2 (k), showing dims 0 (i) vs 1 (j) → X vs Y
+    
+    We compute corners by transforming voxel coordinates through the affine.
+    """
+    if view == 'sagittal':
+        # Fixed i = slice_idx, showing j (Y) on x-axis, k (Z) on y-axis
+        corner_00 = affine @ np.array([slice_idx, 0, 0, 1])
+        corner_jk = affine @ np.array([slice_idx, fa_shape[1], fa_shape[2], 1])
+        x_extent = [corner_00[1], corner_jk[1]]  # Y range
+        y_extent = [corner_00[2], corner_jk[2]]  # Z range
+        
+    elif view == 'coronal':
+        # Fixed j = slice_idx, showing i (X) on x-axis, k (Z) on y-axis
+        corner_00 = affine @ np.array([0, slice_idx, 0, 1])
+        corner_ik = affine @ np.array([fa_shape[0], slice_idx, fa_shape[2], 1])
+        x_extent = [corner_00[0], corner_ik[0]]  # X range
+        y_extent = [corner_00[2], corner_ik[2]]  # Z range
+        
+    elif view == 'axial':
+        # Fixed k = slice_idx, showing i (X) on x-axis, j (Y) on y-axis
+        corner_00 = affine @ np.array([0, 0, slice_idx, 1])
+        corner_ij = affine @ np.array([fa_shape[0], fa_shape[1], slice_idx, 1])
+        x_extent = [corner_00[0], corner_ij[0]]  # X range
+        y_extent = [corner_00[1], corner_ij[1]]  # Y range
+        
+    else:
+        raise ValueError(f"Unknown view: {view}. Use 'sagittal', 'coronal', or 'axial'.")
+    
+    # Return as [left, right, bottom, top] for imshow extent
+    return [min(x_extent), max(x_extent), min(y_extent), max(y_extent)]
+
+
+# =============================================================================
+# REGISTRATION QC VISUALIZATION
+# =============================================================================
+
 def plot_registration_comparison(
     subject_fa,
     mni_warped,
@@ -27,7 +96,7 @@ def plot_registration_comparison(
     verbose=True
 ):
     """
-    Create registration comparison visualization.
+    Create registration QC visualization.
     
     Shows subject FA and warped MNI template side-by-side
     in three orthogonal views for registration QC.
@@ -106,6 +175,122 @@ def plot_registration_comparison(
     return fig_path
 
 
+# =============================================================================
+# ROI MASK VISUALIZATION
+# =============================================================================
+
+def plot_roi_masks(
+    fa,
+    masks,
+    output_dir,
+    subject_id=None,
+    verbose=True
+):
+    """
+    Create ROI masks visualization.
+    
+    Shows motor cortex and brainstem ROI masks overlaid on FA
+    in three orthogonal views.
+    
+    Parameters
+    ----------
+    fa : ndarray
+        3D FA map for background.
+    masks : dict
+        Dictionary containing ROI masks:
+        - motor_cortex_left, motor_cortex_right
+        - brainstem
+    output_dir : str or Path
+        Output directory for saving figure.
+    subject_id : str, optional
+        Subject identifier for filename.
+    verbose : bool, optional
+        Print progress information.
+        
+    Returns
+    -------
+    fig_path : Path
+        Path to saved figure.
+    """
+    output_dir = Path(output_dir)
+    viz_dir = output_dir / "visualizations"
+    viz_dir.mkdir(parents=True, exist_ok=True)
+    
+    prefix = f"{subject_id}_" if subject_id else ""
+    
+    # Get slice indices
+    mid_ax = fa.shape[2] // 2
+    mid_cor = fa.shape[1] // 2
+    mid_sag = fa.shape[0] // 2
+    
+    # Create figure
+    fig, axes = plt.subplots(2, 3, figsize=(14, 9))
+    fig.suptitle(f"ROI Masks - {subject_id or 'Subject'}\nMotor Cortex (L/R) + Brainstem",
+                 fontsize=14, fontweight='bold')
+    
+    # Get masks
+    motor_left = masks.get('motor_cortex_left', np.zeros_like(fa))
+    motor_right = masks.get('motor_cortex_right', np.zeros_like(fa))
+    brainstem = masks.get('brainstem', np.zeros_like(fa))
+    
+    views = [
+        ('Axial', mid_ax, fa[:, :, mid_ax], motor_left[:, :, mid_ax], 
+         motor_right[:, :, mid_ax], brainstem[:, :, mid_ax]),
+        ('Coronal', mid_cor, fa[:, mid_cor, :], motor_left[:, mid_cor, :],
+         motor_right[:, mid_cor, :], brainstem[:, mid_cor, :]),
+        ('Sagittal', mid_sag, fa[mid_sag, :, :], motor_left[mid_sag, :, :],
+         motor_right[mid_sag, :, :], brainstem[mid_sag, :, :]),
+    ]
+    
+    for col, (view_name, _, fa_slice, ml_slice, mr_slice, bs_slice) in enumerate(views):
+        # Row 0: FA only
+        axes[0, col].imshow(fa_slice.T, cmap='gray', origin='lower', vmin=0, vmax=0.8)
+        axes[0, col].set_title(f'{view_name}\nFA background')
+        axes[0, col].axis('off')
+        
+        # Row 1: FA with ROI overlays
+        axes[1, col].imshow(fa_slice.T, cmap='gray', origin='lower', vmin=0, vmax=0.8)
+        
+        # Motor cortex left (blue)
+        ml_overlay = np.ma.masked_where(ml_slice.T == 0, ml_slice.T)
+        axes[1, col].imshow(ml_overlay, cmap='Blues', alpha=0.6, origin='lower')
+        
+        # Motor cortex right (red)
+        mr_overlay = np.ma.masked_where(mr_slice.T == 0, mr_slice.T)
+        axes[1, col].imshow(mr_overlay, cmap='Reds', alpha=0.6, origin='lower')
+        
+        # Brainstem (green)
+        bs_overlay = np.ma.masked_where(bs_slice.T == 0, bs_slice.T)
+        axes[1, col].imshow(bs_overlay, cmap='Greens', alpha=0.6, origin='lower')
+        
+        axes[1, col].set_title(f'{view_name}\nROI overlay')
+        axes[1, col].axis('off')
+    
+    # Add legend
+    from matplotlib.patches import Patch
+    legend_elements = [
+        Patch(facecolor='blue', alpha=0.6, label='Motor Cortex Left'),
+        Patch(facecolor='red', alpha=0.6, label='Motor Cortex Right'),
+        Patch(facecolor='green', alpha=0.6, label='Brainstem'),
+    ]
+    fig.legend(handles=legend_elements, loc='lower center', ncol=3, fontsize=11)
+    
+    plt.tight_layout(rect=[0, 0.05, 1, 0.95])
+    
+    fig_path = viz_dir / f"{prefix}roi_masks.png"
+    plt.savefig(fig_path, dpi=150, bbox_inches='tight', facecolor='white')
+    plt.close()
+    
+    if verbose:
+        print(f"✓ ROI masks: {fig_path}")
+    
+    return fig_path
+
+
+# =============================================================================
+# CST EXTRACTION VISUALIZATION (CORRECTED)
+# =============================================================================
+
 def plot_cst_extraction(
     cst_result,
     fa,
@@ -120,6 +305,9 @@ def plot_cst_extraction(
     
     Shows extracted left and right CST streamlines overlaid on FA
     in three orthogonal views.
+    
+    CORRECTED: Now properly aligns FA background with streamlines by computing
+    world-coordinate extent using the full affine transformation.
     
     Parameters
     ----------
@@ -166,9 +354,6 @@ def plot_cst_extraction(
     left_vis = subsample(cst_left, max_streamlines)
     right_vis = subsample(cst_right, max_streamlines)
     
-    # Get voxel size for extent calculation
-    voxel_size = np.sqrt(np.sum(affine[:3, :3]**2, axis=0))
-    
     # Get slice indices
     mid_ax = fa.shape[2] // 2
     mid_cor = fa.shape[1] // 2
@@ -181,32 +366,35 @@ def plot_cst_extraction(
                  f"Total: {stats['cst_total_count']:,} ({stats['extraction_rate']:.1f}%)",
                  fontsize=14, fontweight='bold')
     
-    # Row 0: FA background with ROI indication
+    # Row 0: FA background only (for reference)
     views_fa = [
-        ('Sagittal', fa[mid_sag, :, :].T, 1, 2),
-        ('Coronal', fa[:, mid_cor, :].T, 0, 2),
-        ('Axial', fa[:, :, mid_ax].T, 0, 1),
+        ('Sagittal', 'sagittal', mid_sag, fa[mid_sag, :, :].T),
+        ('Coronal', 'coronal', mid_cor, fa[:, mid_cor, :].T),
+        ('Axial', 'axial', mid_ax, fa[:, :, mid_ax].T),
     ]
     
-    for col, (name, fa_slice, d1, d2) in enumerate(views_fa):
+    for col, (name, view_name, slice_idx, fa_slice) in enumerate(views_fa):
         ax = axes[0, col]
-        extent = [0, fa_slice.shape[1] * voxel_size[d1], 
-                  0, fa_slice.shape[0] * voxel_size[d2]]
+        # CORRECTED: Use proper world-coordinate extent
+        extent = compute_world_extent(fa.shape, affine, slice_idx, view_name)
         ax.imshow(fa_slice, cmap='gray', origin='lower', extent=extent, vmin=0, vmax=0.8)
         ax.set_title(f'{name}\nFA background')
+        ax.set_aspect('equal')
         ax.axis('off')
     
     # Row 1: Streamlines on FA background
+    # Define which world dimensions correspond to each view
     views_sl = [
-        ('Sagittal (Y-Z)', 1, 2, fa[mid_sag, :, :].T),
-        ('Coronal (X-Z)', 0, 2, fa[:, mid_cor, :].T),
-        ('Axial (X-Y)', 0, 1, fa[:, :, mid_ax].T),
+        ('Sagittal (Y-Z)', 'sagittal', mid_sag, fa[mid_sag, :, :].T, 1, 2),  # Y, Z
+        ('Coronal (X-Z)', 'coronal', mid_cor, fa[:, mid_cor, :].T, 0, 2),    # X, Z
+        ('Axial (X-Y)', 'axial', mid_ax, fa[:, :, mid_ax].T, 0, 1),          # X, Y
     ]
     
-    for col, (name, d1, d2, fa_slice) in enumerate(views_sl):
+    for col, (name, view_name, slice_idx, fa_slice, d1, d2) in enumerate(views_sl):
         ax = axes[1, col]
-        extent = [0, fa_slice.shape[1] * voxel_size[d1], 
-                  0, fa_slice.shape[0] * voxel_size[d2]]
+        
+        # CORRECTED: Use proper world-coordinate extent
+        extent = compute_world_extent(fa.shape, affine, slice_idx, view_name)
         ax.imshow(fa_slice, cmap='gray', origin='lower', extent=extent, 
                   vmin=0, vmax=0.8, alpha=0.5)
         
@@ -242,6 +430,10 @@ def plot_cst_extraction(
     return fig_path
 
 
+# =============================================================================
+# EXTRACTION SUMMARY
+# =============================================================================
+
 def create_extraction_summary(
     cst_result,
     fa,
@@ -256,6 +448,8 @@ def create_extraction_summary(
     
     Combines ROI masks, CST visualization, and statistics
     into a single summary figure.
+    
+    CORRECTED: Now properly aligns FA background with streamlines.
     
     Parameters
     ----------
@@ -295,74 +489,93 @@ def create_extraction_summary(
     left_lengths = np.array([length(s) for s in cst_left]) if len(cst_left) > 0 else np.array([])
     right_lengths = np.array([length(s) for s in cst_right]) if len(cst_right) > 0 else np.array([])
     
-    # Get voxel size
-    voxel_size = np.sqrt(np.sum(affine[:3, :3]**2, axis=0))
-    
-    # Create figure
-    fig = plt.figure(figsize=(20, 12))
-    fig.suptitle(f"CST Extraction Summary - {subject_id or 'Subject'}", 
-                 fontsize=16, fontweight='bold')
-    
-    gs = fig.add_gridspec(3, 4, hspace=0.3, wspace=0.3)
-    
-    mid_ax = fa.shape[2] // 2
-    
-    # Row 0: ROI masks
-    ax = fig.add_subplot(gs[0, 0])
-    ax.imshow(fa[:, :, mid_ax].T, cmap='gray', origin='lower', vmin=0, vmax=0.8)
-    brainstem_overlay = np.ma.masked_where(masks['brainstem'][:, :, mid_ax].T == 0,
-                                            masks['brainstem'][:, :, mid_ax].T)
-    ax.imshow(brainstem_overlay, cmap='Reds', alpha=0.6, origin='lower')
-    ax.set_title(f'Brainstem ROI\n{np.sum(masks["brainstem"]):,} voxels')
-    ax.axis('off')
-    
-    ax = fig.add_subplot(gs[0, 1])
-    ax.imshow(fa[:, :, mid_ax].T, cmap='gray', origin='lower', vmin=0, vmax=0.8)
-    motor_left_overlay = np.ma.masked_where(masks['motor_left'][:, :, mid_ax].T == 0,
-                                             masks['motor_left'][:, :, mid_ax].T)
-    ax.imshow(motor_left_overlay, cmap='Blues', alpha=0.6, origin='lower')
-    ax.set_title(f'Motor Left ROI\n{np.sum(masks["motor_left"]):,} voxels')
-    ax.axis('off')
-    
-    ax = fig.add_subplot(gs[0, 2])
-    ax.imshow(fa[:, :, mid_ax].T, cmap='gray', origin='lower', vmin=0, vmax=0.8)
-    motor_right_overlay = np.ma.masked_where(masks['motor_right'][:, :, mid_ax].T == 0,
-                                              masks['motor_right'][:, :, mid_ax].T)
-    ax.imshow(motor_right_overlay, cmap='Greens', alpha=0.6, origin='lower')
-    ax.set_title(f'Motor Right ROI\n{np.sum(masks["motor_right"]):,} voxels')
-    ax.axis('off')
-    
-    # Row 0, col 3: All ROIs combined
-    ax = fig.add_subplot(gs[0, 3])
-    ax.imshow(fa[:, :, mid_ax].T, cmap='gray', origin='lower', vmin=0, vmax=0.8)
-    ax.imshow(brainstem_overlay, cmap='Reds', alpha=0.4, origin='lower')
-    ax.imshow(motor_left_overlay, cmap='Blues', alpha=0.4, origin='lower')
-    ax.imshow(motor_right_overlay, cmap='Greens', alpha=0.4, origin='lower')
-    ax.set_title('All ROIs Combined')
-    ax.axis('off')
-    
-    # Row 1: CST streamlines
-    max_vis = 1500
-    
-    def subsample(streamlines, max_n):
+    # Subsample for visualization
+    def subsample(streamlines, max_n=1000):
         if len(streamlines) <= max_n:
             return list(streamlines)
         indices = np.random.choice(len(streamlines), max_n, replace=False)
         return [streamlines[i] for i in indices]
     
-    left_vis = subsample(cst_left, max_vis)
-    right_vis = subsample(cst_right, max_vis)
+    left_vis = subsample(cst_left)
+    right_vis = subsample(cst_right)
     
+    # Get slice indices
+    mid_ax = fa.shape[2] // 2
+    
+    # Create figure
+    fig = plt.figure(figsize=(20, 12))
+    fig.suptitle(f"CST Extraction Summary - {subject_id or 'Subject'}",
+                 fontsize=16, fontweight='bold')
+    
+    gs = fig.add_gridspec(3, 4, hspace=0.3, wspace=0.3)
+    
+    # Row 0: ROI masks (axial view)
+    motor_left = masks.get('motor_cortex_left', np.zeros_like(fa))
+    motor_right = masks.get('motor_cortex_right', np.zeros_like(fa))
+    brainstem = masks.get('brainstem', np.zeros_like(fa))
+    
+    # Axial ROI view
+    ax = fig.add_subplot(gs[0, 0])
+    ax.imshow(fa[:, :, mid_ax].T, cmap='gray', origin='lower', vmin=0, vmax=0.8)
+    ml_overlay = np.ma.masked_where(motor_left[:, :, mid_ax].T == 0, motor_left[:, :, mid_ax].T)
+    ax.imshow(ml_overlay, cmap='Blues', alpha=0.6, origin='lower')
+    mr_overlay = np.ma.masked_where(motor_right[:, :, mid_ax].T == 0, motor_right[:, :, mid_ax].T)
+    ax.imshow(mr_overlay, cmap='Reds', alpha=0.6, origin='lower')
+    bs_overlay = np.ma.masked_where(brainstem[:, :, mid_ax].T == 0, brainstem[:, :, mid_ax].T)
+    ax.imshow(bs_overlay, cmap='Greens', alpha=0.6, origin='lower')
+    ax.set_title('Axial: ROI Masks')
+    ax.axis('off')
+    
+    # Coronal ROI view
+    mid_cor = fa.shape[1] // 2
+    ax = fig.add_subplot(gs[0, 1])
+    ax.imshow(fa[:, mid_cor, :].T, cmap='gray', origin='lower', vmin=0, vmax=0.8)
+    ml_overlay = np.ma.masked_where(motor_left[:, mid_cor, :].T == 0, motor_left[:, mid_cor, :].T)
+    ax.imshow(ml_overlay, cmap='Blues', alpha=0.6, origin='lower')
+    mr_overlay = np.ma.masked_where(motor_right[:, mid_cor, :].T == 0, motor_right[:, mid_cor, :].T)
+    ax.imshow(mr_overlay, cmap='Reds', alpha=0.6, origin='lower')
+    bs_overlay = np.ma.masked_where(brainstem[:, mid_cor, :].T == 0, brainstem[:, mid_cor, :].T)
+    ax.imshow(bs_overlay, cmap='Greens', alpha=0.6, origin='lower')
+    ax.set_title('Coronal: ROI Masks')
+    ax.axis('off')
+    
+    # Sagittal ROI view
+    mid_sag = fa.shape[0] // 2
+    ax = fig.add_subplot(gs[0, 2])
+    ax.imshow(fa[mid_sag, :, :].T, cmap='gray', origin='lower', vmin=0, vmax=0.8)
+    ml_overlay = np.ma.masked_where(motor_left[mid_sag, :, :].T == 0, motor_left[mid_sag, :, :].T)
+    ax.imshow(ml_overlay, cmap='Blues', alpha=0.6, origin='lower')
+    mr_overlay = np.ma.masked_where(motor_right[mid_sag, :, :].T == 0, motor_right[mid_sag, :, :].T)
+    ax.imshow(mr_overlay, cmap='Reds', alpha=0.6, origin='lower')
+    bs_overlay = np.ma.masked_where(brainstem[mid_sag, :, :].T == 0, brainstem[mid_sag, :, :].T)
+    ax.imshow(bs_overlay, cmap='Greens', alpha=0.6, origin='lower')
+    ax.set_title('Sagittal: ROI Masks')
+    ax.axis('off')
+    
+    # ROI legend
+    ax = fig.add_subplot(gs[0, 3])
+    ax.axis('off')
+    from matplotlib.patches import Patch
+    legend_elements = [
+        Patch(facecolor='blue', alpha=0.6, label='Motor Cortex L'),
+        Patch(facecolor='red', alpha=0.6, label='Motor Cortex R'),
+        Patch(facecolor='green', alpha=0.6, label='Brainstem'),
+    ]
+    ax.legend(handles=legend_elements, loc='center', fontsize=12)
+    ax.set_title('ROI Legend')
+    
+    # Row 1: CST streamlines with CORRECTED extent
     views = [
-        ('Sagittal', 1, 2, fa[fa.shape[0]//2, :, :].T),
-        ('Coronal', 0, 2, fa[:, fa.shape[1]//2, :].T),
-        ('Axial', 0, 1, fa[:, :, mid_ax].T),
+        ('Sagittal', 'sagittal', mid_sag, fa[mid_sag, :, :].T, 1, 2),
+        ('Coronal', 'coronal', mid_cor, fa[:, mid_cor, :].T, 0, 2),
+        ('Axial', 'axial', mid_ax, fa[:, :, mid_ax].T, 0, 1),
     ]
     
-    for col, (name, d1, d2, fa_bg) in enumerate(views):
+    for col, (name, view_name, slice_idx, fa_bg, d1, d2) in enumerate(views):
         ax = fig.add_subplot(gs[1, col])
-        extent = [0, fa_bg.shape[1] * voxel_size[d1], 
-                  0, fa_bg.shape[0] * voxel_size[d2]]
+        
+        # CORRECTED: Use proper world-coordinate extent
+        extent = compute_world_extent(fa.shape, affine, slice_idx, view_name)
         ax.imshow(fa_bg, cmap='gray', origin='lower', extent=extent, 
                   vmin=0, vmax=0.8, alpha=0.4)
         
@@ -433,6 +646,10 @@ def create_extraction_summary(
     return fig_path
 
 
+# =============================================================================
+# CONVENIENCE FUNCTION: Save all visualizations
+# =============================================================================
+
 def save_all_extraction_visualizations(
     cst_result,
     fa,
@@ -478,11 +695,16 @@ def save_all_extraction_visualizations(
     
     viz_paths = {}
     
-    # Registration comparison (if MNI warped available)
+    # Registration QC (if MNI warped provided)
     if mni_warped is not None:
         viz_paths['registration_qc'] = plot_registration_comparison(
             fa, mni_warped, output_dir, subject_id, verbose=verbose
         )
+    
+    # ROI masks
+    viz_paths['roi_masks'] = plot_roi_masks(
+        fa, masks, output_dir, subject_id, verbose=verbose
+    )
     
     # CST extraction
     viz_paths['cst_extraction'] = plot_cst_extraction(
@@ -490,7 +712,7 @@ def save_all_extraction_visualizations(
     )
     
     # Summary figure
-    viz_paths['summary'] = create_extraction_summary(
+    viz_paths['extraction_summary'] = create_extraction_summary(
         cst_result, fa, masks, affine, output_dir, subject_id, verbose=verbose
     )
     
