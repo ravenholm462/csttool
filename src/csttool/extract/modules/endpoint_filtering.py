@@ -169,7 +169,7 @@ def filter_streamlines_by_endpoints(
         if verbose and (i + 1) % 10000 == 0:
             print(f"    Processed {i + 1:,} / {len(streamlines):,} streamlines...")
     
-    kept_indices = np.array(kept_indices)
+    kept_indices = np.array(kept_indices, dtype=int)
     
     if len(kept_indices) > 0:
         filtered = Streamlines([streamlines[i] for i in kept_indices])
