@@ -78,11 +78,9 @@ def save_ingest_outputs(
     
     # Create directory structure
     nifti_dir = output_dir / "nifti"
-    logs_dir = output_dir / "logs"
     info_dir = output_dir / "dicom_info"
-    
+
     nifti_dir.mkdir(parents=True, exist_ok=True)
-    logs_dir.mkdir(parents=True, exist_ok=True)
     info_dir.mkdir(parents=True, exist_ok=True)
     
     outputs = {
@@ -138,7 +136,7 @@ def save_ingest_outputs(
         print(f"  ✓ Series info: {series_info_path}")
     
     # Save import report
-    report_path = logs_dir / f"{subject_id}_import_report.json"
+    report_path = nifti_dir / f"{subject_id}_import_report.json"
     _save_import_report(
         conversion_result, series_analysis, outputs, subject_id, report_path
     )
