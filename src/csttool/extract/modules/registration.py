@@ -513,8 +513,11 @@ def register_mni_to_subject(
     
     # Save warped template
     if save_warped:
+        nifti_dir = output_dir / "nifti"
+        nifti_dir.mkdir(parents=True, exist_ok=True)
+
         warped_template = mapping.transform(mni_data)
-        warped_path = output_dir / f"{subject_id}_mni_warped_to_subject.nii.gz"
+        warped_path = nifti_dir / f"{subject_id}_mni_warped_to_subject.nii.gz"
         nib.save(
             nib.Nifti1Image(warped_template.astype(np.float32), subject_affine),
             warped_path
