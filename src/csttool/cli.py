@@ -1713,6 +1713,13 @@ def cmd_run(args: argparse.Namespace) -> None:
         step_results['metrics'] = {'success': False, 'error': str(e)}
     
     step_times['metrics'] = time() - t0
+
+    # Clean up empty intermediate directory
+    intermediate_dir = args.out / "intermediate"
+    if intermediate_dir.exists() and not any(intermediate_dir.iterdir()):
+        intermediate_dir.rmdir()
+        if verbose:
+            print("✓ Cleaned up empty intermediate directory")
     
     # =========================================================================
     # FINAL SUMMARY
@@ -1758,8 +1765,8 @@ def _save_pipeline_report(
     """Save pipeline execution report as JSON."""
     
     output_dir.mkdir(parents=True, exist_ok=True)
-    log_dir = output_dir / "logs"
-    log_dir.mkdir(exist_ok=True)
+    # log_dir = output_dir / "logs"
+    # log_dir.mkdir(exist_ok=True)
     
     report = {
         'subject_id': subject_id,
@@ -1781,7 +1788,7 @@ def _save_pipeline_report(
         }
     }
     
-    report_path = log_dir / f"{subject_id}_pipeline_report.json"
+    report_path = output_dir / f"{subject_id}_pipeline_report.json"
     with open(report_path, 'w') as f:
         json.dump(report, f, indent=2, default=str)
     
