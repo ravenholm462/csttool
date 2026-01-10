@@ -21,12 +21,13 @@
 
 ### Tracking
 
-- [ ] Visualization of full brain tractogram is too messy. Fix.
+- [X] Visualization of full brain tractogram is too messy. Fix.
+- [ ] Add heatmap legends for MD, directions etc.
 
 ### Extraction
 
 - [X] Output architecture too messy. Fix.
-- [ ] Visualizations of LFS/RHS CST too messy, same as for full brain tractogram. Fix.
+- [X] Visualizations of LFS/RHS CST too messy, same as for full brain tractogram. Fix.
 
 ### Metrics
 

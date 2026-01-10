@@ -3,14 +3,6 @@ visualizations.py - Extract Module
 
 Visualization functions for CST extraction QC.
 
-This module provides file-saving visualizations for:
-- Registration QC (MNI to subject)
-- ROI mask overlay
-- CST extraction results
-- Extraction summary
-
-All functions save figures to disk and return the path to the saved file.
-
 """
 
 import numpy as np
@@ -18,70 +10,6 @@ import matplotlib
 matplotlib.use('Agg')  # Non-interactive backend for file saving
 import matplotlib.pyplot as plt
 from pathlib import Path
-
-
-# =============================================================================
-# HELPER FUNCTION: Compute world-coordinate extent for imshow
-# =============================================================================
-
-def compute_world_extent(fa_shape, affine, slice_idx, view):
-    """
-    Compute proper world-coordinate extent for imshow to align FA with streamlines.
-    
-    Streamlines are in RASMM world coordinates, so the FA background must be
-    positioned using the full affine transformation (not just voxel size).
-    
-    Parameters
-    ----------
-    fa_shape : tuple
-        Shape of the 3D FA volume (i, j, k).
-    affine : ndarray
-        4x4 affine transformation matrix (voxel → world).
-    slice_idx : int
-        Index of the slice being displayed (in the fixed dimension).
-    view : str
-        One of 'sagittal', 'coronal', or 'axial'.
-        
-    Returns
-    -------
-    extent : list
-        [x_min, x_max, y_min, y_max] in world coordinates for use with imshow.
-        
-    Notes
-    -----
-    For each view:
-    - Sagittal: fixed dim 0 (i), showing dims 1 (j) vs 2 (k) → Y vs Z
-    - Coronal: fixed dim 1 (j), showing dims 0 (i) vs 2 (k) → X vs Z
-    - Axial: fixed dim 2 (k), showing dims 0 (i) vs 1 (j) → X vs Y
-    
-    We compute corners by transforming voxel coordinates through the affine.
-    """
-    if view == 'sagittal':
-        # Fixed i = slice_idx, showing j (Y) on x-axis, k (Z) on y-axis
-        corner_00 = affine @ np.array([slice_idx, 0, 0, 1])
-        corner_jk = affine @ np.array([slice_idx, fa_shape[1], fa_shape[2], 1])
-        x_extent = [corner_00[1], corner_jk[1]]  # Y range
-        y_extent = [corner_00[2], corner_jk[2]]  # Z range
-        
-    elif view == 'coronal':
-        # Fixed j = slice_idx, showing i (X) on x-axis, k (Z) on y-axis
-        corner_00 = affine @ np.array([0, slice_idx, 0, 1])
-        corner_ik = affine @ np.array([fa_shape[0], slice_idx, fa_shape[2], 1])
-        x_extent = [corner_00[0], corner_ik[0]]  # X range
-        y_extent = [corner_00[2], corner_ik[2]]  # Z range
-        
-    elif view == 'axial':
-        # Fixed k = slice_idx, showing i (X) on x-axis, j (Y) on y-axis
-        corner_00 = affine @ np.array([0, 0, slice_idx, 1])
-        corner_ij = affine @ np.array([fa_shape[0], fa_shape[1], slice_idx, 1])
-        x_extent = [corner_00[0], corner_ij[0]]  # X range
-        y_extent = [corner_00[1], corner_ij[1]]  # Y range
-        
-    else:
-        raise ValueError(f"Unknown view: {view}. Use 'sagittal', 'coronal', or 'axial'.")
-    
-    # Return as [left, right, bottom, top] for imshow extent
-    return [min(x_extent), max(x_extent), min(y_extent), max(y_extent)]
 
 
 # =============================================================================
@@ -100,24 +28,6 @@ def plot_registration_comparison(
     
     Shows subject FA and warped MNI template side-by-side
     in three orthogonal views for registration QC.
-    
-    Parameters
-    ----------
-    subject_fa : ndarray
-        3D subject FA map.
-    mni_warped : ndarray
-        3D MNI template warped to subject space.
-    output_dir : str or Path
-        Output directory for saving figure.
-    subject_id : str, optional
-        Subject identifier for filename.
-    verbose : bool, optional
-        Print progress information.
-        
-    Returns
-    -------
-    fig_path : Path
-        Path to saved figure.
     """
     output_dir = Path(output_dir)
     viz_dir = output_dir / "visualizations"
@@ -191,26 +101,6 @@ def plot_roi_masks(
     
     Shows motor cortex and brainstem ROI masks overlaid on FA
     in three orthogonal views.
-    
-    Parameters
-    ----------
-    fa : ndarray
-        3D FA map for background.
-    masks : dict
-        Dictionary containing ROI masks:
-        - motor_cortex_left, motor_cortex_right
-        - brainstem
-    output_dir : str or Path
-        Output directory for saving figure.
-    subject_id : str, optional
-        Subject identifier for filename.
-    verbose : bool, optional
-        Print progress information.
-        
-    Returns
-    -------
-    fig_path : Path
-        Path to saved figure.
     """
     output_dir = Path(output_dir)
     viz_dir = output_dir / "visualizations"
@@ -228,21 +118,21 @@ def plot_roi_masks(
     fig.suptitle(f"ROI Masks - {subject_id or 'Subject'}\nMotor Cortex (L/R) + Brainstem",
                  fontsize=14, fontweight='bold')
     
-    # Get masks
-    motor_left = masks.get('motor_cortex_left', np.zeros_like(fa))
-    motor_right = masks.get('motor_cortex_right', np.zeros_like(fa))
+    # Get masks (keys from create_cst_roi_masks: 'motor_left', 'motor_right', 'brainstem')
+    motor_left = masks.get('motor_left', np.zeros_like(fa))
+    motor_right = masks.get('motor_right', np.zeros_like(fa))
     brainstem = masks.get('brainstem', np.zeros_like(fa))
     
     views = [
-        ('Axial', mid_ax, fa[:, :, mid_ax], motor_left[:, :, mid_ax], 
+        ('Axial', fa[:, :, mid_ax], motor_left[:, :, mid_ax], 
          motor_right[:, :, mid_ax], brainstem[:, :, mid_ax]),
-        ('Coronal', mid_cor, fa[:, mid_cor, :], motor_left[:, mid_cor, :],
+        ('Coronal', fa[:, mid_cor, :], motor_left[:, mid_cor, :],
          motor_right[:, mid_cor, :], brainstem[:, mid_cor, :]),
-        ('Sagittal', mid_sag, fa[mid_sag, :, :], motor_left[mid_sag, :, :],
+        ('Sagittal', fa[mid_sag, :, :], motor_left[mid_sag, :, :],
          motor_right[mid_sag, :, :], brainstem[mid_sag, :, :]),
     ]
     
-    for col, (view_name, _, fa_slice, ml_slice, mr_slice, bs_slice) in enumerate(views):
+    for col, (view_name, fa_slice, ml_slice, mr_slice, bs_slice) in enumerate(views):
         # Row 0: FA only
         axes[0, col].imshow(fa_slice.T, cmap='gray', origin='lower', vmin=0, vmax=0.8)
         axes[0, col].set_title(f'{view_name}\nFA background')
@@ -288,7 +178,7 @@ def plot_roi_masks(
 
 
 # =============================================================================
-# CST EXTRACTION VISUALIZATION (CORRECTED)
+# CST EXTRACTION VISUALIZATION (SIMPLIFIED - NO FA BACKGROUND ON STREAMLINES)
 # =============================================================================
 
 def plot_cst_extraction(
@@ -303,11 +193,8 @@ def plot_cst_extraction(
     """
     Create CST extraction visualization.
     
-    Shows extracted left and right CST streamlines overlaid on FA
-    in three orthogonal views.
-    
-    CORRECTED: Now properly aligns FA background with streamlines by computing
-    world-coordinate extent using the full affine transformation.
+    Row 0: FA anatomy in three orthogonal views (voxel space)
+    Row 1: Streamlines only on neutral background (world coordinates)
     
     Parameters
     ----------
@@ -366,49 +253,46 @@ def plot_cst_extraction(
                  f"Total: {stats['cst_total_count']:,} ({stats['extraction_rate']:.1f}%)",
                  fontsize=14, fontweight='bold')
     
-    # Row 0: FA background only (for reference)
+    # Row 0: FA background only (voxel space, no extent needed)
     views_fa = [
-        ('Sagittal', 'sagittal', mid_sag, fa[mid_sag, :, :].T),
-        ('Coronal', 'coronal', mid_cor, fa[:, mid_cor, :].T),
-        ('Axial', 'axial', mid_ax, fa[:, :, mid_ax].T),
+        ('Sagittal', fa[mid_sag, :, :].T),
+        ('Coronal', fa[:, mid_cor, :].T),
+        ('Axial', fa[:, :, mid_ax].T),
     ]
     
-    for col, (name, view_name, slice_idx, fa_slice) in enumerate(views_fa):
+    for col, (name, fa_slice) in enumerate(views_fa):
         ax = axes[0, col]
-        # CORRECTED: Use proper world-coordinate extent
-        extent = compute_world_extent(fa.shape, affine, slice_idx, view_name)
-        ax.imshow(fa_slice, cmap='gray', origin='lower', extent=extent, vmin=0, vmax=0.8)
+        ax.imshow(fa_slice, cmap='gray', origin='lower', vmin=0, vmax=0.8)
         ax.set_title(f'{name}\nFA background')
-        ax.set_aspect('equal')
         ax.axis('off')
     
-    # Row 1: Streamlines on FA background
-    # Define which world dimensions correspond to each view
+    # Row 1: Streamlines ONLY (no FA background) on neutral background
+    # World coordinate dimensions: 0=X, 1=Y, 2=Z
     views_sl = [
-        ('Sagittal (Y-Z)', 'sagittal', mid_sag, fa[mid_sag, :, :].T, 1, 2),  # Y, Z
-        ('Coronal (X-Z)', 'coronal', mid_cor, fa[:, mid_cor, :].T, 0, 2),    # X, Z
-        ('Axial (X-Y)', 'axial', mid_ax, fa[:, :, mid_ax].T, 0, 1),          # X, Y
+        ('Sagittal (Y-Z)', 1, 2, 'Y (mm)', 'Z (mm)'),   # Y vs Z
+        ('Coronal (X-Z)', 0, 2, 'X (mm)', 'Z (mm)'),    # X vs Z
+        ('Axial (X-Y)', 0, 1, 'X (mm)', 'Y (mm)'),      # X vs Y
     ]
     
-    for col, (name, view_name, slice_idx, fa_slice, d1, d2) in enumerate(views_sl):
+    for col, (name, d1, d2, xlabel, ylabel) in enumerate(views_sl):
         ax = axes[1, col]
         
-        # CORRECTED: Use proper world-coordinate extent
-        extent = compute_world_extent(fa.shape, affine, slice_idx, view_name)
-        ax.imshow(fa_slice, cmap='gray', origin='lower', extent=extent, 
-                  vmin=0, vmax=0.8, alpha=0.5)
+        # Set neutral background
+        ax.set_facecolor('#f0f0f0')
         
         # Plot left CST (blue)
         for sl in left_vis:
-            ax.plot(sl[:, d1], sl[:, d2], color='blue', alpha=0.15, linewidth=0.5)
+            ax.plot(sl[:, d1], sl[:, d2], color='blue', alpha=0.3, linewidth=0.8)
         
         # Plot right CST (red)
         for sl in right_vis:
-            ax.plot(sl[:, d1], sl[:, d2], color='red', alpha=0.15, linewidth=0.5)
+            ax.plot(sl[:, d1], sl[:, d2], color='red', alpha=0.3, linewidth=0.8)
         
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel(ylabel)
         ax.set_title(f'{name}')
         ax.set_aspect('equal')
-        ax.axis('off')
+        ax.grid(True, alpha=0.3, color='white')
     
     # Add legend
     from matplotlib.lines import Line2D
@@ -431,7 +315,7 @@ def plot_cst_extraction(
 
 
 # =============================================================================
-# EXTRACTION SUMMARY
+# EXTRACTION SUMMARY (SIMPLIFIED)
 # =============================================================================
 
 def create_extraction_summary(
@@ -448,30 +332,6 @@ def create_extraction_summary(
     
     Combines ROI masks, CST visualization, and statistics
     into a single summary figure.
-    
-    CORRECTED: Now properly aligns FA background with streamlines.
-    
-    Parameters
-    ----------
-    cst_result : dict
-        Output from extract_bilateral_cst().
-    fa : ndarray
-        3D FA map.
-    masks : dict
-        ROI masks from create_cst_roi_masks().
-    affine : ndarray
-        4x4 affine transformation matrix.
-    output_dir : str or Path
-        Output directory for saving figure.
-    subject_id : str, optional
-        Subject identifier for filename.
-    verbose : bool, optional
-        Print progress information.
-        
-    Returns
-    -------
-    fig_path : Path
-        Path to saved figure.
     """
     from dipy.tracking.streamline import length
     
@@ -501,6 +361,8 @@ def create_extraction_summary(
     
     # Get slice indices
     mid_ax = fa.shape[2] // 2
+    mid_cor = fa.shape[1] // 2
+    mid_sag = fa.shape[0] // 2
     
     # Create figure
     fig = plt.figure(figsize=(20, 12))
@@ -509,48 +371,34 @@ def create_extraction_summary(
     
     gs = fig.add_gridspec(3, 4, hspace=0.3, wspace=0.3)
     
-    # Row 0: ROI masks (axial view)
-    motor_left = masks.get('motor_cortex_left', np.zeros_like(fa))
-    motor_right = masks.get('motor_cortex_right', np.zeros_like(fa))
+    # Row 0: ROI masks (voxel space)
+    # Keys from create_cst_roi_masks: 'motor_left', 'motor_right', 'brainstem'
+    motor_left = masks.get('motor_left', np.zeros_like(fa))
+    motor_right = masks.get('motor_right', np.zeros_like(fa))
     brainstem = masks.get('brainstem', np.zeros_like(fa))
     
-    # Axial ROI view
-    ax = fig.add_subplot(gs[0, 0])
-    ax.imshow(fa[:, :, mid_ax].T, cmap='gray', origin='lower', vmin=0, vmax=0.8)
-    ml_overlay = np.ma.masked_where(motor_left[:, :, mid_ax].T == 0, motor_left[:, :, mid_ax].T)
-    ax.imshow(ml_overlay, cmap='Blues', alpha=0.6, origin='lower')
-    mr_overlay = np.ma.masked_where(motor_right[:, :, mid_ax].T == 0, motor_right[:, :, mid_ax].T)
-    ax.imshow(mr_overlay, cmap='Reds', alpha=0.6, origin='lower')
-    bs_overlay = np.ma.masked_where(brainstem[:, :, mid_ax].T == 0, brainstem[:, :, mid_ax].T)
-    ax.imshow(bs_overlay, cmap='Greens', alpha=0.6, origin='lower')
-    ax.set_title('Axial: ROI Masks')
-    ax.axis('off')
+    roi_views = [
+        ('Axial', fa[:, :, mid_ax], motor_left[:, :, mid_ax], 
+         motor_right[:, :, mid_ax], brainstem[:, :, mid_ax]),
+        ('Coronal', fa[:, mid_cor, :], motor_left[:, mid_cor, :],
+         motor_right[:, mid_cor, :], brainstem[:, mid_cor, :]),
+        ('Sagittal', fa[mid_sag, :, :], motor_left[mid_sag, :, :],
+         motor_right[mid_sag, :, :], brainstem[mid_sag, :, :]),
+    ]
     
-    # Coronal ROI view
-    mid_cor = fa.shape[1] // 2
-    ax = fig.add_subplot(gs[0, 1])
-    ax.imshow(fa[:, mid_cor, :].T, cmap='gray', origin='lower', vmin=0, vmax=0.8)
-    ml_overlay = np.ma.masked_where(motor_left[:, mid_cor, :].T == 0, motor_left[:, mid_cor, :].T)
-    ax.imshow(ml_overlay, cmap='Blues', alpha=0.6, origin='lower')
-    mr_overlay = np.ma.masked_where(motor_right[:, mid_cor, :].T == 0, motor_right[:, mid_cor, :].T)
-    ax.imshow(mr_overlay, cmap='Reds', alpha=0.6, origin='lower')
-    bs_overlay = np.ma.masked_where(brainstem[:, mid_cor, :].T == 0, brainstem[:, mid_cor, :].T)
-    ax.imshow(bs_overlay, cmap='Greens', alpha=0.6, origin='lower')
-    ax.set_title('Coronal: ROI Masks')
-    ax.axis('off')
-    
-    # Sagittal ROI view
-    mid_sag = fa.shape[0] // 2
-    ax = fig.add_subplot(gs[0, 2])
-    ax.imshow(fa[mid_sag, :, :].T, cmap='gray', origin='lower', vmin=0, vmax=0.8)
-    ml_overlay = np.ma.masked_where(motor_left[mid_sag, :, :].T == 0, motor_left[mid_sag, :, :].T)
-    ax.imshow(ml_overlay, cmap='Blues', alpha=0.6, origin='lower')
-    mr_overlay = np.ma.masked_where(motor_right[mid_sag, :, :].T == 0, motor_right[mid_sag, :, :].T)
-    ax.imshow(mr_overlay, cmap='Reds', alpha=0.6, origin='lower')
-    bs_overlay = np.ma.masked_where(brainstem[mid_sag, :, :].T == 0, brainstem[mid_sag, :, :].T)
-    ax.imshow(bs_overlay, cmap='Greens', alpha=0.6, origin='lower')
-    ax.set_title('Sagittal: ROI Masks')
-    ax.axis('off')
+    for col, (name, fa_slice, ml_slice, mr_slice, bs_slice) in enumerate(roi_views):
+        ax = fig.add_subplot(gs[0, col])
+        ax.imshow(fa_slice.T, cmap='gray', origin='lower', vmin=0, vmax=0.8)
+        
+        ml_overlay = np.ma.masked_where(ml_slice.T == 0, ml_slice.T)
+        ax.imshow(ml_overlay, cmap='Blues', alpha=0.6, origin='lower')
+        mr_overlay = np.ma.masked_where(mr_slice.T == 0, mr_slice.T)
+        ax.imshow(mr_overlay, cmap='Reds', alpha=0.6, origin='lower')
+        bs_overlay = np.ma.masked_where(bs_slice.T == 0, bs_slice.T)
+        ax.imshow(bs_overlay, cmap='Greens', alpha=0.6, origin='lower')
+        
+        ax.set_title(f'{name}: ROI Masks')
+        ax.axis('off')
     
     # ROI legend
     ax = fig.add_subplot(gs[0, 3])
@@ -564,29 +412,25 @@ def create_extraction_summary(
     ax.legend(handles=legend_elements, loc='center', fontsize=12)
     ax.set_title('ROI Legend')
     
-    # Row 1: CST streamlines with CORRECTED extent
-    views = [
-        ('Sagittal', 'sagittal', mid_sag, fa[mid_sag, :, :].T, 1, 2),
-        ('Coronal', 'coronal', mid_cor, fa[:, mid_cor, :].T, 0, 2),
-        ('Axial', 'axial', mid_ax, fa[:, :, mid_ax].T, 0, 1),
+    # Row 1: CST streamlines only (no FA background)
+    streamline_views = [
+        ('Sagittal', 1, 2),  # Y vs Z
+        ('Coronal', 0, 2),   # X vs Z
+        ('Axial', 0, 1),     # X vs Y
     ]
     
-    for col, (name, view_name, slice_idx, fa_bg, d1, d2) in enumerate(views):
+    for col, (name, d1, d2) in enumerate(streamline_views):
         ax = fig.add_subplot(gs[1, col])
-        
-        # CORRECTED: Use proper world-coordinate extent
-        extent = compute_world_extent(fa.shape, affine, slice_idx, view_name)
-        ax.imshow(fa_bg, cmap='gray', origin='lower', extent=extent, 
-                  vmin=0, vmax=0.8, alpha=0.4)
+        ax.set_facecolor('#f0f0f0')
         
         for sl in left_vis:
-            ax.plot(sl[:, d1], sl[:, d2], color='blue', alpha=0.1, linewidth=0.5)
+            ax.plot(sl[:, d1], sl[:, d2], color='blue', alpha=0.2, linewidth=0.5)
         for sl in right_vis:
-            ax.plot(sl[:, d1], sl[:, d2], color='red', alpha=0.1, linewidth=0.5)
+            ax.plot(sl[:, d1], sl[:, d2], color='red', alpha=0.2, linewidth=0.5)
         
-        ax.set_title(name)
+        ax.set_title(f'{name}: CST')
         ax.set_aspect('equal')
-        ax.axis('off')
+        ax.grid(True, alpha=0.3, color='white')
     
     # Row 1, col 3: Length histogram
     ax = fig.add_subplot(gs[1, 3])
@@ -662,33 +506,6 @@ def save_all_extraction_visualizations(
 ):
     """
     Generate and save all extraction visualizations.
-    
-    Convenience function that calls all visualization functions
-    and returns paths to all generated figures.
-    
-    Parameters
-    ----------
-    cst_result : dict
-        Output from extract_bilateral_cst().
-    fa : ndarray
-        3D FA map.
-    masks : dict
-        ROI masks from create_cst_roi_masks().
-    affine : ndarray
-        4x4 affine transformation matrix.
-    output_dir : str or Path
-        Output directory for saving figures.
-    subject_id : str, optional
-        Subject identifier for filenames.
-    mni_warped : ndarray, optional
-        Warped MNI template for registration QC.
-    verbose : bool, optional
-        Print progress information.
-        
-    Returns
-    -------
-    viz_paths : dict
-        Dictionary mapping visualization names to file paths.
     """
     if verbose:
         print("\nGenerating extraction visualizations...")
