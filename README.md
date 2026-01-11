@@ -11,7 +11,7 @@ The core ideas behind `csttool` are:
 
 ## Structure
 
-v0.0.1
+v0.1.0
 
 ```
 ├── diagrams
@@ -26,6 +26,13 @@ v0.0.1
 │       ├── metrics
 │       ├── preprocess
 │       └── tracking
+├── tests
+│   ├── extract
+│   ├── ingest
+│   ├── integration
+│   ├── metrics
+│   ├── preprocess
+│   └── tracking
 ```
 
 ## Config file
@@ -86,6 +93,24 @@ The ![metrics pipeline](https://github.com/ravenholm462/csttool/tree/main/diagra
 2. Performs bilateral analysis of entire CST (assymetry metrics, volume laterlaity, FA/MD laterality)
 3. Generates reports
 4. Generates visualizations
+
+## Testing
+The `csttool` project includes a comprehensive suite of unit and integration tests.
+
+To run the full test suite:
+```bash
+pytest tests/
+```
+
+To run only integration tests (end-to-end pipeline verification):
+```bash
+pytest tests/integration/
+```
+
+To run only unit tests:
+```bash
+pytest tests/ --ignore=tests/integration/
+```
 
 ## How to run
 
