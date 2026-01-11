@@ -759,7 +759,7 @@ def cmd_import(args: argparse.Namespace) -> dict | None:
         result = run_ingest_pipeline(
             study_dir=args.dicom,
             output_dir=args.out,
-            series_index=args.series - 1 if args.series else None,
+            series_index=args.series,
             subject_id=args.subject_id,
             verbose=getattr(args, 'verbose', False)
         )
