@@ -41,7 +41,7 @@ def plot_registration_comparison(
     mid_sag = subject_fa.shape[0] // 2
     
     # Create figure
-    fig, axes = plt.subplots(3, 3, figsize=(12, 12))
+    fig, axes = plt.subplots(3, 3, figsize=(12, 12), constrained_layout=True)
     fig.suptitle(f"Registration QC - {subject_id or 'Subject'}\nMNI → Subject Space",
                  fontsize=14, fontweight='bold')
     
@@ -72,8 +72,6 @@ def plot_registration_comparison(
         axes[row, 0].text(-0.15, 0.5, view_name, transform=axes[row, 0].transAxes,
                          fontsize=12, fontweight='bold', va='center', ha='right',
                          rotation=90)
-    
-    plt.tight_layout()
     
     fig_path = viz_dir / f"{prefix}registration_qc.png"
     plt.savefig(fig_path, dpi=150, bbox_inches='tight', facecolor='white')
@@ -114,7 +112,7 @@ def plot_roi_masks(
     mid_sag = fa.shape[0] // 2
     
     # Create figure
-    fig, axes = plt.subplots(2, 3, figsize=(14, 9))
+    fig, axes = plt.subplots(2, 3, figsize=(15, 10), constrained_layout=True)
     fig.suptitle(f"ROI Masks - {subject_id or 'Subject'}\nMotor Cortex (L/R) + Brainstem",
                  fontsize=14, fontweight='bold')
     
@@ -170,8 +168,6 @@ def plot_roi_masks(
         Patch(facecolor='green', alpha=0.6, label='Brainstem'),
     ]
     fig.legend(handles=legend_elements, loc='lower center', ncol=3, fontsize=11)
-    
-    plt.tight_layout(rect=[0, 0.05, 1, 0.95])
     
     fig_path = viz_dir / f"{prefix}roi_masks.png"
     plt.savefig(fig_path, dpi=150, bbox_inches='tight', facecolor='white')
@@ -253,7 +249,7 @@ def plot_cst_extraction(
     mid_sag = fa.shape[0] // 2
     
     # Create figure
-    fig, axes = plt.subplots(2, 3, figsize=(16, 10))
+    fig, axes = plt.subplots(2, 3, figsize=(16, 10), constrained_layout=True)
     fig.suptitle(f"CST Extraction - {subject_id or 'Subject'}\n"
                  f"Left: {stats['cst_left_count']:,} | Right: {stats['cst_right_count']:,} | "
                  f"Total: {stats['cst_total_count']:,} ({stats['extraction_rate']:.1f}%)",
@@ -307,8 +303,6 @@ def plot_cst_extraction(
         Line2D([0], [0], color='red', linewidth=2, label=f'Right CST ({stats["cst_right_count"]:,})'),
     ]
     fig.legend(handles=legend_elements, loc='lower center', ncol=2, fontsize=12)
-    
-    plt.tight_layout(rect=[0, 0.05, 1, 0.95])
     
     fig_path = viz_dir / f"{prefix}cst_extraction.png"
     plt.savefig(fig_path, dpi=150, bbox_inches='tight', facecolor='white')
@@ -371,7 +365,7 @@ def create_extraction_summary(
     mid_sag = fa.shape[0] // 2
     
     # Create figure
-    fig = plt.figure(figsize=(20, 12))
+    fig = plt.figure(figsize=(18, 12), constrained_layout=True)
     fig.suptitle(f"CST Extraction Summary - {subject_id or 'Subject'}",
                  fontsize=16, fontweight='bold')
     
@@ -494,8 +488,6 @@ def create_extraction_summary(
             fontsize=11, fontfamily='monospace',
             verticalalignment='center', horizontalalignment='center',
             bbox=dict(boxstyle='round', facecolor='lightgreen', alpha=0.5))
-    
-    plt.tight_layout()
     
     fig_path = viz_dir / f"{prefix}extraction_summary.png"
     plt.savefig(fig_path, dpi=150, bbox_inches='tight', facecolor='white')

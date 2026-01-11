@@ -74,8 +74,8 @@ def plot_denoising_comparison(
     diff = np.abs(after.astype(np.float64) - before.astype(np.float64))
     diff[~brain_mask] = 0
     
-    # Create figure
-    fig, axes = plt.subplots(3, 3, figsize=(12, 12))
+    # Create figure with constrained_layout to avoid warnings
+    fig, axes = plt.subplots(3, 3, figsize=(12, 12), constrained_layout=True)
     fig.suptitle(f"Denoising QC - {stem}\nVolume {vol_idx}", fontsize=14, fontweight='bold')
     
     # Normalize for consistent display
@@ -112,11 +112,9 @@ def plot_denoising_comparison(
                          fontsize=12, fontweight='bold', va='center', ha='right',
                          rotation=90)
     
-    # Colorbar for difference
+    # Colorbar for difference (constrained_layout handles spacing automatically)
     cbar_ax = fig.add_axes([0.92, 0.15, 0.02, 0.7])
     fig.colorbar(im, cax=cbar_ax, label='Intensity Difference')
-    
-    plt.tight_layout(rect=[0, 0, 0.9, 0.95])
     
     fig_path = viz_dir / f"{stem}_denoising_qc.png"
     plt.savefig(fig_path, dpi=150, bbox_inches='tight', facecolor='white')
@@ -183,7 +181,7 @@ def plot_brain_mask_overlay(
     coverage = brain_voxels / total_voxels * 100
     
     # Create figure
-    fig, axes = plt.subplots(2, 3, figsize=(14, 9))
+    fig, axes = plt.subplots(2, 3, figsize=(15, 10), constrained_layout=True)
     fig.suptitle(f"Brain Mask QC - {stem}\n"
                  f"Coverage: {brain_voxels:,} voxels ({coverage:.1f}%)",
                  fontsize=14, fontweight='bold')
@@ -213,8 +211,6 @@ def plot_brain_mask_overlay(
         axes[1, col].contour(mask_slice.T, levels=[0.5], colors='red', linewidths=1)
         axes[1, col].set_title(f'{view_name}\nwith brain mask')
         axes[1, col].axis('off')
-    
-    plt.tight_layout()
     
     fig_path = viz_dir / f"{stem}_brain_mask_qc.png"
     plt.savefig(fig_path, dpi=150, bbox_inches='tight', facecolor='white')
@@ -280,7 +276,7 @@ def plot_motion_correction_summary(
     rotations_rel = rotations - rotations[0]
     
     # Create figure
-    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+    fig, axes = plt.subplots(2, 2, figsize=(15, 10), constrained_layout=True)
     fig.suptitle(f"Motion Correction QC - {stem}\n{n_vols} volumes",
                  fontsize=14, fontweight='bold')
     
@@ -339,8 +335,6 @@ def plot_motion_correction_summary(
     fig.text(0.5, 0.02, 
              f"Max displacement: {max_trans:.2f} mm | Max rotation: {max_rot:.2f}°",
              ha='center', fontsize=11, style='italic')
-    
-    plt.tight_layout(rect=[0, 0.04, 1, 0.95])
     
     fig_path = viz_dir / f"{stem}_motion_qc.png"
     plt.savefig(fig_path, dpi=150, bbox_inches='tight', facecolor='white')
@@ -424,8 +418,8 @@ def create_preprocessing_summary(
     orig_std = np.std(data_original[brain_mask])
     proc_std = np.std(data_preprocessed[brain_mask])
     
-    # Create figure
-    fig = plt.figure(figsize=(16, 10))
+    # Create figure with constrained_layout
+    fig = plt.figure(figsize=(18, 12), constrained_layout=True)
     fig.suptitle(f"Preprocessing Summary - {stem}", fontsize=16, fontweight='bold')
     
     # Create grid
@@ -518,8 +512,6 @@ def create_preprocessing_summary(
                   fontsize=10, fontfamily='monospace',
                   verticalalignment='center', horizontalalignment='center',
                   bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
-    
-    plt.tight_layout()
     
     fig_path = viz_dir / f"{stem}_preprocessing_summary.png"
     plt.savefig(fig_path, dpi=150, bbox_inches='tight', facecolor='white')
