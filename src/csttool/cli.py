@@ -214,13 +214,25 @@ def main() -> None:
         "--fa",
         type=Path,
         required=True,
-        help="Path to subject FA map for registration"
+        help="FA map for registration and analysis"
     )
     p_extract.add_argument(
         "--subject-id",
         type=str,
         default="subject",
         help="Subject identifier for output naming"
+    )
+    p_extract.add_argument(
+        "--dilate-brainstem",
+        type=int,
+        default=2,
+        help="Dilation iterations for brainstem ROI (default: 2)"
+    )
+    p_extract.add_argument(
+        "--dilate-motor",
+        type=int,
+        default=1,
+        help="Dilation iterations for motor cortex ROI (default: 1)"
     )
     p_extract.add_argument(
         "--min-length",
@@ -234,27 +246,29 @@ def main() -> None:
         default=200.0,
         help="Maximum streamline length in mm (default: 200)"
     )
+    # === NEW ARGUMENTS ===
     p_extract.add_argument(
-        "--dilate-brainstem",
-        type=int,
-        default=2,
-        help="Dilation iterations for brainstem ROI (default: 2)"
+        "--extraction-method",
+        type=str,
+        choices=["endpoint", "passthrough"],
+        default="passthrough",
+        help="CST extraction method: endpoint (strict) or passthrough (permissive). Default: passthrough"
     )
-    p_extract.add_argument(
-        "--dilate-motor",
-        type=int,
-        default=1,
-        help="Dilation iterations for motor cortex ROIs (default: 1)"
-    )
+    # === END NEW ARGUMENTS ===
     p_extract.add_argument(
         "--fast-registration",
         action="store_true",
-        help="Use reduced iterations for faster registration (testing mode)"
+        help="Use faster but less accurate registration"
+    )
+    p_extract.add_argument(
+        "--save-visualizations",
+        action="store_true",
+        help="Save QC visualizations"
     )
     p_extract.add_argument(
         "--verbose",
         action="store_true",
-        help="Print detailed processing information."
+        help="Print detailed processing information"
     )
     p_extract.add_argument(
         "--out",
@@ -398,6 +412,18 @@ def main() -> None:
     
     # Extraction options
     p_run.add_argument(
+        "--dilate-brainstem",
+        type=int,
+        default=2,
+        help="Dilation iterations for brainstem ROI (default: 2)"
+    )
+    p_run.add_argument(
+        "--dilate-motor",
+        type=int,
+        default=1,
+        help="Dilation iterations for motor cortex ROI (default: 1)"
+    )
+    p_run.add_argument(
         "--min-length",
         type=float,
         default=20.0,
@@ -410,23 +436,19 @@ def main() -> None:
         help="Maximum streamline length in mm (default: 200)"
     )
     p_run.add_argument(
-        "--dilate-brainstem",
-        type=int,
-        default=2,
-        help="Brainstem ROI dilation (default: 2)"
+        "--extraction-method",
+        type=str,
+        choices=["endpoint", "passthrough", "roi-seeded"],
+        default="passthrough",
+        help="CST extraction method: endpoint, passthrough, or roi-seeded. Default: passthrough"
     )
     p_run.add_argument(
-        "--dilate-motor",
-        type=int,
-        default=1,
-        help="Motor cortex ROI dilation (default: 1)"
+        "--seed-fa-threshold",
+        type=float,
+        default=0.15,
+        help="FA threshold for roi-seeded tracking (default: 0.15)"
     )
-    p_run.add_argument(
-        "--fast-registration",
-        action="store_true",
-        help="Use fast registration (reduced accuracy)"
-    )
-    
+
     # Metrics options
     p_run.add_argument(
         "--generate-pdf",
@@ -1044,10 +1066,25 @@ def cmd_track(args: argparse.Namespace) -> dict | None:
 def cmd_extract(args: argparse.Namespace) -> dict | None:
     """
     Extract bilateral CST using atlas-based ROI filtering.
+    
+    Supports two methods:
+    - endpoint: Filter by streamline endpoints (original)
+    - passthrough: Filter by streamlines passing through ROIs (more permissive)
+    
+    Note: roi-seeded method requires raw DWI data and is only available via cmd_run.
     """
     import nibabel as nib
     
     verbose = getattr(args, 'verbose', True)
+    
+    # Check extraction method
+    extraction_method = getattr(args, 'extraction_method', 'passthrough')
+    
+    if extraction_method == "roi-seeded":
+        print("Error: roi-seeded method requires raw DWI data.")
+        print("       Use 'csttool run' for roi-seeded extraction, or")
+        print("       use --extraction-method endpoint|passthrough with cmd_extract.")
+        return None
     
     # Validate inputs
     if not args.tractogram.exists():
@@ -1073,6 +1110,7 @@ def cmd_extract(args: argparse.Namespace) -> dict | None:
             save_cst_tractograms,
             save_extraction_report
         )
+        from csttool.extract.modules.passthrough_filtering import extract_cst_passthrough
         from dipy.io.streamline import load_tractogram
     except ImportError as e:
         print(f"Error importing extraction modules: {e}")
@@ -1154,18 +1192,28 @@ def cmd_extract(args: argparse.Namespace) -> dict | None:
     
     # Step 4: Extract CST
     print("\n" + "="*60)
-    print("Step 4: Extracting bilateral CST")
+    print(f"Step 4: Extracting bilateral CST (method: {extraction_method})")
     print("="*60)
     
     try:
-        cst_result = extract_bilateral_cst(
-            streamlines=streamlines,
-            masks=masks,
-            affine=fa_affine,
-            min_length=args.min_length,
-            max_length=args.max_length,
-            verbose=verbose
-        )
+        if extraction_method == "passthrough":
+            cst_result = extract_cst_passthrough(
+                streamlines=streamlines,
+                masks=masks,
+                affine=fa_affine,
+                min_length=args.min_length,
+                max_length=args.max_length,
+                verbose=verbose
+            )
+        else:  # "endpoint"
+            cst_result = extract_bilateral_cst(
+                streamlines=streamlines,
+                masks=masks,
+                affine=fa_affine,
+                min_length=args.min_length,
+                max_length=args.max_length,
+                verbose=verbose
+            )
     except Exception as e:
         print(f"Error during CST extraction: {e}")
         return None
@@ -1199,7 +1247,6 @@ def cmd_extract(args: argparse.Namespace) -> dict | None:
             affine=fa_affine,
             output_dir=args.out,
             subject_id=args.subject_id,
-            # mni_warped=registration_result.get('mni_warped')
             verbose=verbose
         )
     
@@ -1423,6 +1470,185 @@ def cmd_metrics(args: argparse.Namespace) -> dict | None:
     }
 
 
+def _run_roi_seeded_extraction(
+    preproc_path: Path,
+    fa_path: Path,
+    output_dir: Path,
+    subject_id: str,
+    args: argparse.Namespace,
+    verbose: bool = True
+) -> dict | None:
+    """
+    Run ROI-seeded CST extraction.
+    
+    This method seeds streamlines directly from motor cortex ROIs
+    and filters by brainstem traversal. Requires raw DWI data.
+    """
+    import nibabel as nib
+    from dipy.io import read_bvals_bvecs
+    from dipy.core.gradients import gradient_table
+    
+    from csttool.extract.modules.registration import register_mni_to_subject
+    from csttool.extract.modules.warp_atlas_to_subject import (
+        warp_harvard_oxford_to_subject,
+        CST_ROI_CONFIG
+    )
+    from csttool.extract.modules.create_roi_masks import create_cst_roi_masks
+    from csttool.extract.modules.roi_seeded_tracking import extract_cst_roi_seeded
+    from csttool.extract.modules.endpoint_filtering import (
+        save_cst_tractograms,
+        save_extraction_report
+    )
+    
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Load preprocessed DWI data
+    if verbose:
+        print(f"Loading preprocessed data: {preproc_path}")
+    
+    dwi_img = nib.load(str(preproc_path))
+    data = dwi_img.get_fdata()
+    affine = dwi_img.affine
+    
+    # Load gradient information
+    bval_path = preproc_path.with_suffix('').with_suffix('.bval')
+    bvec_path = preproc_path.with_suffix('').with_suffix('.bvec')
+    
+    # Handle .nii.gz extension
+    if not bval_path.exists():
+        stem = preproc_path.name.replace('.nii.gz', '').replace('.nii', '')
+        bval_path = preproc_path.parent / f"{stem}.bval"
+        bvec_path = preproc_path.parent / f"{stem}.bvec"
+    
+    bvals, bvecs = read_bvals_bvecs(str(bval_path), str(bvec_path))
+    gtab = gradient_table(bvals, bvecs)
+    
+    # Load FA map
+    fa_img = nib.load(str(fa_path))
+    fa_data = fa_img.get_fdata()
+    fa_affine = fa_img.affine
+    
+    # Create brain mask from FA
+    brain_mask = fa_data > 0
+    
+    # Step 1: Registration
+    if verbose:
+        print("\n" + "="*60)
+        print("Step 1: Registering MNI template to subject space")
+        print("="*60)
+    
+    level_iters_affine = [1000, 100, 10] if getattr(args, 'fast_registration', False) else [10000, 1000, 100]
+    level_iters_syn = [5, 5, 3] if getattr(args, 'fast_registration', False) else [10, 10, 5]
+    
+    reg_result = register_mni_to_subject(
+        subject_fa_path=fa_path,
+        output_dir=output_dir,
+        level_iters_affine=level_iters_affine,
+        level_iters_syn=level_iters_syn,
+        verbose=verbose
+    )
+    
+    # Step 2: Warp atlases
+    if verbose:
+        print("\n" + "="*60)
+        print("Step 2: Warping Harvard-Oxford atlases to subject space")
+        print("="*60)
+    
+    warped = warp_harvard_oxford_to_subject(
+        registration_result=reg_result,
+        output_dir=output_dir,
+        subject_id=subject_id,
+        verbose=verbose
+    )
+    
+    # Step 3: Create ROI masks
+    if verbose:
+        print("\n" + "="*60)
+        print("Step 3: Creating CST ROI masks")
+        print("="*60)
+    
+    masks = create_cst_roi_masks(
+        warped_cortical=warped['cortical_warped'],
+        warped_subcortical=warped['subcortical_warped'],
+        subject_affine=fa_affine,
+        roi_config=CST_ROI_CONFIG,
+        dilate_brainstem=getattr(args, 'dilate_brainstem', 2),
+        dilate_motor=getattr(args, 'dilate_motor', 1),
+        output_dir=output_dir,
+        subject_id=subject_id,
+        verbose=verbose
+    )
+    
+    # Step 4: ROI-seeded extraction
+    if verbose:
+        print("\n" + "="*60)
+        print("Step 4: ROI-seeded CST extraction")
+        print("="*60)
+    
+    cst_result = extract_cst_roi_seeded(
+        data=data,
+        gtab=gtab,
+        affine=affine,
+        brain_mask=brain_mask,
+        motor_left_mask=masks['motor_left'],
+        motor_right_mask=masks['motor_right'],
+        brainstem_mask=masks['brainstem'],
+        fa_map=fa_data,
+        fa_threshold=getattr(args, 'seed_fa_threshold', 0.15),
+        seed_density=getattr(args, 'seed_density', 2),
+        step_size=0.5,
+        min_length=getattr(args, 'min_length', 30.0),
+        max_length=getattr(args, 'max_length', 200.0),
+        verbose=verbose
+    )
+    
+    # Step 5: Save outputs
+    if verbose:
+        print("\n" + "="*60)
+        print("Step 5: Saving extracted tractograms")
+        print("="*60)
+    
+    output_paths = save_cst_tractograms(
+        cst_result=cst_result,
+        reference_img=fa_img,
+        output_dir=output_dir,
+        subject_id=subject_id,
+        verbose=verbose
+    )
+    
+    save_extraction_report(cst_result, output_paths, output_dir, subject_id)
+    
+    # Visualizations
+    if getattr(args, 'save_visualizations', False):
+        from csttool.extract.modules import save_all_extraction_visualizations
+        save_all_extraction_visualizations(
+            cst_result=cst_result,
+            fa=fa_data,
+            masks=masks,
+            affine=fa_affine,
+            output_dir=output_dir,
+            subject_id=subject_id,
+            verbose=verbose
+        )
+    
+    # Summary
+    if verbose:
+        print(f"\n{'='*60}")
+        print("ROI-SEEDED EXTRACTION COMPLETE")
+        print(f"{'='*60}")
+        print(f"Subject: {subject_id}")
+        print(f"Left CST:  {cst_result['stats']['cst_left_count']:,} streamlines")
+        print(f"Right CST: {cst_result['stats']['cst_right_count']:,} streamlines")
+        print(f"Total:     {cst_result['stats']['cst_total_count']:,} streamlines")
+        print(f"{'='*60}")
+    
+    return {
+        'cst_left_path': output_paths.get('cst_left'),
+        'cst_right_path': output_paths.get('cst_right'),
+        'cst_combined_path': output_paths.get('cst_combined'),
+        'stats': cst_result['stats']
+    }
+
 def cmd_run(args: argparse.Namespace) -> None:
     """
     Run complete CST analysis pipeline.
@@ -1639,31 +1865,50 @@ def cmd_run(args: argparse.Namespace) -> None:
     cst_left_path = None
     cst_right_path = None
     
+    extraction_method = getattr(args, 'extraction_method', 'passthrough')
+    
     try:
         if tractogram_path is None or fa_path is None:
             raise RuntimeError("No tractogram or FA map available")
         
         extract_out = args.out / "extraction"
-        extract_args = argparse.Namespace(
-            tractogram=tractogram_path,
-            fa=fa_path,
-            subject_id=subject_id,
-            min_length=getattr(args, 'min_length', 20.0),
-            max_length=getattr(args, 'max_length', 200.0),
-            dilate_brainstem=getattr(args, 'dilate_brainstem', 2),
-            dilate_motor=getattr(args, 'dilate_motor', 1),
-            fast_registration=getattr(args, 'fast_registration', False),
-            save_visualizations=getattr(args, 'save_visualizations', False),
-            verbose=verbose,
-            out=extract_out
-        )
         
-        extract_result = cmd_extract(extract_args)
+        if extraction_method == "roi-seeded":
+            # ROI-seeded requires raw DWI data - use dedicated function
+            extract_result = _run_roi_seeded_extraction(
+                preproc_path=preproc_path,
+                fa_path=fa_path,
+                output_dir=extract_out,
+                subject_id=subject_id,
+                args=args,
+                verbose=verbose
+            )
+        else:
+            # endpoint or passthrough - use cmd_extract with tractogram
+            extract_args = argparse.Namespace(
+                tractogram=tractogram_path,
+                fa=fa_path,
+                subject_id=subject_id,
+                dilate_brainstem=getattr(args, 'dilate_brainstem', 2),
+                dilate_motor=getattr(args, 'dilate_motor', 1),
+                min_length=getattr(args, 'min_length', 20.0),
+                max_length=getattr(args, 'max_length', 200.0),
+                extraction_method=extraction_method,
+                fast_registration=getattr(args, 'fast_registration', False),
+                save_visualizations=getattr(args, 'save_visualizations', False),
+                verbose=verbose,
+                out=extract_out
+            )
+            
+            extract_result = cmd_extract(extract_args)
         
-        if extract_result and extract_result.get('cst_left_path') and extract_result.get('cst_right_path'):
-            cst_left_path = Path(extract_result['cst_left_path'])
-            cst_right_path = Path(extract_result['cst_right_path'])
+        if extract_result:
+            cst_left_path = extract_result.get('cst_left_path')
+            cst_right_path = extract_result.get('cst_right_path')
             step_results['extract'] = {'success': True, 'result': extract_result}
+            
+            if extract_result['stats']['cst_total_count'] == 0:
+                print("⚠ Warning: No CST streamlines extracted")
         else:
             raise RuntimeError("CST extraction failed or produced no streamlines")
             
