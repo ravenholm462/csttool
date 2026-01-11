@@ -576,6 +576,8 @@ def get_gtab_for_preproc(preproc_nii: Path):
     """
     Given a preprocessed NIfTI path like <stem>_preproc.nii.gz,
     find the original .bval and .bvec next to it and build gtab.
+    
+    Supports both .bval/.bvec and .bvals/.bvecs extensions.
     """
     name = preproc_nii.name
 
@@ -586,29 +588,32 @@ def get_gtab_for_preproc(preproc_nii: Path):
     else:
         raise ValueError("Preprocessed NIfTI must end with .nii or .nii.gz")
 
-    # Try to find matching bval/bvec files
-    # First try exact stem match
-    bval = preproc_nii.with_name(f"{stem}.bval")
-    bvec = preproc_nii.with_name(f"{stem}.bvec")
+    base_dir = preproc_nii.parent
     
-    # If not found, try removing _preproc suffix variations
-    if not bval.exists() or not bvec.exists():
+    # Try to find matching bval/bvec files with exact stem match
+    try:
+        bval, bvec = find_gradient_files(base_dir, stem)
+    except FileNotFoundError:
+        # If not found, try removing _preproc suffix variations
+        found = False
         for suffix in ["_preproc", "_dwi_preproc_nomc", "_dwi_preproc_mc", "_dwi_preproc"]:
             if stem.endswith(suffix):
                 orig_stem = stem[:-len(suffix)]
-                bval = preproc_nii.with_name(f"{orig_stem}.bval")
-                bvec = preproc_nii.with_name(f"{orig_stem}.bvec")
-                if bval.exists() and bvec.exists():
+                try:
+                    bval, bvec = find_gradient_files(base_dir, orig_stem)
+                    found = True
                     break
+                except FileNotFoundError:
+                    continue
+        
+        if not found:
+            raise FileNotFoundError(
+                f"Missing gradient files for {stem}. "
+                f"Expected .bval/.bvec or .bvals/.bvecs next to the NIfTI file."
+            )
 
     print(f"Using .bval: {bval}")
     print(f"Using .bvec: {bvec}")
-
-    if not bval.exists() or not bvec.exists():
-        raise FileNotFoundError(
-            f"Missing .bval or .bvec for {stem}. "
-            "Expected them next to the NIfTI file."
-        )
 
     bvals, bvecs = read_bvals_bvecs(str(bval), str(bvec))
     gtab = gradient_table(bvals, bvecs=bvecs)
@@ -644,6 +649,37 @@ def extract_stem_from_filename(filename: str) -> str:
         stem = path.stem.replace('.nii', '')
     
     return stem
+
+
+def find_gradient_files(base_path: Path, stem: str) -> tuple[Path, Path]:
+    """
+    Find .bval/.bvec files with flexible extension support.
+    
+    Supports both singular (.bval, .bvec) and plural (.bvals, .bvecs) extensions.
+    
+    Args:
+        base_path: Directory containing the gradient files
+        stem: Base filename without extension
+        
+    Returns:
+        tuple: (bval_path, bvec_path)
+        
+    Raises:
+        FileNotFoundError: If gradient files cannot be found
+    """
+    # Try both singular and plural extensions
+    for bval_ext, bvec_ext in [('.bval', '.bvec'), ('.bvals', '.bvecs')]:
+        bval = base_path / f"{stem}{bval_ext}"
+        bvec = base_path / f"{stem}{bvec_ext}"
+        
+        if bval.exists() and bvec.exists():
+            return bval, bvec
+    
+    # If not found, raise error with helpful message
+    raise FileNotFoundError(
+        f"Could not find gradient files for '{stem}' in {base_path}. "
+        f"Tried: {stem}.bval/.bvec and {stem}.bvals/.bvecs"
+    )
 
 
 def find_files_recursive(directory: Path, pattern: str) -> list[Path]:

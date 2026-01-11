@@ -134,11 +134,27 @@ def load_dataset(
     fdwi = join(nifti_path, fname + ".nii.gz")
     print(f"Found NIfTI dataset: {fdwi}")
 
-    fbval = join(nifti_path, fname + ".bval")
-    print(f"Found NIfTI .bvals: {fbval}")
-
-    fbvec = join(nifti_path, fname + ".bvec")
-    print(f"Found NIfTI .bvecs: {fbvec}")
+    # Try to find gradient files with flexible extension support (.bval/.bvec or .bvals/.bvecs)
+    fbval = None
+    fbvec = None
+    
+    for bval_ext, bvec_ext in [('.bval', '.bvec'), ('.bvals', '.bvecs')]:
+        test_bval = join(nifti_path, fname + bval_ext)
+        test_bvec = join(nifti_path, fname + bvec_ext)
+        
+        if os.path.exists(test_bval) and os.path.exists(test_bvec):
+            fbval = test_bval
+            fbvec = test_bvec
+            break
+    
+    if fbval is None or fbvec is None:
+        raise FileNotFoundError(
+            f"Could not find gradient files for '{fname}' in {nifti_path}. "
+            f"Tried: {fname}.bval/.bvec and {fname}.bvals/.bvecs"
+        )
+    
+    print(f"Found gradient files: {fbval}")
+    print(f"                      {fbvec}")
 
     # Load dataset, show shape and voxel size
     data, affine, img = load_nifti(fdwi, return_img=True)
@@ -467,19 +483,32 @@ def copy_gradient_files(original_nii_path, out_dir, stem, motion_correction_appl
     
     motion_status = "mc" if motion_correction_applied else "nomc"
     
-    # Copy .bval
-    bval_src = original_dir / f"{stem}.bval"
-    bval_dest = out_dir / f"{stem}_dwi_preproc_{motion_status}.bval"
-    if bval_src.exists():
-        shutil.copy2(bval_src, bval_dest)
-        print(f"✓ Copied .bval to: {bval_dest}")
+    # Detect which extension is used (.bval/.bvec or .bvals/.bvecs)
+    bval_src = None
+    bvec_src = None
     
-    # Copy .bvec
-    bvec_src = original_dir / f"{stem}.bvec"
+    for bval_ext, bvec_ext in [('.bval', '.bvec'), ('.bvals', '.bvecs')]:
+        test_bval = original_dir / f"{stem}{bval_ext}"
+        test_bvec = original_dir / f"{stem}{bvec_ext}"
+        
+        if test_bval.exists() and test_bvec.exists():
+            bval_src = test_bval
+            bvec_src = test_bvec
+            break
+    
+    if bval_src is None or bvec_src is None:
+        print(f"⚠️  Warning: Could not find gradient files for {stem}")
+        return
+    
+    # Always save as .bval/.bvec (singular) for consistency
+    bval_dest = out_dir / f"{stem}_dwi_preproc_{motion_status}.bval"
     bvec_dest = out_dir / f"{stem}_dwi_preproc_{motion_status}.bvec"
-    if bvec_src.exists():
-        shutil.copy2(bvec_src, bvec_dest)
-        print(f"✓ Copied .bvec to: {bvec_dest}")
+    
+    shutil.copy2(bval_src, bval_dest)
+    print(f"✓ Copied .bval to: {bval_dest}")
+    
+    shutil.copy2(bvec_src, bvec_dest)
+    print(f"✓ Copied .bvec to: {bvec_dest}")
 
 
 def save_brain_mask(mask, affine, out_dir, stem):
