@@ -1178,7 +1178,7 @@ def cmd_extract(args: argparse.Namespace) -> dict | None:
         masks = create_cst_roi_masks(
             warped_cortical=warped['cortical_warped'],
             warped_subcortical=warped['subcortical_warped'],
-            subject_affine=fa_affine,
+            subject_affine=warped['subject_affine'],
             roi_config=CST_ROI_CONFIG,
             dilate_brainstem=args.dilate_brainstem,
             dilate_motor=args.dilate_motor,
@@ -1200,7 +1200,7 @@ def cmd_extract(args: argparse.Namespace) -> dict | None:
             cst_result = extract_cst_passthrough(
                 streamlines=streamlines,
                 masks=masks,
-                affine=fa_affine,
+                affine=warped['subject_affine'],
                 min_length=args.min_length,
                 max_length=args.max_length,
                 verbose=verbose
@@ -1209,7 +1209,7 @@ def cmd_extract(args: argparse.Namespace) -> dict | None:
             cst_result = extract_bilateral_cst(
                 streamlines=streamlines,
                 masks=masks,
-                affine=fa_affine,
+                affine=warped['subject_affine'],
                 min_length=args.min_length,
                 max_length=args.max_length,
                 verbose=verbose
@@ -1244,7 +1244,7 @@ def cmd_extract(args: argparse.Namespace) -> dict | None:
             cst_result=cst_result,
             fa=fa_data,
             masks=masks,
-            affine=fa_affine,
+            affine=warped['subject_affine'],
             output_dir=args.out,
             subject_id=args.subject_id,
             verbose=verbose
