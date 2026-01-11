@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "csttool"
-version = "0.0.1"
-description = "Simple, modular CST assessment tool (DW-MRI), WIP"
+version = "0.1.0"
+description = "Simple, modular CST assessment tool (DW-MRI)."
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [{ name = "Alem Nalo" }]
