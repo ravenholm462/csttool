@@ -58,29 +58,43 @@ def analyze_cst_hemisphere(
     # Microstructural analysis requires affine
     if fa_map is not None and affine is not None:
         fa_values = sample_scalar_along_tract(streamlines, fa_map, affine)
-        metrics['fa'] = {
-            'mean': float(np.mean(fa_values)),
-            'std': float(np.std(fa_values)),
-            'median': float(np.median(fa_values)),
-            'min': float(np.min(fa_values)),
-            'max': float(np.max(fa_values)),
-            'profile': compute_tract_profile(streamlines, fa_map, affine, n_points=20),
-            'n_samples': len(fa_values)
-        }
-        print(f"  FA: {metrics['fa']['mean']:.3f} ± {metrics['fa']['std']:.3f}")
+        if len(fa_values) > 0:
+            metrics['fa'] = {
+                'mean': float(np.mean(fa_values)),
+                'std': float(np.std(fa_values)),
+                'median': float(np.median(fa_values)),
+                'min': float(np.min(fa_values)),
+                'max': float(np.max(fa_values)),
+                'profile': compute_tract_profile(streamlines, fa_map, affine, n_points=20),
+                'n_samples': len(fa_values)
+            }
+            print(f"  FA: {metrics['fa']['mean']:.3f} ± {metrics['fa']['std']:.3f}")
+        else:
+            # Handle empty case
+            metrics['fa'] = {
+                'mean': 0.0, 'std': 0.0, 'median': 0.0, 'min': 0.0, 'max': 0.0,
+                'profile': [], 'n_samples': 0
+            }
     
     if md_map is not None and affine is not None:
         md_values = sample_scalar_along_tract(streamlines, md_map, affine)
-        metrics['md'] = {
-            'mean': float(np.mean(md_values)),
-            'std': float(np.std(md_values)),
-            'median': float(np.median(md_values)),
-            'min': float(np.min(md_values)),
-            'max': float(np.max(md_values)),
-            'profile': compute_tract_profile(streamlines, md_map, affine, n_points=20),
-            'n_samples': len(md_values)
-        }
-        print(f"  MD: {metrics['md']['mean']:.3e} ± {metrics['md']['std']:.3e}")
+        if len(md_values) > 0:
+            metrics['md'] = {
+                'mean': float(np.mean(md_values)),
+                'std': float(np.std(md_values)),
+                'median': float(np.median(md_values)),
+                'min': float(np.min(md_values)),
+                'max': float(np.max(md_values)),
+                'profile': compute_tract_profile(streamlines, md_map, affine, n_points=20),
+                'n_samples': len(md_values)
+            }
+            print(f"  MD: {metrics['md']['mean']:.3e} ± {metrics['md']['std']:.3e}")
+        else:
+             # Handle empty case
+            metrics['md'] = {
+                'mean': 0.0, 'std': 0.0, 'median': 0.0, 'min': 0.0, 'max': 0.0,
+                'profile': [], 'n_samples': 0
+            }
     
     return metrics
 

@@ -22,6 +22,12 @@ dependencies = [
     "reportlab"
 ]
 
+[project.optional-dependencies]
+test = [
+    "pytest",
+    "pytest-mock",
+]
+
 [project.scripts]
 csttool = "csttool.cli:main"
 
