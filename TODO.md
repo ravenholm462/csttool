@@ -28,6 +28,7 @@
 
 - [X] Output architecture too messy. Fix.
 - [X] Visualizations of LFS/RHS CST too messy, same as for full brain tractogram. Fix.
+- [ ] Extraction fails for alternate datasets (e.g. OpenNeuro, Stanford-HARDI). Full-brain tractogram generated, but all CST streamlines are filtered out. Fix.
 
 ### Metrics
 
