@@ -35,3 +35,32 @@ def synthetic_tractogram(synthetic_nifti, synthetic_affine):
     
     sft = StatefulTractogram(streamlines, synthetic_nifti, Space.RASMM)
     return sft
+
+@pytest.fixture
+def synthetic_bvals():
+    """Returns synthetic b-values (1 b0 and 6 DWIs)."""
+    return np.array([0, 1000, 1000, 1000, 1000, 1000, 1000])
+
+@pytest.fixture
+def synthetic_bvecs():
+    """Returns synthetic b-vectors (1 b0 and 6 directions)."""
+    # 6 directions along axes + diagonals
+    bvecs = np.array([
+        [0, 0, 0],
+        [1, 0, 0],
+        [-1, 0, 0],
+        [0, 1, 0],
+        [0, -1, 0],
+        [0, 0, 1],
+        [0, 0, -1]
+    ])
+    # Normalize non-zero vectors
+    norm = np.linalg.norm(bvecs[1:], axis=1, keepdims=True)
+    bvecs[1:] = bvecs[1:] / norm
+    return bvecs
+
+@pytest.fixture
+def synthetic_gtab(synthetic_bvals, synthetic_bvecs):
+    """Returns a synthetic gradient table."""
+    from dipy.core.gradients import gradient_table
+    return gradient_table(synthetic_bvals, synthetic_bvecs)

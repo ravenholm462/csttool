@@ -11,10 +11,28 @@ import numpy as np
 import nibabel as nib
 from pathlib import Path
 
+# Consolidating imports at top level to fix patching issues
+from dipy.align.imaffine import (
+    transform_centers_of_mass,
+    MutualInformationMetric,
+    AffineRegistration,
+    AffineMap
+)
+from dipy.align.transforms import (
+    TranslationTransform3D,
+    RigidTransform3D,
+    AffineTransform3D
+)
+from dipy.align.imwarp import SymmetricDiffeomorphicRegistration
+from dipy.align.metrics import CCMetric
+from dipy.data import fetch_mni_template, read_mni_template
+from nibabel.orientations import axcodes2ornt, ornt_transform, apply_orientation
+from dipy.viz import regtools
+import json
+from datetime import datetime
+
 def load_mni_template(contrast="T1"):
     
-    from dipy.data import fetch_mni_template, read_mni_template
-
     print(f"Fetching MNI template (contrast: {contrast})")
 
     fetch_mni_template()
@@ -48,9 +66,6 @@ def reorient_to_ras(img):
     reoriented : Nifti1Image
         Image reoriented to RAS+.
     """
-    import nibabel as nib
-    from nibabel.orientations import axcodes2ornt, ornt_transform, apply_orientation
-    
     current_ornt = nib.io_orientation(img.affine)
     target_ornt = axcodes2ornt(('R', 'A', 'S'))
     transform = ornt_transform(current_ornt, target_ornt)
@@ -142,17 +157,6 @@ def compute_affine_registration(
     4. **Affine**: Optimizes 12 parameters (adds scaling + shearing)
     
     """
-
-    from dipy.align.imaffine import (
-        transform_centers_of_mass,
-        MutualInformationMetric,
-        AffineRegistration
-    )
-    from dipy.align.transforms import (
-        TranslationTransform3D,
-        RigidTransform3D,
-        AffineTransform3D
-    )
 
     if verbose:
         print("Computing affine registration...")
@@ -283,9 +287,6 @@ def compute_syn_registration(
     Code inspired by: https://docs.dipy.org/dev/examples_built/registration/syn_registration_3d.html
     """
 
-    from dipy.align.imwarp import SymmetricDiffeomorphicRegistration
-    from dipy.align.metrics import CCMetric
-    
     if verbose:
         print("Computing SyN non-linear registration...")
         print(f"    Static (subject): {static_image.shape}")
@@ -394,14 +395,6 @@ def register_mni_to_subject(
     This allows us to warp the MNI parcellation atlas into subject space,
     preserving streamline coordinates in their native space.
     """
-    import nibabel as nib
-    from pathlib import Path
-    from dipy.align.imaffine import AffineMap
-    from dipy.data import fetch_mni_template, read_mni_template
-    import numpy as np
-    import json
-    from datetime import datetime
-    
     subject_fa_path = Path(subject_fa_path)
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -632,9 +625,6 @@ def save_registration_report(result, output_dir, subject_id):
     report_path : Path
         Path to saved report
     """
-    import json
-    from datetime import datetime
-    
     output_dir = Path(output_dir)
     log_dir = output_dir / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -697,8 +687,6 @@ def plot_registration_comparison(
     figs : dict
         Dictionary with keys 'sagittal', 'coronal', 'axial' containing figures.
     """
-    from dipy.viz import regtools
-    
     sh = static_data.shape
     
     # Determine slice indices (middle if not specified)

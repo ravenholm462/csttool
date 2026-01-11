@@ -15,6 +15,11 @@ from typing import Tuple, Optional, Dict
 import os
 import shutil
 
+try:
+    from dicom2nifti import convert_dicom
+except ImportError:
+    convert_dicom = None
+
 
 def convert_dicom_to_nifti(
     dicom_dir: Path,
@@ -62,9 +67,7 @@ def convert_dicom_to_nifti(
     RuntimeError
         If conversion fails
     """
-    try:
-        from dicom2nifti import convert_dicom
-    except ImportError:
+    if convert_dicom is None:
         raise ImportError(
             "dicom2nifti is required for DICOM conversion. "
             "Install with: pip install dicom2nifti"
