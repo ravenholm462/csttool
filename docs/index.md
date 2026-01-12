@@ -2,7 +2,7 @@
 
 Welcome to the csttool documentation! 
 
-**csttool** is a Python-based command-line tool for automated assessment of the **corticospinal tract (CST)** using diffusion-weighted MRI (DW-MRI) data.
+**csttool** is a Python-based command-line tool for automated assessment of the corticospinal tract (CST) using diffusion-weighted MRI (DW-MRI) data.
 
 ## Quick Start
 ```bash
@@ -18,12 +18,11 @@ See the [Quick Start Guide](getting-started/quickstart.md) for more details (COM
 ## Pipeline Overview
 ```mermaid
 graph LR
-    A[DICOM] --> B[Import]
+    A[DICOM / NIfTI] --> B[Import]
     B --> C[Preprocess]
     C --> D[Track]
     D --> E[Extract]
-    E --> F[Metrics]
-    F --> G[Reports]
+    E --> F[Metrics / Reports]
 ```
 
 csttool processes diffusion MRI data through six stages:
