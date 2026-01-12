@@ -21,3 +21,6 @@ dist/
 .pytest_cache/
 .coverage
 htmlcov/
+
+#MkDocs
+site/
