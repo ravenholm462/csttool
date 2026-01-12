@@ -196,6 +196,94 @@ def plot_white_matter_mask(
 # 2D STREAMLINE PROJECTIONS (SIMPLIFIED - NO FA BACKGROUND)
 # =============================================================================
 
+def _pad_slice_to_square(image_slice, extent=None, pad_value=0.0):
+    """
+    Pad a 2D slice to a square shape.
+
+    Returns the padded slice and an updated display extent that preserves
+    the original pixel spacing.
+    """
+    height, width = image_slice.shape
+    target_size = max(height, width)
+    pad_y = target_size - height
+    pad_x = target_size - width
+    pad_y_before = pad_y // 2
+    pad_y_after = pad_y - pad_y_before
+    pad_x_before = pad_x // 2
+    pad_x_after = pad_x - pad_x_before
+
+    padded = np.pad(
+        image_slice,
+        ((pad_y_before, pad_y_after), (pad_x_before, pad_x_after)),
+        mode='constant',
+        constant_values=pad_value
+    )
+
+    if extent is None:
+        extent = (0, width, 0, height)
+
+    x_min, x_max, y_min, y_max = extent
+    dx = (x_max - x_min) / width if width else 1.0
+    dy = (y_max - y_min) / height if height else 1.0
+    padded_extent = (
+        x_min - pad_x_before * dx,
+        x_max + pad_x_after * dx,
+        y_min - pad_y_before * dy,
+        y_max + pad_y_after * dy
+    )
+
+    return padded, padded_extent
+
+
+def _volume_world_bounds(volume_shape, affine):
+    corners = np.array([
+        [0, 0, 0],
+        [volume_shape[0], 0, 0],
+        [0, volume_shape[1], 0],
+        [0, 0, volume_shape[2]],
+        [volume_shape[0], volume_shape[1], 0],
+        [volume_shape[0], 0, volume_shape[2]],
+        [0, volume_shape[1], volume_shape[2]],
+        [volume_shape[0], volume_shape[1], volume_shape[2]],
+    ])
+    corners_h = np.hstack([corners, np.ones((corners.shape[0], 1))])
+    world = corners_h @ affine.T
+    bounds = []
+    for dim in range(3):
+        bounds.append((world[:, dim].min(), world[:, dim].max()))
+    return bounds
+
+
+def _streamline_plane_limits(streamlines, d1, d2, fallback_bounds):
+    min_d1 = None
+    max_d1 = None
+    min_d2 = None
+    max_d2 = None
+    for sl in streamlines:
+        if sl.size == 0:
+            continue
+        sl_d1 = sl[:, d1]
+        sl_d2 = sl[:, d2]
+        sl_min_d1 = sl_d1.min()
+        sl_max_d1 = sl_d1.max()
+        sl_min_d2 = sl_d2.min()
+        sl_max_d2 = sl_d2.max()
+        min_d1 = sl_min_d1 if min_d1 is None else min(min_d1, sl_min_d1)
+        max_d1 = sl_max_d1 if max_d1 is None else max(max_d1, sl_max_d1)
+        min_d2 = sl_min_d2 if min_d2 is None else min(min_d2, sl_min_d2)
+        max_d2 = sl_max_d2 if max_d2 is None else max(max_d2, sl_max_d2)
+
+    if min_d1 is None or min_d2 is None:
+        (min_d1, max_d1), (min_d2, max_d2) = fallback_bounds
+
+    range_d1 = max_d1 - min_d1
+    range_d2 = max_d2 - min_d2
+    pad_d1 = range_d1 * 0.05 if range_d1 else 1.0
+    pad_d2 = range_d2 * 0.05 if range_d2 else 1.0
+
+    return (min_d1 - pad_d1, max_d1 + pad_d1), (min_d2 - pad_d2, max_d2 + pad_d2)
+
+
 def plot_streamlines_2d(
     streamlines,
     fa,
@@ -271,12 +359,25 @@ def plot_streamlines_2d(
         ('Coronal', fa[:, mid_cor, :].T),
         ('Axial', fa[:, :, mid_ax].T),
     ]
-    
+
     for col, (name, fa_slice) in enumerate(fa_views):
         ax = axes[0, col]
-        ax.imshow(fa_slice, cmap='gray', origin='lower', vmin=0, vmax=0.8)
+        padded_slice, padded_extent = _pad_slice_to_square(
+            fa_slice,
+            extent=(0, fa_slice.shape[1], 0, fa_slice.shape[0]),
+            pad_value=0.0
+        )
+        ax.imshow(
+            padded_slice,
+            cmap='gray',
+            origin='lower',
+            vmin=0,
+            vmax=0.8,
+            extent=padded_extent
+        )
         ax.set_title(f'{name}\nFA background')
         ax.axis('off')
+        ax.set_box_aspect(1)
     
     # Row 1: Streamlines only (world coordinates, no FA background)
     # World dimensions: 0=X, 1=Y, 2=Z
@@ -285,6 +386,12 @@ def plot_streamlines_2d(
         ('Coronal (X-Z)', 0, 2, 'X (mm)', 'Z (mm)', 'green'),
         ('Axial (X-Y)', 0, 1, 'X (mm)', 'Y (mm)', 'red'),
     ]
+
+    volume_bounds = _volume_world_bounds(fa.shape, affine)
+    plane_limits = {}
+    for title, d1, d2, _, _, _ in streamline_views:
+        fallback = (volume_bounds[d1], volume_bounds[d2])
+        plane_limits[title] = _streamline_plane_limits(vis_streamlines, d1, d2, fallback)
     
     for col, (title, d1, d2, xlabel, ylabel, color) in enumerate(streamline_views):
         ax = axes[1, col]
@@ -299,8 +406,12 @@ def plot_streamlines_2d(
         ax.set_xlabel(xlabel)
         ax.set_ylabel(ylabel)
         ax.set_title(title)
-        ax.set_aspect('equal')
+        (xlim, ylim) = plane_limits[title]
+        ax.set_xlim(xlim)
+        ax.set_ylim(ylim)
+        ax.set_aspect('equal', adjustable='box')
         ax.grid(True, alpha=0.3, color='white')
+        ax.set_box_aspect(1)
     
     plt.tight_layout()
     
@@ -541,6 +652,12 @@ def create_tracking_summary(
             ('Coronal', 0, 2, 'green'),
             ('Axial', 0, 1, 'red'),
         ]
+
+        volume_bounds = _volume_world_bounds(fa.shape, affine)
+        plane_limits = {}
+        for title, d1, d2, _ in views_2d:
+            fallback = (volume_bounds[d1], volume_bounds[d2])
+            plane_limits[title] = _streamline_plane_limits(vis_sl, d1, d2, fallback)
         
         for col, (title, d1, d2, color) in enumerate(views_2d):
             ax = fig.add_subplot(gs[1, col])
@@ -550,8 +667,12 @@ def create_tracking_summary(
                 ax.plot(sl[:, d1], sl[:, d2], alpha=0.1, linewidth=0.3, color=color)
             
             ax.set_title(f'{title}\n({n_vis:,} shown)')
-            ax.set_aspect('equal')
+            xlim, ylim = plane_limits[title]
+            ax.set_xlim(xlim)
+            ax.set_ylim(ylim)
+            ax.set_aspect('equal', adjustable='box')
             ax.grid(True, alpha=0.3, color='white')
+            ax.set_box_aspect(1)
     
     # Length histogram
     if n_streamlines > 0:
