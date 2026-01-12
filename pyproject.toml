@@ -26,6 +26,7 @@ dependencies = [
 test = [
     "pytest",
     "pytest-mock",
+    "mkdocs"
 ]
 
 [project.scripts]
