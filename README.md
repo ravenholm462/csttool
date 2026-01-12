@@ -8,13 +8,18 @@ Simple, modular CST assessment tool for diffusion MRI.
 
 `csttool` is a Python-based command-line tool for automated assessment of the **corticospinal tract (CST)** using diffusion-weighted MRI (DW-MRI) data. It is designed to be simple, modular, and easily portable to different computing environments.
 
-## Core ideas
+## Installation
 
-The core ideas behind `csttool` are:
+```bash
+pip install git+https://github.com/ravenholm462/csttool.git
+```
 
-1. Simplicity - achieved through using already existing Python libraries to create the tool. It should be installable anywhere, be easy to use, and its results should be easy to read and interpret.
-
-2. Modularity - ability to expand the tool with more functionality as is necessary.
+Or for development:
+```bash
+git clone https://github.com/ravenholm462/csttool.git
+cd csttool
+pip install -e .
+```
 
 ## Structure
 
@@ -118,26 +123,6 @@ To run only unit tests:
 ```bash
 pytest tests/ --ignore=tests/integration/
 ```
-
-## How to run
-
-The following codeblock sets up and runs `csttool` in a Linux shell:
-
-```
-git clone git@github.com:ravenholm462/csttool.git
-cd csttool
-python3 -m venv .venv
-source .venv/bin/activate
-pip install --upgrade pip
-pip install -e .  # install in editable mode
-csttool --help
-csttool --version
-csttool check
-```
-
-For Windows, replace `source .venv/bin/activate` with `.venv\Scripts\Activate.ps1`
-
-For Debian/Ubuntu-based Linux systems, ensure that the `python3-venv` package is installed via `apt install python3.12-venv`.
 
 ## Usage examples
 
