@@ -13,6 +13,98 @@ from pathlib import Path
 
 
 # =============================================================================
+# SHARED HELPERS
+# =============================================================================
+
+def _pad_slice_to_square(image_slice, extent=None, pad_value=0.0):
+    """
+    Pad a 2D slice to a square shape.
+
+    Returns the padded slice and an updated display extent that preserves
+    the original pixel spacing.
+    """
+    height, width = image_slice.shape
+    target_size = max(height, width)
+    pad_y = target_size - height
+    pad_x = target_size - width
+    pad_y_before = pad_y // 2
+    pad_y_after = pad_y - pad_y_before
+    pad_x_before = pad_x // 2
+    pad_x_after = pad_x - pad_x_before
+
+    padded = np.pad(
+        image_slice,
+        ((pad_y_before, pad_y_after), (pad_x_before, pad_x_after)),
+        mode='constant',
+        constant_values=pad_value
+    )
+
+    if extent is None:
+        extent = (0, width, 0, height)
+
+    x_min, x_max, y_min, y_max = extent
+    dx = (x_max - x_min) / width if width else 1.0
+    dy = (y_max - y_min) / height if height else 1.0
+    padded_extent = (
+        x_min - pad_x_before * dx,
+        x_max + pad_x_after * dx,
+        y_min - pad_y_before * dy,
+        y_max + pad_y_after * dy
+    )
+
+    return padded, padded_extent
+
+
+def _volume_world_bounds(volume_shape, affine):
+    corners = np.array([
+        [0, 0, 0],
+        [volume_shape[0], 0, 0],
+        [0, volume_shape[1], 0],
+        [0, 0, volume_shape[2]],
+        [volume_shape[0], volume_shape[1], 0],
+        [volume_shape[0], 0, volume_shape[2]],
+        [0, volume_shape[1], volume_shape[2]],
+        [volume_shape[0], volume_shape[1], volume_shape[2]],
+    ])
+    corners_h = np.hstack([corners, np.ones((corners.shape[0], 1))])
+    world = corners_h @ affine.T
+    bounds = []
+    for dim in range(3):
+        bounds.append((world[:, dim].min(), world[:, dim].max()))
+    return bounds
+
+
+def _streamline_plane_limits(streamlines, d1, d2, fallback_bounds):
+    min_d1 = None
+    max_d1 = None
+    min_d2 = None
+    max_d2 = None
+    for sl in streamlines:
+        if sl.size == 0:
+            continue
+        sl_d1 = sl[:, d1]
+        sl_d2 = sl[:, d2]
+        sl_min_d1 = sl_d1.min()
+        sl_max_d1 = sl_d1.max()
+        sl_min_d2 = sl_d2.min()
+        sl_max_d2 = sl_d2.max()
+        min_d1 = sl_min_d1 if min_d1 is None else min(min_d1, sl_min_d1)
+        max_d1 = sl_max_d1 if max_d1 is None else max(max_d1, sl_max_d1)
+        min_d2 = sl_min_d2 if min_d2 is None else min(min_d2, sl_min_d2)
+        max_d2 = sl_max_d2 if max_d2 is None else max(max_d2, sl_max_d2)
+
+    if min_d1 is None or min_d2 is None:
+        (min_d1, max_d1), (min_d2, max_d2) = fallback_bounds
+
+    range_d1 = max_d1 - min_d1
+    range_d2 = max_d2 - min_d2
+    pad_d1 = range_d1 * 0.05 if range_d1 else 1.0
+    pad_d2 = range_d2 * 0.05 if range_d2 else 1.0
+
+    return (min_d1 - pad_d1, max_d1 + pad_d1), (min_d2 - pad_d2, max_d2 + pad_d2)
+
+
+# =============================================================================
 # REGISTRATION QC VISUALIZATION
 # =============================================================================
 
@@ -52,21 +144,59 @@ def plot_registration_comparison(
     ]
     
     for row, (view_name, fa_slice, mni_slice) in enumerate(views):
+        padded_fa, padded_extent = _pad_slice_to_square(
+            fa_slice.T,
+            extent=(0, fa_slice.T.shape[1], 0, fa_slice.T.shape[0]),
+            pad_value=0.0
+        )
+        padded_mni, _ = _pad_slice_to_square(
+            mni_slice.T,
+            extent=(0, mni_slice.T.shape[1], 0, mni_slice.T.shape[0]),
+            pad_value=0.0
+        )
         # Subject FA
-        axes[row, 0].imshow(fa_slice.T, cmap='gray', origin='lower', vmin=0, vmax=1)
+        axes[row, 0].imshow(
+            padded_fa,
+            cmap='gray',
+            origin='lower',
+            vmin=0,
+            vmax=1,
+            extent=padded_extent
+        )
         axes[row, 0].set_title(f'{view_name}\nSubject FA' if row == 0 else '')
         axes[row, 0].axis('off')
+        axes[row, 0].set_box_aspect(1)
         
         # MNI warped
-        axes[row, 1].imshow(mni_slice.T, cmap='gray', origin='lower')
+        axes[row, 1].imshow(
+            padded_mni,
+            cmap='gray',
+            origin='lower',
+            extent=padded_extent
+        )
         axes[row, 1].set_title(f'{view_name}\nMNI Warped' if row == 0 else '')
         axes[row, 1].axis('off')
+        axes[row, 1].set_box_aspect(1)
         
         # Overlay
-        axes[row, 2].imshow(fa_slice.T, cmap='gray', origin='lower', vmin=0, vmax=1)
-        axes[row, 2].imshow(mni_slice.T, cmap='hot', alpha=0.3, origin='lower')
+        axes[row, 2].imshow(
+            padded_fa,
+            cmap='gray',
+            origin='lower',
+            vmin=0,
+            vmax=1,
+            extent=padded_extent
+        )
+        axes[row, 2].imshow(
+            padded_mni,
+            cmap='hot',
+            alpha=0.3,
+            origin='lower',
+            extent=padded_extent
+        )
         axes[row, 2].set_title(f'{view_name}\nOverlay' if row == 0 else '')
         axes[row, 2].axis('off')
+        axes[row, 2].set_box_aspect(1)
         
         # Add view label
         axes[row, 0].text(-0.15, 0.5, view_name, transform=axes[row, 0].transAxes,
@@ -131,34 +261,70 @@ def plot_roi_masks(
     ]
     
     for col, (view_name, fa_slice, ml_slice, mr_slice, bs_slice) in enumerate(views):
+        padded_fa, padded_extent = _pad_slice_to_square(
+            fa_slice.T,
+            extent=(0, fa_slice.T.shape[1], 0, fa_slice.T.shape[0]),
+            pad_value=0.0
+        )
+        padded_ml, _ = _pad_slice_to_square(
+            ml_slice.T,
+            extent=(0, ml_slice.T.shape[1], 0, ml_slice.T.shape[0]),
+            pad_value=0.0
+        )
+        padded_mr, _ = _pad_slice_to_square(
+            mr_slice.T,
+            extent=(0, mr_slice.T.shape[1], 0, mr_slice.T.shape[0]),
+            pad_value=0.0
+        )
+        padded_bs, _ = _pad_slice_to_square(
+            bs_slice.T,
+            extent=(0, bs_slice.T.shape[1], 0, bs_slice.T.shape[0]),
+            pad_value=0.0
+        )
         # Row 0: FA only
-        axes[0, col].imshow(fa_slice.T, cmap='gray', origin='lower', vmin=0, vmax=0.8)
+        axes[0, col].imshow(
+            padded_fa,
+            cmap='gray',
+            origin='lower',
+            vmin=0,
+            vmax=0.8,
+            extent=padded_extent
+        )
         axes[0, col].set_title(f'{view_name}\nFA background')
         axes[0, col].axis('off')
+        axes[0, col].set_box_aspect(1)
         
         # Row 1: FA with ROI overlays
-        axes[1, col].imshow(fa_slice.T, cmap='gray', origin='lower', vmin=0, vmax=0.8)
+        axes[1, col].imshow(
+            padded_fa,
+            cmap='gray',
+            origin='lower',
+            vmin=0,
+            vmax=0.8,
+            extent=padded_extent
+        )
         
         # Create colored overlays
         # Motor cortex left (blue)
-        ml_rgb = np.zeros((*ml_slice.T.shape, 4))  # RGBA array
-        ml_rgb[ml_slice.T > 0] = [0, 0, 1, 0.6]  # Blue with alpha
+        ml_rgb = np.zeros((*padded_ml.shape, 4))  # RGBA array
+        ml_rgb[padded_ml > 0] = [0, 0, 1, 0.6]  # Blue with alpha
         
         # Motor cortex right (red)
-        mr_rgb = np.zeros((*mr_slice.T.shape, 4))
-        mr_rgb[mr_slice.T > 0] = [1, 0, 0, 0.6]  # Red with alpha
+        mr_rgb = np.zeros((*padded_mr.shape, 4))
+        mr_rgb[padded_mr > 0] = [1, 0, 0, 0.6]  # Red with alpha
         
         # Brainstem (green)
-        bs_rgb = np.zeros((*bs_slice.T.shape, 4))
-        bs_rgb[bs_slice.T > 0] = [0, 1, 0, 0.6]  # Green with alpha
+        bs_rgb = np.zeros((*padded_bs.shape, 4))
+        bs_rgb[padded_bs > 0] = [0, 1, 0, 0.6]  # Green with alpha
         
         # Apply overlays
-        axes[1, col].imshow(ml_rgb, origin='lower')
-        axes[1, col].imshow(mr_rgb, origin='lower')
-        axes[1, col].imshow(bs_rgb, origin='lower')
+        axes[1, col].imshow(ml_rgb, origin='lower', extent=padded_extent)
+        axes[1, col].imshow(mr_rgb, origin='lower', extent=padded_extent)
+        axes[1, col].imshow(bs_rgb, origin='lower', extent=padded_extent)
         
         axes[1, col].set_title(f'{view_name}\nROI overlay')
         axes[1, col].axis('off')
+        axes[1, col].set_box_aspect(1)
     
     # Add legend
     from matplotlib.patches import Patch
@@ -264,9 +430,22 @@ def plot_cst_extraction(
     
     for col, (name, fa_slice) in enumerate(views_fa):
         ax = axes[0, col]
-        ax.imshow(fa_slice, cmap='gray', origin='lower', vmin=0, vmax=0.8)
+        padded_slice, padded_extent = _pad_slice_to_square(
+            fa_slice,
+            extent=(0, fa_slice.shape[1], 0, fa_slice.shape[0]),
+            pad_value=0.0
+        )
+        ax.imshow(
+            padded_slice,
+            cmap='gray',
+            origin='lower',
+            vmin=0,
+            vmax=0.8,
+            extent=padded_extent
+        )
         ax.set_title(f'{name}\nFA background')
         ax.axis('off')
+        ax.set_box_aspect(1)
     
     # Row 1: Streamlines ONLY (no FA background) on neutral background
     # World coordinate dimensions: 0=X, 1=Y, 2=Z
@@ -276,6 +455,17 @@ def plot_cst_extraction(
         ('Axial (X-Y)', 0, 1, 'X (mm)', 'Y (mm)'),      # X vs Y
     ]
     
+    volume_bounds = _volume_world_bounds(fa.shape, affine)
+    plane_limits = {}
+    for title, d1, d2, _, _ in views_sl:
+        fallback = (volume_bounds[d1], volume_bounds[d2])
+        plane_limits[title] = _streamline_plane_limits(
+            left_vis + right_vis,
+            d1,
+            d2,
+            fallback
+        )
+
     for col, (name, d1, d2, xlabel, ylabel) in enumerate(views_sl):
         ax = axes[1, col]
         
@@ -293,8 +483,12 @@ def plot_cst_extraction(
         ax.set_xlabel(xlabel)
         ax.set_ylabel(ylabel)
         ax.set_title(f'{name}')
-        ax.set_aspect('equal')
+        (xlim, ylim) = plane_limits[name]
+        ax.set_xlim(xlim)
+        ax.set_ylim(ylim)
+        ax.set_aspect('equal', adjustable='box')
         ax.grid(True, alpha=0.3, color='white')
+        ax.set_box_aspect(1)
     
     # Add legend
     from matplotlib.lines import Line2D
@@ -388,28 +582,56 @@ def create_extraction_summary(
     
     for col, (name, fa_slice, ml_slice, mr_slice, bs_slice) in enumerate(roi_views):
         ax = fig.add_subplot(gs[0, col])
-        ax.imshow(fa_slice.T, cmap='gray', origin='lower', vmin=0, vmax=0.8)
+        padded_fa, padded_extent = _pad_slice_to_square(
+            fa_slice.T,
+            extent=(0, fa_slice.T.shape[1], 0, fa_slice.T.shape[0]),
+            pad_value=0.0
+        )
+        padded_ml, _ = _pad_slice_to_square(
+            ml_slice.T,
+            extent=(0, ml_slice.T.shape[1], 0, ml_slice.T.shape[0]),
+            pad_value=0.0
+        )
+        padded_mr, _ = _pad_slice_to_square(
+            mr_slice.T,
+            extent=(0, mr_slice.T.shape[1], 0, mr_slice.T.shape[0]),
+            pad_value=0.0
+        )
+        padded_bs, _ = _pad_slice_to_square(
+            bs_slice.T,
+            extent=(0, bs_slice.T.shape[1], 0, bs_slice.T.shape[0]),
+            pad_value=0.0
+        )
+        ax.imshow(
+            padded_fa,
+            cmap='gray',
+            origin='lower',
+            vmin=0,
+            vmax=0.8,
+            extent=padded_extent
+        )
         
         # Create RGB overlays with proper colors
         # Motor cortex left (blue)
-        ml_rgb = np.zeros((*ml_slice.T.shape, 4))  # RGBA array
-        ml_rgb[ml_slice.T > 0] = [0, 0, 1, 0.6]  # Blue with alpha 0.6
+        ml_rgb = np.zeros((*padded_ml.shape, 4))  # RGBA array
+        ml_rgb[padded_ml > 0] = [0, 0, 1, 0.6]  # Blue with alpha 0.6
         
         # Motor cortex right (red)
-        mr_rgb = np.zeros((*mr_slice.T.shape, 4))
-        mr_rgb[mr_slice.T > 0] = [1, 0, 0, 0.6]  # Red with alpha 0.6
+        mr_rgb = np.zeros((*padded_mr.shape, 4))
+        mr_rgb[padded_mr > 0] = [1, 0, 0, 0.6]  # Red with alpha 0.6
         
         # Brainstem (green)
-        bs_rgb = np.zeros((*bs_slice.T.shape, 4))
-        bs_rgb[bs_slice.T > 0] = [0, 1, 0, 0.6]  # Green with alpha 0.6
+        bs_rgb = np.zeros((*padded_bs.shape, 4))
+        bs_rgb[padded_bs > 0] = [0, 1, 0, 0.6]  # Green with alpha 0.6
         
         # Apply overlays
-        ax.imshow(ml_rgb, origin='lower')
-        ax.imshow(mr_rgb, origin='lower')
-        ax.imshow(bs_rgb, origin='lower')
+        ax.imshow(ml_rgb, origin='lower', extent=padded_extent)
+        ax.imshow(mr_rgb, origin='lower', extent=padded_extent)
+        ax.imshow(bs_rgb, origin='lower', extent=padded_extent)
         
         ax.set_title(f'{name}: ROI Masks')
         ax.axis('off')
+        ax.set_box_aspect(1)
     
     # ROI legend
     ax = fig.add_subplot(gs[0, 3])
@@ -430,6 +652,17 @@ def create_extraction_summary(
         ('Sagittal', 1, 2)  # Y vs Z
     ]
     
+    volume_bounds = _volume_world_bounds(fa.shape, affine)
+    plane_limits = {}
+    for title, d1, d2 in streamline_views:
+        fallback = (volume_bounds[d1], volume_bounds[d2])
+        plane_limits[title] = _streamline_plane_limits(
+            left_vis + right_vis,
+            d1,
+            d2,
+            fallback
+        )
+
     for col, (name, d1, d2) in enumerate(streamline_views):
         ax = fig.add_subplot(gs[1, col])
         ax.set_facecolor('#f0f0f0')
@@ -440,8 +673,12 @@ def create_extraction_summary(
             ax.plot(sl[:, d1], sl[:, d2], color='red', alpha=0.2, linewidth=0.5)
         
         ax.set_title(f'{name}: CST')
-        ax.set_aspect('equal')
+        (xlim, ylim) = plane_limits[name]
+        ax.set_xlim(xlim)
+        ax.set_ylim(ylim)
+        ax.set_aspect('equal', adjustable='box')
         ax.grid(True, alpha=0.3, color='white')
+        ax.set_box_aspect(1)
     
     # Row 1, col 3: Length histogram
     ax = fig.add_subplot(gs[1, 3])
