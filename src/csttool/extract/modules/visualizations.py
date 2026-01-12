@@ -363,31 +363,6 @@ def plot_cst_extraction(
     
     Row 0: FA anatomy in three orthogonal views (voxel space)
     Row 1: Streamlines only on neutral background (world coordinates)
-    
-    Parameters
-    ----------
-    cst_result : dict
-        Output from extract_bilateral_cst() containing:
-        - cst_left: Left CST streamlines
-        - cst_right: Right CST streamlines
-        - stats: Extraction statistics
-    fa : ndarray
-        3D FA map for background.
-    affine : ndarray
-        4x4 affine transformation matrix.
-    output_dir : str or Path
-        Output directory for saving figure.
-    subject_id : str, optional
-        Subject identifier for filename.
-    max_streamlines : int, optional
-        Maximum streamlines to plot per hemisphere.
-    verbose : bool, optional
-        Print progress information.
-        
-    Returns
-    -------
-    fig_path : Path
-        Path to saved figure.
     """
     output_dir = Path(output_dir)
     viz_dir = output_dir / "visualizations"
@@ -448,7 +423,6 @@ def plot_cst_extraction(
         ax.set_box_aspect(1)
     
     # Row 1: Streamlines ONLY (no FA background) on neutral background
-    # World coordinate dimensions: 0=X, 1=Y, 2=Z
     views_sl = [
         ('Sagittal (Y-Z)', 1, 2, 'Y (mm)', 'Z (mm)'),   # Y vs Z
         ('Coronal (X-Z)', 0, 2, 'X (mm)', 'Z (mm)'),    # X vs Z
@@ -490,13 +464,24 @@ def plot_cst_extraction(
         ax.grid(True, alpha=0.3, color='white')
         ax.set_box_aspect(1)
     
-    # Add legend
+    # Add legend INSIDE the bottom-right plot (cleanest solution)
     from matplotlib.lines import Line2D
     legend_elements = [
-        Line2D([0], [0], color='blue', linewidth=2, label=f'Left CST ({stats["cst_left_count"]:,})'),
-        Line2D([0], [0], color='red', linewidth=2, label=f'Right CST ({stats["cst_right_count"]:,})'),
+        Line2D([0], [0], color='blue', linewidth=2, label=f'Left ({stats["cst_left_count"]:,})'),
+        Line2D([0], [0], color='red', linewidth=2, label=f'Right ({stats["cst_right_count"]:,})'),
     ]
-    fig.legend(handles=legend_elements, loc='lower center', ncol=2, fontsize=12)
+    
+    # Place legend in the bottom-right plot (axial view)
+    axes[1, 2].legend(handles=legend_elements, 
+                      loc='upper right',  # Or 'lower right' or 'center right'
+                      fontsize=10,
+                      frameon=True,
+                      fancybox=True,
+                      framealpha=0.9,
+                      edgecolor='gray')
+    
+    # Optional: Adjust the title of that specific plot
+    axes[1, 2].set_title(f'{views_sl[2][0]}\n(Left: {stats["cst_left_count"]:,}, Right: {stats["cst_right_count"]:,})')
     
     fig_path = viz_dir / f"{prefix}cst_extraction.png"
     plt.savefig(fig_path, dpi=150, bbox_inches='tight', facecolor='white')
@@ -508,10 +493,6 @@ def plot_cst_extraction(
     return fig_path
 
 
-# =============================================================================
-# EXTRACTION SUMMARY (SIMPLIFIED)
-# =============================================================================
-
 def create_extraction_summary(
     cst_result,
     fa,
@@ -519,13 +500,11 @@ def create_extraction_summary(
     affine,
     output_dir,
     subject_id=None,
+    max_streamlines=1000,
     verbose=True
 ):
     """
-    Create multi-panel extraction summary figure.
-    
-    Combines ROI masks, CST visualization, and statistics
-    into a single summary figure.
+    Create multi-panel extraction summary figure WITHOUT length histogram.
     """
     from dipy.tracking.streamline import length
     
@@ -539,34 +518,39 @@ def create_extraction_summary(
     cst_right = cst_result['cst_right']
     stats = cst_result['stats']
     
-    # Compute lengths
+    # Compute lengths (for statistics only, not visualization)
     left_lengths = np.array([length(s) for s in cst_left]) if len(cst_left) > 0 else np.array([])
     right_lengths = np.array([length(s) for s in cst_right]) if len(cst_right) > 0 else np.array([])
     
     # Subsample for visualization
-    def subsample(streamlines, max_n=1000):
+    def subsample(streamlines, max_n):
         if len(streamlines) <= max_n:
             return list(streamlines)
         indices = np.random.choice(len(streamlines), max_n, replace=False)
         return [streamlines[i] for i in indices]
     
-    left_vis = subsample(cst_left)
-    right_vis = subsample(cst_right)
+    left_vis = subsample(cst_left, max_streamlines)
+    right_vis = subsample(cst_right, max_streamlines)
     
     # Get slice indices
     mid_ax = fa.shape[2] // 2
     mid_cor = fa.shape[1] // 2
     mid_sag = fa.shape[0] // 2
     
-    # Create figure
-    fig = plt.figure(figsize=(18, 12), constrained_layout=True)
+    # Create figure with optimized grid
+    fig = plt.figure(figsize=(20, 14), constrained_layout=True)
     fig.suptitle(f"CST Extraction Summary - {subject_id or 'Subject'}",
                  fontsize=16, fontweight='bold')
     
-    gs = fig.add_gridspec(3, 4, hspace=0.3, wspace=0.3)
+    # New grid: 3 rows, 3 columns with adjusted ratios
+    gs = fig.add_gridspec(3, 3, height_ratios=[1.4, 1.4, 0.6], 
+                         hspace=0.2, wspace=0.2)
     
-    # Row 0: ROI masks (voxel space)
-    # Keys from create_cst_roi_masks: 'motor_left', 'motor_right', 'brainstem'
+    # ===================================================================
+    # ROW 0: ROI MASKS (3 views with legends)
+    # ===================================================================
+    
+    # Get masks
     motor_left = masks.get('motor_left', np.zeros_like(fa))
     motor_right = masks.get('motor_right', np.zeros_like(fa))
     brainstem = masks.get('brainstem', np.zeros_like(fa))
@@ -582,79 +566,56 @@ def create_extraction_summary(
     
     for col, (name, fa_slice, ml_slice, mr_slice, bs_slice) in enumerate(roi_views):
         ax = fig.add_subplot(gs[0, col])
+        
+        # FA background
         padded_fa, padded_extent = _pad_slice_to_square(
             fa_slice.T,
             extent=(0, fa_slice.T.shape[1], 0, fa_slice.T.shape[0]),
             pad_value=0.0
         )
-        padded_ml, _ = _pad_slice_to_square(
-            ml_slice.T,
-            extent=(0, ml_slice.T.shape[1], 0, ml_slice.T.shape[0]),
-            pad_value=0.0
-        )
-        padded_mr, _ = _pad_slice_to_square(
-            mr_slice.T,
-            extent=(0, mr_slice.T.shape[1], 0, mr_slice.T.shape[0]),
-            pad_value=0.0
-        )
-        padded_bs, _ = _pad_slice_to_square(
-            bs_slice.T,
-            extent=(0, bs_slice.T.shape[1], 0, bs_slice.T.shape[0]),
-            pad_value=0.0
-        )
-        ax.imshow(
-            padded_fa,
-            cmap='gray',
-            origin='lower',
-            vmin=0,
-            vmax=0.8,
-            extent=padded_extent
-        )
+        ax.imshow(padded_fa, cmap='gray', origin='lower', 
+                 vmin=0, vmax=0.8, extent=padded_extent)
         
-        # Create RGB overlays with proper colors
-        # Motor cortex left (blue)
-        ml_rgb = np.zeros((*padded_ml.shape, 4))  # RGBA array
-        ml_rgb[padded_ml > 0] = [0, 0, 1, 0.6]  # Blue with alpha 0.6
+        # Create combined overlay
+        padded_ml, _ = _pad_slice_to_square(ml_slice.T)
+        padded_mr, _ = _pad_slice_to_square(mr_slice.T)
+        padded_bs, _ = _pad_slice_to_square(bs_slice.T)
         
-        # Motor cortex right (red)
-        mr_rgb = np.zeros((*padded_mr.shape, 4))
-        mr_rgb[padded_mr > 0] = [1, 0, 0, 0.6]  # Red with alpha 0.6
+        # Create a single RGBA overlay for all ROIs
+        overlay = np.zeros((*padded_fa.shape, 4))
+        overlay[padded_ml > 0] = [0, 0, 1, 0.5]    # Blue for left motor
+        overlay[padded_mr > 0] = [1, 0, 0, 0.5]    # Red for right motor
+        overlay[padded_bs > 0] = [0, 1, 0, 0.5]    # Green for brainstem
         
-        # Brainstem (green)
-        bs_rgb = np.zeros((*padded_bs.shape, 4))
-        bs_rgb[padded_bs > 0] = [0, 1, 0, 0.6]  # Green with alpha 0.6
-        
-        # Apply overlays
-        ax.imshow(ml_rgb, origin='lower', extent=padded_extent)
-        ax.imshow(mr_rgb, origin='lower', extent=padded_extent)
-        ax.imshow(bs_rgb, origin='lower', extent=padded_extent)
-        
-        ax.set_title(f'{name}: ROI Masks')
+        ax.imshow(overlay, origin='lower', extent=padded_extent)
+        ax.set_title(f'{name}: ROI Masks', fontsize=12)
         ax.axis('off')
-        ax.set_box_aspect(1)
+        
+        # Add ROI legend only to the sagittal view (last column)
+        if col == 2:  # Sagittal view
+            from matplotlib.patches import Patch
+            legend_elements = [
+                Patch(facecolor='blue', alpha=0.5, label='Motor L'),
+                Patch(facecolor='red', alpha=0.5, label='Motor R'),
+                Patch(facecolor='green', alpha=0.5, label='Brainstem'),
+            ]
+            # Place legend in upper right corner
+            ax.legend(handles=legend_elements, loc='upper right', fontsize=9,
+                      frameon=True, fancybox=True, framealpha=0.8, edgecolor='gray')
     
-    # ROI legend
-    ax = fig.add_subplot(gs[0, 3])
-    ax.axis('off')
-    from matplotlib.patches import Patch
-    legend_elements = [
-        Patch(facecolor='blue', alpha=0.6, label='Motor Cortex L'),
-        Patch(facecolor='red', alpha=0.6, label='Motor Cortex R'),
-        Patch(facecolor='green', alpha=0.6, label='Brainstem'),
-    ]
-    ax.legend(handles=legend_elements, loc='center', fontsize=12)
-    ax.set_title('ROI Legend')
+    # ===================================================================
+    # ROW 1: CST STREAMLINES (3 views with legend)
+    # ===================================================================
     
-    # Row 1: CST streamlines only (no FA background)
     streamline_views = [
-        ('Axial', 0, 1),     # X vs Y
-        ('Coronal', 0, 2),   # X vs Z
-        ('Sagittal', 1, 2)  # Y vs Z
+        ('Axial (X-Y)', 0, 1, 'X (mm)', 'Y (mm)'),
+        ('Coronal (X-Z)', 0, 2, 'X (mm)', 'Z (mm)'),
+        ('Sagittal (Y-Z)', 1, 2, 'Y (mm)', 'Z (mm)'),
     ]
     
     volume_bounds = _volume_world_bounds(fa.shape, affine)
     plane_limits = {}
-    for title, d1, d2 in streamline_views:
+    for title, d1, d2, _, _ in streamline_views:
         fallback = (volume_bounds[d1], volume_bounds[d2])
         plane_limits[title] = _streamline_plane_limits(
             left_vis + right_vis,
@@ -662,69 +623,74 @@ def create_extraction_summary(
             d2,
             fallback
         )
-
-    for col, (name, d1, d2) in enumerate(streamline_views):
+    
+    for col, (title, d1, d2, xlabel, ylabel) in enumerate(streamline_views):
         ax = fig.add_subplot(gs[1, col])
         ax.set_facecolor('#f0f0f0')
         
+        # Plot left CST
         for sl in left_vis:
-            ax.plot(sl[:, d1], sl[:, d2], color='blue', alpha=0.2, linewidth=0.5)
-        for sl in right_vis:
-            ax.plot(sl[:, d1], sl[:, d2], color='red', alpha=0.2, linewidth=0.5)
+            ax.plot(sl[:, d1], sl[:, d2], color='blue', alpha=0.25, linewidth=0.8)
         
-        ax.set_title(f'{name}: CST')
-        (xlim, ylim) = plane_limits[name]
+        # Plot right CST
+        for sl in right_vis:
+            ax.plot(sl[:, d1], sl[:, d2], color='red', alpha=0.25, linewidth=0.8)
+        
+        ax.set_xlabel(xlabel, fontsize=11)
+        ax.set_ylabel(ylabel, fontsize=11)
+        ax.set_title(f'{title}: CST', fontsize=12)
+        
+        (xlim, ylim) = plane_limits[title]
         ax.set_xlim(xlim)
         ax.set_ylim(ylim)
         ax.set_aspect('equal', adjustable='box')
         ax.grid(True, alpha=0.3, color='white')
-        ax.set_box_aspect(1)
+        ax.tick_params(labelsize=10)
+        
+        # Add CST legend only to the sagittal view (last column)
+        if col == 2:  # Sagittal view
+            from matplotlib.lines import Line2D
+            legend_elements = [
+                Line2D([0], [0], color='blue', linewidth=2, label=f'Left ({stats["cst_left_count"]:,})'),
+                Line2D([0], [0], color='red', linewidth=2, label=f'Right ({stats["cst_right_count"]:,})'),
+            ]
+            # Place legend in upper right corner
+            ax.legend(handles=legend_elements, loc='upper right', fontsize=9,
+                      frameon=True, fancybox=True, framealpha=0.8, edgecolor='gray')
     
-    # Row 1, col 3: Length histogram
-    ax = fig.add_subplot(gs[1, 3])
+    # ===================================================================
+    # ROW 2: COMPACT STATISTICS PANEL
+    # ===================================================================
+    
+    ax_stats = fig.add_subplot(gs[2, :])
+    ax_stats.axis('off')
+    
+    # Build statistics with and without lengths
     if len(left_lengths) > 0:
-        ax.hist(left_lengths, bins=30, alpha=0.6, color='blue', label='Left CST')
-    if len(right_lengths) > 0:
-        ax.hist(right_lengths, bins=30, alpha=0.6, color='red', label='Right CST')
-    ax.set_xlabel('Length (mm)')
-    ax.set_ylabel('Count')
-    ax.set_title('Length Distribution')
-    ax.legend(fontsize=9)
-    ax.grid(True, alpha=0.3)
-    
-    # Row 2: Statistics panel
-    ax = fig.add_subplot(gs[2, :])
-    ax.axis('off')
-    
-    # Build statistics text
-    if len(left_lengths) > 0:
-        left_stats = f"mean={np.mean(left_lengths):.1f}, range=[{np.min(left_lengths):.1f}, {np.max(left_lengths):.1f}]"
+        left_stats = f"{stats['cst_left_count']:,} streamlines (mean: {np.mean(left_lengths):.1f} mm)"
     else:
-        left_stats = "N/A"
+        left_stats = "No streamlines"
     
     if len(right_lengths) > 0:
-        right_stats = f"mean={np.mean(right_lengths):.1f}, range=[{np.min(right_lengths):.1f}, {np.max(right_lengths):.1f}]"
+        right_stats = f"{stats['cst_right_count']:,} streamlines (mean: {np.mean(right_lengths):.1f} mm)"
     else:
-        right_stats = "N/A"
+        right_stats = "No streamlines"
     
     stats_text = (
-        f"{'═' * 100}\n"
-        f"EXTRACTION SUMMARY\n"
-        f"{'═' * 100}\n\n"
-        f"Input Streamlines:     {stats['total_input']:,}\n"
-        f"Extracted (Total):     {stats['cst_total_count']:,} ({stats['extraction_rate']:.2f}%)\n\n"
-        f"Left CST:              {stats['cst_left_count']:,} streamlines\n"
-        f"  Length:              {left_stats} mm\n\n"
-        f"Right CST:             {stats['cst_right_count']:,} streamlines\n"
-        f"  Length:              {right_stats} mm\n\n"
-        f"Left/Right Ratio:      {stats.get('left_right_ratio', 'N/A')}\n"
-        f"{'═' * 100}"
+        f"{'─' * 100}\n"
+        f"EXTRACTION STATISTICS\n"
+        f"{'─' * 100}\n\n"
+        f"Total Input Streamlines: {stats['total_input']:,}\n"
+        f"Extraction Rate:         {stats['extraction_rate']:.2f}% ({stats['cst_total_count']:,} streamlines)\n\n"
+        f"Left CST:                {left_stats}\n"
+        f"Right CST:               {right_stats}\n\n"
+        f"{'─' * 100}"
     )
     
-    ax.text(0.5, 0.5, stats_text, transform=ax.transAxes,
-            fontsize=11, fontfamily='monospace',
-            verticalalignment='center', horizontalalignment='center',
-            bbox=dict(boxstyle='round', facecolor='lightgreen', alpha=0.5))
+    ax_stats.text(0.5, 0.5, stats_text, transform=ax_stats.transAxes,
+                 fontsize=11, fontfamily='monospace', linespacing=1.5,
+                 verticalalignment='center', horizontalalignment='center',
+                 bbox=dict(boxstyle='round', facecolor='lightgreen', alpha=0.5))
     
     fig_path = viz_dir / f"{prefix}extraction_summary.png"
     plt.savefig(fig_path, dpi=150, bbox_inches='tight', facecolor='white')
