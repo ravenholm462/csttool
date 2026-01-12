@@ -1,4 +1,11 @@
-## Purpose
+# csttool
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![Documentation](https://img.shields.io/badge/docs-available-brightgreen.svg)](https://ravenholm462.github.io/csttool/)
+
+Simple, modular CST assessment tool for diffusion MRI.
+
 `csttool` is a Python-based command-line tool for automated assessment of the **corticospinal tract (CST)** using diffusion-weighted MRI (DW-MRI) data. It is designed to be simple, modular, and easily portable to different computing environments.
 
 ## Core ideas
