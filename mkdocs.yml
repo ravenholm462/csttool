@@ -1,0 +1,125 @@
+# Project info
+site_name: csttool Documentation
+site_description: Automated assessment of the corticospinal tract using diffusion MRI
+site_author: Alem Nalo
+# site_url: https://github.com/ravenholm462/csttool.git
+
+# Repo
+repo_name: ravenholm462/csttool
+repo_url: https://github.com/ravenholm462/csttool
+edit_uri: edit/main/docs/
+
+# Copyright
+copyright: Copyright &copy; 2025 Alem Nalo
+
+# Theme configuration
+theme:
+  name: material
+  palette:
+    # Light mode
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    # Dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  
+  features:
+    - navigation.tabs           # Top-level navigation tabs
+    - navigation.sections       # Sections in sidebar
+    - navigation.expand         # Expand sections by default
+    - navigation.top            # Back to top button
+    - search.suggest            # Search suggestions
+    - search.highlight          # Highlight search terms
+    - content.code.copy         # Copy button for code blocks
+    - content.tabs.link         # Link content tabs
+  
+  icon:
+    repo: fontawesome/brands/github
+
+# Extensions
+markdown_extensions:
+  - admonition                  # Callout boxes (note, warning, etc.)
+  - pymdownx.details            # Collapsible admonitions
+  - pymdownx.superfences:       # Code blocks with syntax highlighting
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:            # Content tabs
+      alternate_style: true
+  - pymdownx.highlight:         # Syntax highlighting
+      anchor_linenums: true
+  - pymdownx.inlinehilite       # Inline code highlighting
+  - pymdownx.snippets           # Include external files
+  - pymdownx.tasklist:          # Task lists
+      custom_checkbox: true
+  - tables                      # Markdown tables
+  - attr_list                   # Add attributes to elements
+  - md_in_html                  # Markdown in HTML
+  - toc:                        # Table of contents
+      permalink: true
+
+# Plugins
+plugins:
+  - search                      # Search functionality
+  - mkdocstrings:               # API documentation
+      handlers:
+        python:
+          paths: [src]
+          options:
+            docstring_style: numpy
+            show_source: true
+            show_root_heading: true
+            show_category_heading: true
+            members_order: source
+            heading_level: 2
+
+# Navigation structure
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Installation: getting-started/installation.md
+      - Quick Start: getting-started/quickstart.md
+      - Data Requirements: getting-started/data-requirements.md
+  - Tutorials:
+      - Your First CST Analysis: tutorials/first-analysis.md
+      - Batch Processing: tutorials/batch-processing.md
+  - How-To Guides:
+      - Multiple Subjects: how-to/multiple-subjects.md
+      - Data Formats: how-to/data-formats.md
+      - Troubleshooting: how-to/troubleshooting.md
+  - Reference:
+      - CLI Commands:
+          - check: reference/cli/check.md
+          - import: reference/cli/import.md
+          - preprocess: reference/cli/preprocess.md
+          - track: reference/cli/track.md
+          - extract: reference/cli/extract.md
+          - metrics: reference/cli/metrics.md
+          - run: reference/cli/run.md
+      - API:
+          - Preprocessing: reference/api/preprocess.md
+          - Tracking: reference/api/tracking.md
+          - Extraction: reference/api/extract.md
+          - Metrics: reference/api/metrics.md
+      - Output Formats: reference/output-formats.md
+      - Parameters: reference/parameters.md
+  - Explanation:
+      - Diffusion MRI: explanation/diffusion-mri.md
+      - Tractography: explanation/tractography.md
+      - CST Anatomy: explanation/cst-anatomy.md
+      - Design Decisions: explanation/design-decisions.md
+      - Known Limitations: explanation/limitations.md
+  - Contributing:
+      - Development Setup: contributing/development-setup.md
+      - Code Style: contributing/code-style.md
+      - Architecture: contributing/architecture.md
+
