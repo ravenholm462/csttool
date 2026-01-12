@@ -26,6 +26,9 @@ dependencies = [
 test = [
     "pytest",
     "pytest-mock",
+    "mkdocs-material",
+    "mkdocstrings[python]",
+    "pymdown-extensions"
 ]
 
 [project.scripts]
