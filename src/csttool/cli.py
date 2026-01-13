@@ -545,6 +545,9 @@ def resolve_nifti(args: argparse.Namespace) -> Path:
                 )
             nii = candidates[0]
 
+    if not isinstance(nii, Path):
+        nii = Path(nii)
+
     if not nii.exists():
         raise FileNotFoundError(f"NIfTI file not found: {nii}")
 
