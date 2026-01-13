@@ -6,7 +6,8 @@ from csttool.preprocess.funcs import (
     is_dicom_dir,
     convert_to_nifti,
     denoise_nlmeans,
-    background_segmentation
+    background_segmentation,
+    suppress_gibbs_oscillations,
 )
 
 def test_is_dicom_dir(tmp_path):
@@ -90,3 +91,15 @@ def test_background_segmentation(synthetic_image_data, synthetic_gtab):
     assert masked_data.shape == data_4d.shape
     assert mask.shape == data_4d.shape[:3]
     assert mask.dtype == bool or mask.dtype == np.uint8
+
+
+def test_suppress_gibbs_oscillations_calls_dipy():
+    """Test Gibbs unringing wrapper calls dipy with slice_axis."""
+    data_4d = np.zeros((6, 6, 6, 2), dtype=np.float32)
+
+    with patch('dipy.denoise.gibbs.gibbs_removal') as mock_gibbs:
+        mock_gibbs.return_value = data_4d
+        result = suppress_gibbs_oscillations(data_4d, slice_axis=1)
+
+    mock_gibbs.assert_called_once_with(data_4d, slice_axis=1, num_processes=-1)
+    assert result is data_4d
