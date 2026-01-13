@@ -15,7 +15,8 @@
 
 ### Preprocessing
 
-- [ ] Correction for Gibbs' oscillations missing. Implement.
+- [X] Correction for Gibbs' oscillations missing. Implement.
+- [ ] Validate the Gibbs' correction. 
 - [ ] Is NLMEANS denoising good enough?
 - [ ] Architecture of this module does not correspond to the others (still uses `funcs.py`). Revise.
 
