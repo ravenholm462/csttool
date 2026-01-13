@@ -130,6 +130,11 @@ def main() -> None:
         help="Enable between volume motion correction (disabled by default)."
     )
     p_preproc.add_argument(
+        "--unring",
+        action="store_true",
+        help="Enable Gibbs unringing (disabled by default)."
+    )
+    p_preproc.add_argument(
         "--verbose",
         action="store_true",
         help="Print detailed processing information."
@@ -377,6 +382,11 @@ def main() -> None:
         type=int,
         default=4,
         help="Number of receiver coils for PIESNO (default: 4)"
+    )
+    p_run.add_argument(
+        "--unring",
+        action="store_true",
+        help="Enable Gibbs unringing during preprocessing"
     )
     p_run.add_argument(
         "--perform-motion-correction",
@@ -862,12 +872,18 @@ def cmd_preprocess(args: argparse.Namespace) -> dict | None:
         visualize=getattr(args, 'show_plots', False),
     )
 
-    print("Step 2: Gibbs ringing removal")
-    unringed = preproc.suppress_gibbs_oscillations(denoised)
+    unringed = None
+    if getattr(args, 'unring', False):
+        print("Step 2: Gibbs ringing removal")
+        unringed = preproc.suppress_gibbs_oscillations(denoised)
+        data_for_masking = unringed
+    else:
+        print("Step 2: Gibbs ringing removal (skipped)")
+        data_for_masking = denoised
 
     print("Step 3: Brain masking with median Otsu")
     masked_data, brain_mask = preproc.background_segmentation(
-        unringed,
+        data_for_masking,
         gtab,
         visualize=getattr(args, 'show_plots', False),
     )
@@ -1829,6 +1845,7 @@ def cmd_run(args: argparse.Namespace) -> None:
             coil_count=getattr(args, 'coil_count', 4),
             show_plots=getattr(args, 'show_plots', False),
             save_visualizations=getattr(args, 'save_visualizations', False),
+            unring=getattr(args, 'unring', False),
             perform_motion_correction=getattr(args, 'perform_motion_correction', False),
             verbose=verbose
         )
