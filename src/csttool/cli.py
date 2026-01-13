@@ -911,6 +911,7 @@ def cmd_preprocess(args: argparse.Namespace) -> dict | None:
         save_all_preprocessing_visualizations(
             data_original=data,
             data_denoised=denoised,
+            data_unringed=unringed,
             data_preprocessed=preprocessed,
             brain_mask=brain_mask,
             gtab=gtab,

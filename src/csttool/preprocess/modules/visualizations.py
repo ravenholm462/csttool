@@ -5,6 +5,7 @@ Visualization functions for preprocessing QC.
 
 This module provides file-saving visualizations for:
 - Denoising comparison (before/after)
+- Gibbs unringing comparison (before/after)
 - Brain mask overlay
 - Motion correction summary
 - Multi-panel preprocessing summary
@@ -122,6 +123,83 @@ def plot_denoising_comparison(
     
     if verbose:
         print(f"✓ Denoising QC: {fig_path}")
+    
+    return fig_path
+
+
+def plot_gibbs_unringing_comparison(
+    data_before,
+    data_after,
+    brain_mask,
+    output_dir,
+    stem,
+    vol_idx=0,
+    verbose=True
+):
+    """
+    Create before/after Gibbs unringing comparison figure.
+    
+    Shows three orthogonal views comparing data before and after
+    unringing, plus a difference map highlighting changes.
+    """
+    output_dir = Path(output_dir)
+    viz_dir = output_dir / "visualizations"
+    viz_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Get slice indices
+    mid_ax = data_before.shape[2] // 2
+    mid_cor = data_before.shape[1] // 2
+    mid_sag = data_before.shape[0] // 2
+    
+    # Extract volumes
+    before = data_before[..., vol_idx]
+    after = data_after[..., vol_idx]
+    
+    # Compute difference (only inside brain)
+    diff = np.abs(after.astype(np.float64) - before.astype(np.float64))
+    diff[~brain_mask] = 0
+    
+    fig, axes = plt.subplots(3, 3, figsize=(12, 12), constrained_layout=True)
+    fig.suptitle(f"Gibbs Unringing QC - {stem}\nVolume {vol_idx}", fontsize=14, fontweight='bold')
+    
+    vmax = np.percentile(before[brain_mask], 99)
+    diff_vmax = np.percentile(diff[brain_mask], 99) if diff[brain_mask].size > 0 else 1
+    
+    views = [
+        ('Axial', before[:, :, mid_ax], after[:, :, mid_ax], diff[:, :, mid_ax]),
+        ('Coronal', before[:, mid_cor, :], after[:, mid_cor, :], diff[:, mid_cor, :]),
+        ('Sagittal', before[mid_sag, :, :], after[mid_sag, :, :], diff[mid_sag, :, :]),
+    ]
+    
+    for row, (view_name, bef, aft, dif) in enumerate(views):
+        axes[row, 0].imshow(bef.T, cmap='gray', origin='lower', vmin=0, vmax=vmax)
+        axes[row, 0].set_title(f'{view_name} - Before' if row == 0 else '')
+        axes[row, 0].axis('off')
+        if row == 0:
+            axes[row, 0].set_ylabel('Before', fontsize=12)
+        
+        axes[row, 1].imshow(aft.T, cmap='gray', origin='lower', vmin=0, vmax=vmax)
+        axes[row, 1].set_title(f'{view_name} - After' if row == 0 else '')
+        axes[row, 1].axis('off')
+        
+        im = axes[row, 2].imshow(dif.T, cmap='hot', origin='lower', vmin=0, vmax=diff_vmax)
+        axes[row, 2].set_title(f'{view_name} - Difference' if row == 0 else '')
+        axes[row, 2].axis('off')
+    
+    for row, (view_name, _, _, _) in enumerate(views):
+        axes[row, 0].text(-0.1, 0.5, view_name, transform=axes[row, 0].transAxes,
+                         fontsize=12, fontweight='bold', va='center', ha='right',
+                         rotation=90)
+    
+    cbar_ax = fig.add_axes([0.92, 0.15, 0.02, 0.7])
+    fig.colorbar(im, cax=cbar_ax, label='Intensity Difference')
+    
+    fig_path = viz_dir / f"{stem}_gibbs_unringing_qc.png"
+    plt.savefig(fig_path, dpi=150, bbox_inches='tight', facecolor='white')
+    plt.close()
+    
+    if verbose:
+        print(f"✓ Gibbs unringing QC: {fig_path}")
     
     return fig_path
 
@@ -526,6 +604,7 @@ def create_preprocessing_summary(
 def save_all_preprocessing_visualizations(
     data_original,
     data_denoised,
+    data_unringed,
     data_preprocessed,
     brain_mask,
     gtab,
@@ -547,6 +626,8 @@ def save_all_preprocessing_visualizations(
         4D DWI data before any preprocessing.
     data_denoised : ndarray
         4D DWI data after denoising (before masking).
+    data_unringed : ndarray
+        4D DWI data after Gibbs unringing (before masking).
     data_preprocessed : ndarray
         4D DWI data after full preprocessing.
     brain_mask : ndarray
@@ -578,6 +659,13 @@ def save_all_preprocessing_visualizations(
     if data_denoised is not None:
         viz_paths['denoising_qc'] = plot_denoising_comparison(
             data_original, data_denoised, brain_mask,
+            output_dir, stem, verbose=verbose
+        )
+
+    # Gibbs unringing comparison
+    if data_unringed is not None and data_denoised is not None:
+        viz_paths['gibbs_unringing_qc'] = plot_gibbs_unringing_comparison(
+            data_denoised, data_unringed, brain_mask,
             output_dir, stem, verbose=verbose
         )
     
