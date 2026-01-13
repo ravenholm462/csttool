@@ -399,6 +399,39 @@ def perform_motion_correction(
      return data_corrected, reg_affines
 
 
+def suppress_gibbs_oscillations(data, img, slice_axis=None):
+    """
+    Apply Gibbs ringing removal.
+    
+    Parameters:
+    -----------
+    data : numpy array
+        The DWI data
+    img : nibabel image object
+        For getting metadata (optional)
+    slice_axis : int, optional
+        Which axis contains the slices (0, 1, or 2).
+        If None, defaults to 2 (DIPY convention).
+        Users should determine this from their acquisition protocol.
+    """
+    from dipy.denoise.gibbs import gibbs_removal
+    
+    if data.ndim < 3:
+        raise ValueError(f"Expected at least 3D data, got {data.ndim}D")
+    
+    # Default to DIPY's convention if not specified
+    if slice_axis is None:
+        slice_axis = 2
+        print(f"Using default slice_axis={slice_axis} for Gibbs removal.")
+    
+    print(f"Applying Gibbs ringing removal (slice_axis={slice_axis})...")
+    t = time()
+    data_corrected = gibbs_removal(data, slice_axis=slice_axis, num_processes=-1)
+    print(f"Gibbs ringing removal complete. Time: {time() - t:.2f} s\n")
+    
+    return data_corrected
+
+
 def save_output(data, affine, out_dir, stem, save_intermediates=True, motion_correction_applied=False):
     """
     Save preprocessed data with organized structure and clear naming.

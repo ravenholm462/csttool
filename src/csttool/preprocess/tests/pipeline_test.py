@@ -1,6 +1,7 @@
 from csttool.preprocess.funcs import (
     load_dataset,
     denoise_nlmeans,
+    suppress_gibbs_oscillations,
     background_segmentation,
     perform_motion_correction,
     save_output,
@@ -17,6 +18,7 @@ fname = "17_cmrr_mbep2d_diff_ap_tdi"
 
 data, affine, img, gtab = load_dataset(nifti_path, fname)
 den, brain_mask_piesno = denoise_nlmeans(data, visualize=False)
-b0masked_data, brain_mask_median = background_segmentation(den, gtab, visualize=False)
+unringed = suppress_gibbs_oscillations(den, slice_axis=2)
+b0masked_data, brain_mask_median = background_segmentation(unringed, gtab, visualize=False)
 data_corrected, reg_affines = perform_motion_correction(b0masked_data, gtab, affine)
 save_output(data_corrected, affine, out_path, fname)

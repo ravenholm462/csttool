@@ -859,16 +859,19 @@ def cmd_preprocess(args: argparse.Namespace) -> dict | None:
         visualize=getattr(args, 'show_plots', False),
     )
 
-    print("Step 2: Brain masking with median Otsu")
+    print("Step 2: Gibbs ringing removal")
+    unringed = preproc.suppress_gibbs_oscillations(denoised)
+
+    print("Step 3: Brain masking with median Otsu")
     masked_data, brain_mask = preproc.background_segmentation(
-        denoised,
+        unringed,
         gtab,
         visualize=getattr(args, 'show_plots', False),
     )
 
     motion_correction_applied = False
     if getattr(args, 'perform_motion_correction', False):
-        print("Step 3: Between volume motion correction")
+        print("Step 4: Between volume motion correction")
         try:
             preprocessed, reg_affines = preproc.perform_motion_correction(
                 masked_data,
@@ -886,7 +889,7 @@ def cmd_preprocess(args: argparse.Namespace) -> dict | None:
         print("Skipping motion correction (default behavior)")
         preprocessed = masked_data
 
-    print("Step 4: Saving output")
+    print("Step 5: Saving output")
     output_paths = preproc.save_output(
         preprocessed,
         affine,
@@ -895,7 +898,7 @@ def cmd_preprocess(args: argparse.Namespace) -> dict | None:
         motion_correction_applied=motion_correction_applied
     )
 
-    print("Step 5: Copying gradient files")
+    print("Step 6: Copying gradient files")
     preproc.copy_gradient_files(
         nii, str(args.out), stem, motion_correction_applied
     )
