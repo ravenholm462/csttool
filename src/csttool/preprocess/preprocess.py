@@ -37,9 +37,9 @@ def run_preprocessing(
 
     Steps:
         1. Load dataset (NIfTI/DICOM + gradient table)
-        2. Denoise (Patch2Self or NLMeans)
-        3. Gibbs unringing (optional)
-        4. Brain masking (median Otsu)
+        2. Brain masking (median Otsu on b0 volumes)
+        3. Denoise with brain mask (Patch2Self or NLMeans)
+        4. Gibbs unringing (optional)
         5. Motion correction (optional)
         6. Save outputs
 
@@ -90,35 +90,34 @@ def run_preprocessing(
     print(f"PREPROCESSING: Loaded data with shape {data.shape}")
 
     # -------------------------------------------------------------------------
-    # Step 2: Denoise
+    # Step 2: Brain masking
+    # -------------------------------------------------------------------------
+    masked_data, brain_mask = background_segmentation(data, gtab)
+    print("PREPROCESSING: Brain masking complete")
+
+    # -------------------------------------------------------------------------
+    # Step 3: Denoise
     # -------------------------------------------------------------------------
     denoised = denoise(
-        data,
+        masked_data,
         bvals=gtab.bvals,
-        brain_mask=None,
+        brain_mask=brain_mask,
         denoise_method=denoise_method,
         N=coil_count
     )
     print(f"PREPROCESSING: Denoising complete ({denoise_method})")
 
     # -------------------------------------------------------------------------
-    # Step 3: Gibbs unringing (optional)
+    # Step 4: Gibbs unringing (optional)
     # -------------------------------------------------------------------------
     if apply_gibbs_correction:
         unringed = gibbs_unringing(denoised)
-        data_for_masking = unringed
+        data_for_motion = unringed
         print("PREPROCESSING: Gibbs ringing correction complete")
     else:
-        data_for_masking = denoised
+        data_for_motion = denoised
         if verbose:
             print("PREPROCESSING: Gibbs ringing correction skipped")
-
-    # -------------------------------------------------------------------------
-    # Step 4: Brain masking
-    # -------------------------------------------------------------------------
-    masked_data, brain_mask = background_segmentation(data_for_masking, gtab)
-    print("PREPROCESSING: Brain masking complete")
-
 
     # -------------------------------------------------------------------------
     # Step 5: Motion correction (optional)
@@ -129,7 +128,7 @@ def run_preprocessing(
     if apply_motion_correction:
         try:
             preprocessed, reg_affines = perform_motion_correction(
-                masked_data,
+                data_for_motion,
                 gtab,
                 affine,
                 brain_mask=brain_mask
@@ -139,9 +138,9 @@ def run_preprocessing(
         except Exception as e:
             print(f"PREPROCESSING: Motion correction failed: {e}")
             print("   Continuing without motion correction")
-            preprocessed = masked_data
+            preprocessed = data_for_motion
     else:
-        preprocessed = masked_data
+        preprocessed = data_for_motion
         if verbose:
             print("PREPROCESSING: Motion correction skipped")
 
@@ -187,14 +186,16 @@ def run_preprocessing(
     if save_visualizations:
         try:
             from .modules.visualizations import save_all_preprocessing_visualizations
+            viz_dir = output_dir / "visualizations"
+            viz_dir.mkdir(parents=True, exist_ok=True)
             save_all_preprocessing_visualizations(
-                data_original=data,
+                data_original=masked_data,  # Use masked (cropped) data as baseline
                 data_denoised=denoised,
                 data_unringed=unringed if apply_gibbs_correction else None,
                 data_preprocessed=preprocessed,
                 brain_mask=brain_mask,
                 gtab=gtab,
-                output_dir=output_dir,
+                output_dir=viz_dir,
                 stem=filename,
                 reg_affines=reg_affines,
                 motion_correction_applied=motion_correction_applied,

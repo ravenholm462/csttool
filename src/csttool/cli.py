@@ -120,9 +120,9 @@ def main() -> None:
         help="Number of receiver coils for PIESNO noise estimation (N)."
     )
     p_preproc.add_argument(
-        "--show-plots",
+        "--save-visualizations",
         action="store_true",
-        help="Enable QC plots for denoising and segmentation."
+        help="Save QC visualizations to output directory."
     )
     p_preproc.add_argument(
         "--perform-motion-correction",
@@ -871,7 +871,6 @@ def cmd_preprocess(args: argparse.Namespace) -> dict | None:
         input_dir=input_dir,
         output_dir=args.out,
         filename=stem,
-        denoise_method="nlmeans",
         coil_count=args.coil_count,
         apply_gibbs_correction=getattr(args, 'unring', False),
         apply_motion_correction=getattr(args, 'perform_motion_correction', False),

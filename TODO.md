@@ -25,8 +25,8 @@
   - `perform_motion_correction.py` - Between-volume motion correction
   - `save_preprocessed.py` - Save outputs with organized structure
   - `visualizations.py` - QC visualizations (already implemented)
-- [ ] Update `preprocess/__init__.py` to export all new module functions
-- [ ] Update `cli.py` to use the new modular pipeline
+- [X] Update `preprocess/__init__.py` to export all new module functions
+- [X] Update `cli.py` to use the new modular pipeline
 - [ ] Deprecate/remove old functions in `funcs.py` after migration
 
 ### Validation & Research
