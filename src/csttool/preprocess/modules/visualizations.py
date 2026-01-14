@@ -128,70 +128,91 @@ def plot_gibbs_unringing_comparison(
     brain_mask,
     output_dir,
     stem,
-    vol_idx=0,
+    vol_idx=None,
     verbose=True
 ):
     """
     Create before/after Gibbs unringing comparison figure.
     
     Shows three orthogonal views comparing data before and after
-    unringing, plus a difference map highlighting changes.
+    unringing, plus RMS residuals highlighting removed ringing artifacts.
+    
+    Parameters
+    ----------
+    data_before : ndarray
+        4D DWI data before Gibbs unringing.
+    data_after : ndarray
+        4D DWI data after Gibbs unringing.
+    brain_mask : ndarray
+        3D binary brain mask.
+    output_dir : str or Path
+        Output directory for saving figure.
+    stem : str
+        Subject/scan identifier for filename.
+    vol_idx : int, optional
+        Volume index to visualize. Default picks a DWI volume (middle of 4th dim).
+    verbose : bool, optional
+        Print progress information.
+        
+    Returns
+    -------
+    fig_path : Path
+        Path to saved figure.
     """
     output_dir = Path(output_dir)
     viz_dir = output_dir / "visualizations"
     viz_dir.mkdir(parents=True, exist_ok=True)
     
-    # Get slice indices
+    # Default to a DWI volume (middle of 4th dimension)
+    if vol_idx is None:
+        vol_idx = data_before.shape[3] // 2
+    
+    # Get middle slice indices for each orientation
     mid_ax = data_before.shape[2] // 2
     mid_cor = data_before.shape[1] // 2
     mid_sag = data_before.shape[0] // 2
     
-    # Extract volumes
+    # Extract 3D volumes
     before = data_before[..., vol_idx]
     after = data_after[..., vol_idx]
     
-    # Compute difference (only inside brain)
-    diff = np.abs(after.astype(np.float64) - before.astype(np.float64))
-    diff[~brain_mask] = 0
+    # Compute RMS residuals (accentuates outliers)
+    rms_diff = np.sqrt((before.astype(np.float64) - after.astype(np.float64)) ** 2)
+    if brain_mask is not None and brain_mask.shape == before.shape:
+        rms_diff[~brain_mask] = 0
     
-    fig, axes = plt.subplots(3, 3, figsize=(12, 12), constrained_layout=True)
-    fig.suptitle(f"Gibbs Unringing QC - {stem}\nVolume {vol_idx}", fontsize=14, fontweight='bold')
-    
-    vmax = np.percentile(before[brain_mask], 99)
-    diff_vmax = np.percentile(diff[brain_mask], 99) if diff[brain_mask].size > 0 else 1
-    
+    # Define orthogonal views
     views = [
-        ('Axial', before[:, :, mid_ax], after[:, :, mid_ax], diff[:, :, mid_ax]),
-        ('Coronal', before[:, mid_cor, :], after[:, mid_cor, :], diff[:, mid_cor, :]),
-        ('Sagittal', before[mid_sag, :, :], after[mid_sag, :, :], diff[mid_sag, :, :]),
+        ('Axial', before[:, :, mid_ax], after[:, :, mid_ax], rms_diff[:, :, mid_ax]),
+        ('Coronal', before[:, mid_cor, :], after[:, mid_cor, :], rms_diff[:, mid_cor, :]),
+        ('Sagittal', before[mid_sag, :, :], after[mid_sag, :, :], rms_diff[mid_sag, :, :]),
     ]
     
-    for row, (view_name, bef, aft, dif) in enumerate(views):
-        axes[row, 0].imshow(bef.T, cmap='gray', origin='lower', vmin=0, vmax=vmax)
-        axes[row, 0].set_title(f'{view_name} - Before' if row == 0 else '')
-        axes[row, 0].axis('off')
-        if row == 0:
-            axes[row, 0].set_ylabel('Before', fontsize=12)
-        
-        axes[row, 1].imshow(aft.T, cmap='gray', origin='lower', vmin=0, vmax=vmax)
-        axes[row, 1].set_title(f'{view_name} - After' if row == 0 else '')
-        axes[row, 1].axis('off')
-        
-        im = axes[row, 2].imshow(dif.T, cmap='hot', origin='lower', vmin=0, vmax=diff_vmax)
-        axes[row, 2].set_title(f'{view_name} - Difference' if row == 0 else '')
-        axes[row, 2].axis('off')
+    # Create figure: 3 rows (views) × 3 columns (before, after, residuals)
+    fig, axes = plt.subplots(3, 3, figsize=(12, 12),
+                              subplot_kw={'xticks': [], 'yticks': []})
+    fig.subplots_adjust(hspace=0.1, wspace=0.05)
+    fig.suptitle(f"Gibbs Unringing - {stem} (Volume {vol_idx})", fontsize=14, fontweight='bold')
     
-    for row, (view_name, _, _, _) in enumerate(views):
-        axes[row, 0].text(-0.1, 0.5, view_name, transform=axes[row, 0].transAxes,
-                         fontsize=12, fontweight='bold', va='center', ha='right',
-                         rotation=90)
+    # Column titles
+    axes[0, 0].set_title('Before', fontsize=12)
+    axes[0, 1].set_title('After', fontsize=12)
+    axes[0, 2].set_title('Residuals (RMS)', fontsize=12)
     
-    cbar_ax = fig.add_axes([0.92, 0.15, 0.02, 0.7])
-    fig.colorbar(im, cax=cbar_ax, label='Intensity Difference')
+    for row, (view_name, bef, aft, res) in enumerate(views):
+        # Before
+        axes[row, 0].imshow(bef.T, cmap='gray', interpolation='none', origin='lower')
+        axes[row, 0].set_ylabel(view_name, fontsize=12, fontweight='bold')
+        
+        # After
+        axes[row, 1].imshow(aft.T, cmap='gray', interpolation='none', origin='lower')
+        
+        # Residuals
+        axes[row, 2].imshow(res.T, cmap='gray', interpolation='none', origin='lower')
     
     fig_path = viz_dir / f"{stem}_gibbs_unringing_qc.png"
-    plt.savefig(fig_path, dpi=150, bbox_inches='tight', facecolor='white')
-    plt.close()
+    fig.savefig(fig_path, dpi=150, bbox_inches='tight', facecolor='white')
+    plt.close(fig)
     
     if verbose:
         print(f"✓ Gibbs unringing QC: {fig_path}")
@@ -609,6 +630,7 @@ def create_preprocessing_summary(
 def save_all_preprocessing_visualizations(
     data_original,
     data_denoised,
+    data_masked,
     data_unringed,
     data_preprocessed,
     brain_mask,
@@ -632,8 +654,10 @@ def save_all_preprocessing_visualizations(
         4D DWI data before any preprocessing.
     data_denoised : ndarray
         4D DWI data after denoising (before masking).
+    data_masked : ndarray
+        4D DWI data after brain masking (cropped).
     data_unringed : ndarray
-        4D DWI data after Gibbs unringing (before masking).
+        4D DWI data after Gibbs unringing (cropped).
     data_preprocessed : ndarray
         4D DWI data after full preprocessing.
     brain_mask : ndarray
@@ -670,10 +694,10 @@ def save_all_preprocessing_visualizations(
             output_dir, stem, denoise_method, verbose=verbose
         )
 
-    # Gibbs unringing comparison
-    if data_unringed is not None and data_denoised is not None:
+    # Gibbs unringing comparison (both inputs are cropped/masked)
+    if data_unringed is not None and data_masked is not None:
         viz_paths['gibbs_unringing_qc'] = plot_gibbs_unringing_comparison(
-            data_denoised, data_unringed, brain_mask,
+            data_masked, data_unringed, brain_mask,
             output_dir, stem, verbose=verbose
         )
     

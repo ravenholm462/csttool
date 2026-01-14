@@ -191,6 +191,7 @@ def run_preprocessing(
             save_all_preprocessing_visualizations(
                 data_original=data,  # Raw data before any processing
                 data_denoised=denoised,  # Denoised (same shape as original)
+                data_masked=masked_data,  # After brain masking (cropped)
                 data_unringed=unringed if apply_gibbs_correction else None,
                 data_preprocessed=preprocessed,
                 brain_mask=brain_mask,
