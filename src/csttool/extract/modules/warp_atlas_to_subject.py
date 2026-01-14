@@ -9,6 +9,7 @@ Uses Harvard-Oxford atlas from templateflow for ROI definition: https://nilearn.
 import numpy as np
 import nibabel as nib
 from pathlib import Path
+from dipy.align.imaffine import AffineMap
 
 
 # Harvard-Oxford label definitions for CST extraction
@@ -131,11 +132,63 @@ def fetch_harvard_oxford(verbose=True):
     }
 
 
+def resample_atlas_to_mni_grid(atlas_img, mni_shape, mni_affine, verbose=True):
+    """
+    Resample a Harvard-Oxford atlas to match the DIPY MNI template grid.
+    
+    The Harvard-Oxford atlas (182x218x182) has a different grid than the
+    DIPY MNI template (197x233x189). Since the registration mapping was
+    computed with the DIPY template, we must resample the atlas to the
+    same grid before applying the warp.
+    
+    Parameters
+    ----------
+    atlas_img : Nifti1Image
+        Atlas in Harvard-Oxford grid.
+    mni_shape : tuple
+        Shape of DIPY MNI template (197, 233, 189).
+    mni_affine : ndarray
+        4x4 affine matrix of DIPY MNI template.
+    verbose : bool, optional
+        Print progress information.
+        
+    Returns
+    -------
+    resampled_data : ndarray
+        Atlas data resampled to MNI template grid.
+    """
+    atlas_data = atlas_img.get_fdata()
+    atlas_affine = atlas_img.affine
+    
+    if verbose:
+        print(f"    Resampling atlas from {atlas_data.shape} to {mni_shape}...")
+    
+    # Create affine mapping from atlas grid to MNI template grid
+    identity = np.eye(4)
+    affine_map = AffineMap(
+        identity,
+        mni_shape, mni_affine,           # Target (MNI template grid)
+        atlas_data.shape, atlas_affine   # Source (Harvard-Oxford atlas grid)
+    )
+    
+    # Resample with nearest-neighbor to preserve discrete labels
+    resampled = affine_map.transform(atlas_data, interpolation='nearest')
+    
+    if verbose:
+        orig_labels = np.unique(atlas_data[atlas_data > 0])
+        new_labels = np.unique(resampled[resampled > 0])
+        print(f"    ✓ Resampled: {len(orig_labels)} → {len(new_labels)} labels preserved")
+    
+    return resampled
+
+
 def warp_atlas_to_subject(
     atlas_img,
     mapping,
     subject_shape,
     subject_affine,
+    mni_shape=None,
+    mni_affine=None,
     interpolation='nearest',
     verbose=True
 ):
@@ -145,9 +198,8 @@ def warp_atlas_to_subject(
     Applies the SyN diffeomorphic mapping (from registration) to transform
     atlas labels from MNI space into the subject's native coordinate system.
     
-    IMPORTANT: Uses nearest-neighbor interpolation to preserve discrete
-    label values. Linear interpolation would create invalid intermediate
-    label values (e.g., 7.3 between regions 7 and 8).
+    If the atlas grid differs from the MNI template grid used for registration,
+    the atlas is first resampled to the MNI grid before warping.
     
     Parameters
     ----------
@@ -155,26 +207,24 @@ def warp_atlas_to_subject(
         Atlas label image in MNI space.
     mapping : DiffeomorphicMap
         Registration mapping from `register_mni_to_subject()`.
-        The mapping transforms MNI → Subject space.
     subject_shape : tuple
         Shape of subject image (X, Y, Z).
     subject_affine : ndarray
         4x4 affine matrix of subject image.
+    mni_shape : tuple, optional
+        Shape of MNI template used for registration. Required if atlas
+        grid differs from template grid.
+    mni_affine : ndarray, optional
+        4x4 affine of MNI template used for registration.
     interpolation : str, optional
         Interpolation method. Must be 'nearest' for label maps.
-        Default is 'nearest'.
     verbose : bool, optional
-        Print progress information. Default is True.
+        Print progress information.
         
     Returns
     -------
     warped_atlas : ndarray
         Atlas labels warped to subject space. Shape matches subject_shape.
-        dtype is int16 to preserve label integers.
-        
-    Notes
-    -----
-    The mapping.transform() method applies the forward warp (MNI → Subject).
     """
     if interpolation != 'nearest':
         raise ValueError(
@@ -183,14 +233,21 @@ def warp_atlas_to_subject(
         )
     
     atlas_data = atlas_img.get_fdata()
+    atlas_shape = atlas_data.shape
     
     if verbose:
         unique_labels = np.unique(atlas_data[atlas_data > 0])
         print(f"Warping atlas to subject space...")
-        print(f"    Atlas shape: {atlas_data.shape}")
+        print(f"    Atlas shape: {atlas_shape}")
         print(f"    Target shape: {subject_shape}")
         print(f"    Unique labels: {len(unique_labels)}")
         print(f"    Interpolation: {interpolation}")
+    
+    # Check if atlas needs resampling to match MNI template grid
+    if mni_shape is not None and atlas_shape != mni_shape:
+        if verbose:
+            print(f"    ⚠️  Atlas grid {atlas_shape} differs from MNI template {mni_shape}")
+        atlas_data = resample_atlas_to_mni_grid(atlas_img, mni_shape, mni_affine, verbose=verbose)
     
     # Apply the mapping with nearest-neighbor interpolation
     # mapping.transform() warps from moving (MNI) to static (subject) space
@@ -207,8 +264,10 @@ def warp_atlas_to_subject(
         print(f"    ✓ Warped labels: {len(warped_unique)}")
         
         # Sanity check: labels should be preserved
-        if len(warped_unique) != len(unique_labels):
-            print(f"    ⚠️  Warning: Label count changed ({len(unique_labels)} → {len(warped_unique)})")
+        orig_labels = np.unique(atlas_img.get_fdata()[atlas_img.get_fdata() > 0])
+        if len(warped_unique) != len(orig_labels):
+            print(f"    ⚠️  Warning: Label count changed ({len(orig_labels)} → {len(warped_unique)})")
+
     
     return warped_atlas
 
@@ -266,6 +325,8 @@ def warp_harvard_oxford_to_subject(
     mapping = registration_result['mapping']
     subject_shape = registration_result['subject_shape']
     subject_affine = registration_result['subject_affine']
+    mni_shape = registration_result.get('mni_shape')
+    mni_affine = registration_result.get('mni_affine')
     
     # Step 1: Fetch atlases
     if verbose:
@@ -282,6 +343,8 @@ def warp_harvard_oxford_to_subject(
         mapping=mapping,
         subject_shape=subject_shape,
         subject_affine=subject_affine,
+        mni_shape=mni_shape,
+        mni_affine=mni_affine,
         verbose=verbose
     )
     
@@ -294,6 +357,8 @@ def warp_harvard_oxford_to_subject(
         mapping=mapping,
         subject_shape=subject_shape,
         subject_affine=subject_affine,
+        mni_shape=mni_shape,
+        mni_affine=mni_affine,
         verbose=verbose
     )
     
