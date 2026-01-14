@@ -17,7 +17,7 @@
 ## Preprocessing
 
 ### Architecture & Integration
-- [ ] **Replace `funcs.py` with modular architecture** - Integrate all new modules in `preprocess/modules/`:
+- [X] **Replace `funcs.py` with modular architecture** - Integrate all new modules in `preprocess/modules/`:
   - `load_dataset.py` - Load NIfTI/DICOM and build gradient table
   - `denoise.py` - NLMeans and Patch2Self denoising
   - `gibbs_unringing.py` - Gibbs oscillation correction
@@ -32,7 +32,7 @@
 ### Validation & Research
 - [x] Correction for Gibbs' oscillations missing. Implement.
 - [ ] Validate the Gibbs' correction. 
-- [ ] Is NLMEANS denoising good enough?
+- [X] Is NLMEANS denoising good enough? Resolved: Patch2Self is now default.
 
 ### Testing
 - [ ] Add unit tests for all new preprocessing modules:

@@ -852,6 +852,8 @@ def cmd_import_legacy(args: argparse.Namespace) -> dict | None:
 
 def cmd_preprocess(args: argparse.Namespace) -> dict | None:
     """Run the preprocessing pipeline on the input data."""
+    from csttool.preprocess import run_preprocessing
+    
     try:
         nii = resolve_nifti(args)
     except FileNotFoundError as e:
@@ -859,93 +861,30 @@ def cmd_preprocess(args: argparse.Namespace) -> dict | None:
         return None
 
     args.out.mkdir(parents=True, exist_ok=True)
-
-    data, affine, _hdr, gtab = load_with_preproc(nii)
-
+    
+    # Extract stem from filename
     stem = nii.name.replace(".nii.gz", "").replace(".nii", "")
+    input_dir = nii.parent
 
-    print("Step 1: Denoising with NLMeans")
-    denoised, brain_mask_piesno = preproc.denoise_nlmeans(
-        data,
-        N=args.coil_count,
-        brain_mask=None,
-        visualize=getattr(args, 'show_plots', False),
+    # Run the preprocessing pipeline via orchestrator
+    result = run_preprocessing(
+        input_dir=input_dir,
+        output_dir=args.out,
+        filename=stem,
+        denoise_method="nlmeans",
+        coil_count=args.coil_count,
+        apply_gibbs_correction=getattr(args, 'unring', False),
+        apply_motion_correction=getattr(args, 'perform_motion_correction', False),
+        save_visualizations=getattr(args, 'save_visualizations', False),
+        verbose=getattr(args, 'verbose', False),
     )
 
-    unringed = None
-    if getattr(args, 'unring', False):
-        print("Step 2: Gibbs ringing removal")
-        unringed = preproc.suppress_gibbs_oscillations(denoised)
-        data_for_masking = unringed
-    else:
-        print("Step 2: Gibbs ringing removal (skipped)")
-        data_for_masking = denoised
+    if result is None:
+        return None
 
-    print("Step 3: Brain masking with median Otsu")
-    masked_data, brain_mask = preproc.background_segmentation(
-        data_for_masking,
-        gtab,
-        visualize=getattr(args, 'show_plots', False),
-    )
-
-    motion_correction_applied = False
-    if getattr(args, 'perform_motion_correction', False):
-        print("Step 4: Between volume motion correction")
-        try:
-            preprocessed, reg_affines = preproc.perform_motion_correction(
-                masked_data,
-                gtab,
-                affine,
-                brain_mask=brain_mask,
-            )
-            motion_correction_applied = True
-            print("✓ Motion correction successful")
-        except Exception as e:
-            print(f"Motion correction failed: {e}")
-            print("Continuing without motion correction")
-            preprocessed = masked_data
-    else:
-        print("Skipping motion correction (default behavior)")
-        preprocessed = masked_data
-
-    print("Step 5: Saving output")
-    output_paths = preproc.save_output(
-        preprocessed,
-        affine,
-        str(args.out),
-        stem,
-        motion_correction_applied=motion_correction_applied
-    )
-
-    print("Step 6: Copying gradient files")
-    preproc.copy_gradient_files(
-        nii, str(args.out), stem, motion_correction_applied
-    )
-
-    if getattr(args, 'save_visualizations', False):
-        from csttool.preprocess.modules import save_all_preprocessing_visualizations
-        save_all_preprocessing_visualizations(
-            data_original=data,
-            data_denoised=denoised,
-            data_unringed=unringed,
-            data_preprocessed=preprocessed,
-            brain_mask=brain_mask,
-            gtab=gtab,
-            output_dir=args.out / "preprocessed",
-            stem=stem,
-            reg_affines=reg_affines if motion_correction_applied else None,
-            motion_correction_applied=motion_correction_applied,
-            # verbose=verbose
-        )
-    
-    # Save brain mask
-    mask_path = preproc.save_brain_mask(brain_mask, affine, str(args.out), stem)
-
-    print(f"\n✓ Preprocessing complete.")
-    
     return {
-        'preprocessed_path': output_paths['preprocessed_dwi'],
-        'motion_correction': motion_correction_applied,
+        'preprocessed_path': result['output_paths'].get('data'),
+        'motion_correction': result['motion_correction_applied'],
         'stem': stem
     }
 

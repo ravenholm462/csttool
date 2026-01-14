@@ -46,7 +46,7 @@ def denoise(
     # https://docs.dipy.org/dev/examples_built/preprocessing/denoise_nlmeans.html
     if denoise_method == "nlmeans":
         print("Denoising with NLM...")
-        noise, noise_mask = piesno(data, mask=brain_mask, N=N, return_mask=True)
+        noise, noise_mask = piesno(data, N=N, return_mask=True)
         sigma = float(np.mean(noise))  # Calculate the noise standard deviation
         if brain_mask is None:
             print("Warning: brain mask is None, using noise mask as rudimentary brain mask.")

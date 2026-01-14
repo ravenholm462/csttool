@@ -11,6 +11,7 @@ from dipy.segment.mask import median_otsu
 
 def background_segmentation(
     data: np.ndarray,
+    gtab=None,
     median_radius: int = 2,
     numpass: int = 1,
     autocrop: bool = True
@@ -22,6 +23,9 @@ def background_segmentation(
     ----------
     data : np.ndarray
         4D DWI data array.
+    gtab : GradientTable, optional
+        Gradient table to identify b0 volumes. If provided, only b0 volumes
+        are used for mask computation. If None, all volumes are used.
     median_radius : int, optional
         Radius of the median filter. Default is 2.
     numpass : int, optional
@@ -36,8 +40,17 @@ def background_segmentation(
     mask : np.ndarray
         3D binary brain mask array.
     """
+    # Determine which volumes to use for mask computation
+    vol_idx = None
+    if gtab is not None:
+        # Use only b0 volumes (b-value < 50)
+        b0_idx = np.where(gtab.bvals < 50)[0]
+        if b0_idx.size > 0:
+            vol_idx = b0_idx
+    
     masked_data, mask = median_otsu(
         data,
+        vol_idx=vol_idx,
         median_radius=median_radius,
         numpass=numpass,
         autocrop=autocrop

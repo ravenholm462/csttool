@@ -116,8 +116,9 @@ def run_preprocessing(
     # -------------------------------------------------------------------------
     # Step 4: Brain masking
     # -------------------------------------------------------------------------
-    masked_data, brain_mask = background_segmentation(data_for_masking)
+    masked_data, brain_mask = background_segmentation(data_for_masking, gtab)
     print("PREPROCESSING: Brain masking complete")
+
 
     # -------------------------------------------------------------------------
     # Step 5: Motion correction (optional)
