@@ -391,6 +391,13 @@ def main() -> None:
         help="Number of receiver coils for PIESNO (default: 4)"
     )
     p_run.add_argument(
+        "--denoise-method",
+        type=str,
+        default="patch2self",
+        choices=["patch2self", "nlmeans"],
+        help="Denoising method (patch2self or nlmeans, default: patch2self)"
+    )
+    p_run.add_argument(
         "--unring",
         action="store_true",
         help="Enable Gibbs unringing during preprocessing"
@@ -1790,6 +1797,7 @@ def cmd_run(args: argparse.Namespace) -> None:
             nifti=nifti_path,
             out=preproc_out,
             coil_count=getattr(args, 'coil_count', 4),
+            denoise_method=getattr(args, 'denoise_method', 'patch2self'),
             show_plots=getattr(args, 'show_plots', False),
             save_visualizations=getattr(args, 'save_visualizations', False),
             unring=getattr(args, 'unring', False),
