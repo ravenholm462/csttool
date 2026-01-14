@@ -120,6 +120,13 @@ def main() -> None:
         help="Number of receiver coils for PIESNO noise estimation (N)."
     )
     p_preproc.add_argument(
+        "--denoise-method",
+        type=str,
+        default="patch2self",
+        choices=["patch2self", "nlmeans"],
+        help="Denoising method to use (patch2self or nlmeans)."
+    )
+    p_preproc.add_argument(
         "--save-visualizations",
         action="store_true",
         help="Save QC visualizations to output directory."
@@ -872,6 +879,7 @@ def cmd_preprocess(args: argparse.Namespace) -> dict | None:
         output_dir=args.out,
         filename=stem,
         coil_count=args.coil_count,
+        denoise_method=getattr(args, 'denoise_method', 'patch2self'),
         apply_gibbs_correction=getattr(args, 'unring', False),
         apply_motion_correction=getattr(args, 'perform_motion_correction', False),
         save_visualizations=getattr(args, 'save_visualizations', False),
