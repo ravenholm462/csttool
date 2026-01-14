@@ -1784,10 +1784,11 @@ def cmd_run(args: argparse.Namespace) -> None:
         if nifti_path is None:
             raise RuntimeError("No NIfTI available from import step")
         
+        preproc_out = args.out / "preprocessing"
         preproc_args = argparse.Namespace(
             dicom=None,
             nifti=nifti_path,
-            out=args.out,
+            out=preproc_out,
             coil_count=getattr(args, 'coil_count', 4),
             show_plots=getattr(args, 'show_plots', False),
             save_visualizations=getattr(args, 'save_visualizations', False),
