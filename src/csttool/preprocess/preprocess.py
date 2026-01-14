@@ -37,8 +37,8 @@ def run_preprocessing(
 
     Steps:
         1. Load dataset (NIfTI/DICOM + gradient table)
-        2. Brain masking (median Otsu on b0 volumes)
-        3. Denoise with brain mask (Patch2Self or NLMeans)
+        2. Denoise (Patch2Self or NLMeans)
+        3. Brain masking (median Otsu on b0 volumes)
         4. Gibbs unringing (optional)
         5. Motion correction (optional)
         6. Save outputs
@@ -90,32 +90,32 @@ def run_preprocessing(
     print(f"PREPROCESSING: Loaded data with shape {data.shape}")
 
     # -------------------------------------------------------------------------
-    # Step 2: Brain masking
-    # -------------------------------------------------------------------------
-    masked_data, brain_mask = background_segmentation(data, gtab)
-    print("PREPROCESSING: Brain masking complete")
-
-    # -------------------------------------------------------------------------
-    # Step 3: Denoise
+    # Step 2: Denoise
     # -------------------------------------------------------------------------
     denoised = denoise(
-        masked_data,
+        data,
         bvals=gtab.bvals,
-        brain_mask=brain_mask,
+        brain_mask=None,
         denoise_method=denoise_method,
         N=coil_count
     )
     print(f"PREPROCESSING: Denoising complete ({denoise_method})")
 
     # -------------------------------------------------------------------------
+    # Step 3: Brain masking
+    # -------------------------------------------------------------------------
+    masked_data, brain_mask = background_segmentation(denoised, gtab)
+    print("PREPROCESSING: Brain masking complete")
+
+    # -------------------------------------------------------------------------
     # Step 4: Gibbs unringing (optional)
     # -------------------------------------------------------------------------
     if apply_gibbs_correction:
-        unringed = gibbs_unringing(denoised)
+        unringed = gibbs_unringing(masked_data)
         data_for_motion = unringed
         print("PREPROCESSING: Gibbs ringing correction complete")
     else:
-        data_for_motion = denoised
+        data_for_motion = masked_data
         if verbose:
             print("PREPROCESSING: Gibbs ringing correction skipped")
 
@@ -189,14 +189,15 @@ def run_preprocessing(
             viz_dir = output_dir / "visualizations"
             viz_dir.mkdir(parents=True, exist_ok=True)
             save_all_preprocessing_visualizations(
-                data_original=masked_data,  # Use masked (cropped) data as baseline
-                data_denoised=denoised,
+                data_original=data,  # Raw data before any processing
+                data_denoised=denoised,  # Denoised (same shape as original)
                 data_unringed=unringed if apply_gibbs_correction else None,
                 data_preprocessed=preprocessed,
                 brain_mask=brain_mask,
                 gtab=gtab,
                 output_dir=viz_dir,
                 stem=filename,
+                denoise_method=denoise_method,
                 reg_affines=reg_affines,
                 motion_correction_applied=motion_correction_applied,
             )

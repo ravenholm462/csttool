@@ -27,14 +27,15 @@ def plot_denoising_comparison(
     brain_mask,
     output_dir,
     stem,
-    vol_idx=0,
+    denoise_method,
+    vol_idx=None,
     verbose=True
 ):
     """
     Create before/after denoising comparison figure.
     
     Shows three orthogonal views comparing original and denoised data,
-    plus a difference map highlighting removed noise.
+    plus RMS residuals highlighting removed noise.
     
     Parameters
     ----------
@@ -48,8 +49,10 @@ def plot_denoising_comparison(
         Output directory for saving figure.
     stem : str
         Subject/scan identifier for filename.
+    denoise_method : str
+        Denoising method used. 
     vol_idx : int, optional
-        Volume index to visualize (default: 0, typically b0).
+        Volume index to visualize. Default picks a DWI volume (middle of 4th dim).
     verbose : bool, optional
         Print progress information.
         
@@ -62,64 +65,56 @@ def plot_denoising_comparison(
     viz_dir = output_dir / "visualizations"
     viz_dir.mkdir(parents=True, exist_ok=True)
     
-    # Get slice indices
+    # Default to a DWI volume (middle of 4th dimension)
+    if vol_idx is None:
+        vol_idx = data_before.shape[3] // 2
+    
+    # Get middle slice indices for each orientation
     mid_ax = data_before.shape[2] // 2
     mid_cor = data_before.shape[1] // 2
     mid_sag = data_before.shape[0] // 2
     
-    # Extract volumes
+    # Extract 3D volumes
     before = data_before[..., vol_idx]
     after = data_after[..., vol_idx]
     
-    # Compute difference (only inside brain)
-    diff = np.abs(after.astype(np.float64) - before.astype(np.float64))
-    diff[~brain_mask] = 0
+    # Compute RMS residuals (accentuates outliers)
+    rms_diff = np.sqrt((before.astype(np.float64) - after.astype(np.float64)) ** 2)
+    if brain_mask is not None and brain_mask.shape == before.shape:
+        rms_diff[~brain_mask] = 0
     
-    # Create figure with constrained_layout to avoid warnings
-    fig, axes = plt.subplots(3, 3, figsize=(12, 12), constrained_layout=True)
-    fig.suptitle(f"Denoising QC - {stem}\nVolume {vol_idx}", fontsize=14, fontweight='bold')
-    
-    # Normalize for consistent display
-    vmax = np.percentile(before[brain_mask], 99)
-    diff_vmax = np.percentile(diff[brain_mask], 99) if diff[brain_mask].size > 0 else 1
-    
+    # Define orthogonal views
     views = [
-        ('Axial', before[:, :, mid_ax], after[:, :, mid_ax], diff[:, :, mid_ax]),
-        ('Coronal', before[:, mid_cor, :], after[:, mid_cor, :], diff[:, mid_cor, :]),
-        ('Sagittal', before[mid_sag, :, :], after[mid_sag, :, :], diff[mid_sag, :, :]),
+        ('Axial', before[:, :, mid_ax], after[:, :, mid_ax], rms_diff[:, :, mid_ax]),
+        ('Coronal', before[:, mid_cor, :], after[:, mid_cor, :], rms_diff[:, mid_cor, :]),
+        ('Sagittal', before[mid_sag, :, :], after[mid_sag, :, :], rms_diff[mid_sag, :, :]),
     ]
     
-    for row, (view_name, bef, aft, dif) in enumerate(views):
-        # Before
-        axes[row, 0].imshow(bef.T, cmap='gray', origin='lower', vmin=0, vmax=vmax)
-        axes[row, 0].set_title(f'{view_name} - Before' if row == 0 else '')
-        axes[row, 0].axis('off')
-        if row == 0:
-            axes[row, 0].set_ylabel('Before', fontsize=12)
-        
-        # After
-        axes[row, 1].imshow(aft.T, cmap='gray', origin='lower', vmin=0, vmax=vmax)
-        axes[row, 1].set_title(f'{view_name} - After' if row == 0 else '')
-        axes[row, 1].axis('off')
-        
-        # Difference
-        im = axes[row, 2].imshow(dif.T, cmap='hot', origin='lower', vmin=0, vmax=diff_vmax)
-        axes[row, 2].set_title(f'{view_name} - Difference' if row == 0 else '')
-        axes[row, 2].axis('off')
+    # Create figure: 3 rows (views) × 3 columns (original, denoised, residuals)
+    fig, axes = plt.subplots(3, 3, figsize=(12, 12),
+                              subplot_kw={'xticks': [], 'yticks': []})
+    fig.subplots_adjust(hspace=0.1, wspace=0.05)
+    fig.suptitle(f"Denoising using {denoise_method} - {stem} (Volume {vol_idx})", fontsize=14, fontweight='bold')
     
-    # Add row labels
-    for row, (view_name, _, _, _) in enumerate(views):
-        axes[row, 0].text(-0.1, 0.5, view_name, transform=axes[row, 0].transAxes,
-                         fontsize=12, fontweight='bold', va='center', ha='right',
-                         rotation=90)
+    # Column titles
+    axes[0, 0].set_title('Original', fontsize=12)
+    axes[0, 1].set_title('Denoised', fontsize=12)
+    axes[0, 2].set_title('Residuals (RMS)', fontsize=12)
     
-    # Colorbar for difference (constrained_layout handles spacing automatically)
-    cbar_ax = fig.add_axes([0.92, 0.15, 0.02, 0.7])
-    fig.colorbar(im, cax=cbar_ax, label='Intensity Difference')
+    for row, (view_name, orig, den, res) in enumerate(views):
+        # Original
+        axes[row, 0].imshow(orig.T, cmap='gray', interpolation='none', origin='lower')
+        axes[row, 0].set_ylabel(view_name, fontsize=12, fontweight='bold')
+        
+        # Denoised
+        axes[row, 1].imshow(den.T, cmap='gray', interpolation='none', origin='lower')
+        
+        # Residuals
+        axes[row, 2].imshow(res.T, cmap='gray', interpolation='none', origin='lower')
     
     fig_path = viz_dir / f"{stem}_denoising_qc.png"
-    plt.savefig(fig_path, dpi=150, bbox_inches='tight', facecolor='white')
-    plt.close()
+    fig.savefig(fig_path, dpi=150, bbox_inches='tight', facecolor='white')
+    plt.close(fig)
     
     if verbose:
         print(f"✓ Denoising QC: {fig_path}")
@@ -468,6 +463,16 @@ def create_preprocessing_summary(
     viz_dir = output_dir / "visualizations"
     viz_dir.mkdir(parents=True, exist_ok=True)
     
+    # Check if shapes are compatible
+    orig_shape = data_original.shape[:3]
+    proc_shape = data_preprocessed.shape[:3]
+    mask_shape = brain_mask.shape
+    
+    # If original and preprocessed have different shapes, use preprocessed for all comparisons
+    if orig_shape != proc_shape or orig_shape != mask_shape:
+        # Use preprocessed data as "original" for visualization when shapes mismatch
+        data_original = data_preprocessed
+    
     # Get b0 volume index
     b0_idx = np.where(gtab.bvals < 50)[0]
     if len(b0_idx) == 0:
@@ -610,6 +615,7 @@ def save_all_preprocessing_visualizations(
     gtab,
     output_dir,
     stem,
+    denoise_method,
     reg_affines=None,
     motion_correction_applied=False,
     verbose=True
@@ -638,6 +644,8 @@ def save_all_preprocessing_visualizations(
         Output directory for saving figures.
     stem : str
         Subject/scan identifier for filenames.
+    denoise_method : str, optional
+        Denoising method used.
     reg_affines : list of ndarray, optional
         Registration affines from motion correction.
     motion_correction_applied : bool, optional
@@ -659,7 +667,7 @@ def save_all_preprocessing_visualizations(
     if data_denoised is not None:
         viz_paths['denoising_qc'] = plot_denoising_comparison(
             data_original, data_denoised, brain_mask,
-            output_dir, stem, verbose=verbose
+            output_dir, stem, denoise_method, verbose=verbose
         )
 
     # Gibbs unringing comparison
