@@ -1,0 +1,212 @@
+"""
+preprocess.py
+
+High-level orchestrator for the DWI preprocessing pipeline.
+Consolidates all preprocessing steps into a single function.
+"""
+
+from pathlib import Path
+
+import numpy as np
+
+from .modules.load_dataset import load_dataset
+from .modules.denoise import denoise
+from .modules.gibbs_unringing import gibbs_unringing
+from .modules.background_segmentation import background_segmentation
+from .modules.perform_motion_correction import perform_motion_correction
+from .modules.save_preprocessed import save_preprocessed
+
+
+def run_preprocessing(
+    input_dir: str | Path,
+    output_dir: str | Path,
+    filename: str,
+    *,
+    # Denoising options
+    denoise_method: str = "patch2self",
+    coil_count: int = 4,
+    # Optional steps
+    apply_gibbs_correction: bool = False,
+    apply_motion_correction: bool = False,
+    # Visualization options
+    save_visualizations: bool = False,
+    verbose: bool = False,
+) -> dict:
+    """
+    Run the complete DWI preprocessing pipeline.
+
+    Steps:
+        1. Load dataset (NIfTI/DICOM + gradient table)
+        2. Denoise (Patch2Self or NLMeans)
+        3. Gibbs unringing (optional)
+        4. Brain masking (median Otsu)
+        5. Motion correction (optional)
+        6. Save outputs
+
+    Parameters
+    ----------
+    input_dir : str or Path
+        Directory containing input NIfTI/DICOM and gradient files.
+    output_dir : str or Path
+        Output directory for preprocessed files.
+    filename : str
+        Base filename without extension (e.g., "sub01_dwi").
+    denoise_method : str, default="patch2self"
+        Denoising method: "patch2self" or "nlmeans".
+    coil_count : int, default=4
+        Number of scanner coils (for NLMeans noise estimation).
+    apply_gibbs_correction : bool, default=False
+        Apply Gibbs ringing correction.
+    apply_motion_correction : bool, default=False
+        Apply between-volume motion correction.
+    save_visualizations : bool, default=False
+        Save QC visualizations.
+    verbose : bool, default=False
+        Print detailed processing information.
+
+    Returns
+    -------
+    dict
+        Dictionary containing:
+        - 'output_paths': Paths to saved files
+        - 'brain_mask': The computed brain mask array
+        - 'motion_correction_applied': Whether motion correction was applied
+        - 'gtab': The gradient table
+    """
+    input_dir = Path(input_dir)
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # -------------------------------------------------------------------------
+    # Step 1: Load dataset
+    # -------------------------------------------------------------------------
+    if verbose:
+        print(f"Loading dataset from {input_dir}")
+    
+    nii, gtab, nifti_dir = load_dataset(str(input_dir), filename)
+    data = np.asarray(nii.dataobj) if hasattr(nii, 'dataobj') else nii
+    affine = nii.affine if hasattr(nii, 'affine') else np.eye(4)
+    
+    print(f"PREPROCESSING: Loaded data with shape {data.shape}")
+
+    # -------------------------------------------------------------------------
+    # Step 2: Denoise
+    # -------------------------------------------------------------------------
+    denoised = denoise(
+        data,
+        bvals=gtab.bvals,
+        brain_mask=None,
+        denoise_method=denoise_method,
+        N=coil_count
+    )
+    print(f"PREPROCESSING: Denoising complete ({denoise_method})")
+
+    # -------------------------------------------------------------------------
+    # Step 3: Gibbs unringing (optional)
+    # -------------------------------------------------------------------------
+    if apply_gibbs_correction:
+        unringed = gibbs_unringing(denoised)
+        data_for_masking = unringed
+        print("PREPROCESSING: Gibbs ringing correction complete")
+    else:
+        data_for_masking = denoised
+        if verbose:
+            print("PREPROCESSING: Gibbs ringing correction skipped")
+
+    # -------------------------------------------------------------------------
+    # Step 4: Brain masking
+    # -------------------------------------------------------------------------
+    masked_data, brain_mask = background_segmentation(data_for_masking)
+    print("PREPROCESSING: Brain masking complete")
+
+    # -------------------------------------------------------------------------
+    # Step 5: Motion correction (optional)
+    # -------------------------------------------------------------------------
+    motion_correction_applied = False
+    reg_affines = None
+    
+    if apply_motion_correction:
+        try:
+            preprocessed, reg_affines = perform_motion_correction(
+                masked_data,
+                gtab,
+                affine,
+                brain_mask=brain_mask
+            )
+            motion_correction_applied = True
+            print("PREPROCESSING: Motion correction complete")
+        except Exception as e:
+            print(f"PREPROCESSING: Motion correction failed: {e}")
+            print("   Continuing without motion correction")
+            preprocessed = masked_data
+    else:
+        preprocessed = masked_data
+        if verbose:
+            print("PREPROCESSING: Motion correction skipped")
+
+    # -------------------------------------------------------------------------
+    # Step 6: Save outputs
+    # -------------------------------------------------------------------------
+    suffix = "_mc" if motion_correction_applied else "_nomc"
+    output_stem = f"{filename}_dwi_preproc{suffix}"
+    
+    # Build gradient file paths
+    bval_path = input_dir / f"{filename}.bval"
+    if not bval_path.exists():
+        bval_path = input_dir / f"{filename}.bvals"
+    
+    bvec_path = input_dir / f"{filename}.bvec"
+    if not bvec_path.exists():
+        bvec_path = input_dir / f"{filename}.bvecs"
+    
+    gradient_files = {}
+    if bval_path.exists():
+        gradient_files['bval'] = bval_path
+    if bvec_path.exists():
+        gradient_files['bvec'] = bvec_path
+
+    output_paths = save_preprocessed(
+        data=preprocessed,
+        affine=affine,
+        output_dir=output_dir,
+        filename_stem=output_stem,
+        gradient_files=gradient_files if gradient_files else None,
+        brain_mask=brain_mask,
+        processing_params={
+            'denoise_method': denoise_method,
+            'gibbs_correction': apply_gibbs_correction,
+            'motion_correction': motion_correction_applied,
+        }
+    )
+    print(f"PREPROCESSING: Saved outputs to {output_dir}")
+
+    # -------------------------------------------------------------------------
+    # Step 7: Visualizations (optional)
+    # -------------------------------------------------------------------------
+    if save_visualizations:
+        try:
+            from .modules.visualizations import save_all_preprocessing_visualizations
+            save_all_preprocessing_visualizations(
+                data_original=data,
+                data_denoised=denoised,
+                data_unringed=unringed if apply_gibbs_correction else None,
+                data_preprocessed=preprocessed,
+                brain_mask=brain_mask,
+                gtab=gtab,
+                output_dir=output_dir,
+                stem=filename,
+                reg_affines=reg_affines,
+                motion_correction_applied=motion_correction_applied,
+            )
+            print("PREPROCESSING: QC visualizations saved")
+        except Exception as e:
+            print(f"PREPROCESSING: Visualization saving failed: {e}")
+
+    print(f"\nPREPROCESSING COMPLETED")
+
+    return {
+        'output_paths': output_paths,
+        'brain_mask': brain_mask,
+        'motion_correction_applied': motion_correction_applied,
+        'gtab': gtab,
+    }
