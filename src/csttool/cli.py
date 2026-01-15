@@ -142,6 +142,14 @@ def main() -> None:
         help="Enable Gibbs unringing (disabled by default)."
     )
     p_preproc.add_argument(
+        "--target-voxel-size",
+        type=float,
+        nargs=3,
+        metavar=("X", "Y", "Z"),
+        default=None,
+        help="Target voxel size in mm (x, y, z). If provided, data will be resliced to this voxel size."
+    )
+    p_preproc.add_argument(
         "--verbose",
         action="store_true",
         help="Print detailed processing information."
@@ -406,6 +414,14 @@ def main() -> None:
         "--perform-motion-correction",
         action="store_true",
         help="Enable motion correction during preprocessing"
+    )
+    p_run.add_argument(
+        "--target-voxel-size",
+        type=float,
+        nargs=3,
+        metavar=("X", "Y", "Z"),
+        default=None,
+        help="Target voxel size in mm (x, y, z). If provided, data will be resliced to this voxel size."
     )
     
     # Tracking options
@@ -889,6 +905,7 @@ def cmd_preprocess(args: argparse.Namespace) -> dict | None:
         denoise_method=getattr(args, 'denoise_method', 'patch2self'),
         apply_gibbs_correction=getattr(args, 'unring', False),
         apply_motion_correction=getattr(args, 'perform_motion_correction', False),
+        target_voxel_size=tuple(args.target_voxel_size) if args.target_voxel_size else None,
         save_visualizations=getattr(args, 'save_visualizations', False),
         verbose=getattr(args, 'verbose', False),
     )
@@ -1802,6 +1819,7 @@ def cmd_run(args: argparse.Namespace) -> None:
             save_visualizations=getattr(args, 'save_visualizations', False),
             unring=getattr(args, 'unring', False),
             perform_motion_correction=getattr(args, 'perform_motion_correction', False),
+            target_voxel_size=getattr(args, 'target_voxel_size', None),
             verbose=verbose
         )
         

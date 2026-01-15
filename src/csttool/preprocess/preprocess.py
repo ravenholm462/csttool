@@ -14,6 +14,7 @@ from .modules.denoise import denoise
 from .modules.gibbs_unringing import gibbs_unringing
 from .modules.background_segmentation import background_segmentation
 from .modules.perform_motion_correction import perform_motion_correction
+from .modules.reslice_voxels import reslice_voxels
 from .modules.save_preprocessed import save_preprocessed
 
 
@@ -28,6 +29,7 @@ def run_preprocessing(
     # Optional steps
     apply_gibbs_correction: bool = False,
     apply_motion_correction: bool = False,
+    target_voxel_size: tuple[float, float, float] | None = None,
     # Visualization options
     save_visualizations: bool = False,
     verbose: bool = False,
@@ -37,11 +39,12 @@ def run_preprocessing(
 
     Steps:
         1. Load dataset (NIfTI/DICOM + gradient table)
-        2. Denoise (Patch2Self or NLMeans)
-        3. Brain masking (median Otsu on b0 volumes)
-        4. Gibbs unringing (optional)
-        5. Motion correction (optional)
-        6. Save outputs
+        2. Reslice to target voxel size (optional)
+        3. Denoise (Patch2Self or NLMeans)
+        4. Brain masking (median Otsu on b0 volumes)
+        5. Gibbs unringing (optional)
+        6. Motion correction (optional)
+        7. Save outputs
 
     Parameters
     ----------
@@ -59,6 +62,9 @@ def run_preprocessing(
         Apply Gibbs ringing correction.
     apply_motion_correction : bool, default=False
         Apply between-volume motion correction.
+    target_voxel_size : tuple[float, float, float] or None, default=None
+        Target voxel size in mm (x, y, z). If provided, data will be resliced
+        to this voxel size. If None, no reslicing is performed.
     save_visualizations : bool, default=False
         Save QC visualizations.
     verbose : bool, default=False
@@ -87,10 +93,28 @@ def run_preprocessing(
     data = np.asarray(nii.dataobj) if hasattr(nii, 'dataobj') else nii
     affine = nii.affine if hasattr(nii, 'affine') else np.eye(4)
     
+    # Get current voxel size from the NIfTI header
+    current_voxel_size = nii.header.get_zooms()[:3]
     print(f"PREPROCESSING: Loaded data with shape {data.shape}")
+    print(f"PREPROCESSING: Current voxel size: {current_voxel_size} mm")
 
     # -------------------------------------------------------------------------
-    # Step 2: Denoise
+    # Step 2: Reslice to target voxel size (optional)
+    # -------------------------------------------------------------------------
+    if target_voxel_size is not None:
+        print(f"PREPROCESSING: Reslicing to target voxel size: {target_voxel_size} mm")
+        data, affine = reslice_voxels(
+            data,
+            affine,
+            voxel_size=current_voxel_size,
+            new_voxel_size=target_voxel_size
+        )
+        print(f"PREPROCESSING: Reslicing complete. New shape: {data.shape}")
+    elif verbose:
+        print("PREPROCESSING: Reslicing skipped")
+
+    # -------------------------------------------------------------------------
+    # Step 3: Denoise
     # -------------------------------------------------------------------------
     denoised = denoise(
         data,
@@ -102,13 +126,13 @@ def run_preprocessing(
     print(f"PREPROCESSING: Denoising complete ({denoise_method})")
 
     # -------------------------------------------------------------------------
-    # Step 3: Brain masking
+    # Step 4: Brain masking
     # -------------------------------------------------------------------------
     masked_data, brain_mask = background_segmentation(denoised, gtab)
     print("PREPROCESSING: Brain masking complete")
 
     # -------------------------------------------------------------------------
-    # Step 4: Gibbs unringing (optional)
+    # Step 5: Gibbs unringing (optional)
     # -------------------------------------------------------------------------
     if apply_gibbs_correction:
         unringed = gibbs_unringing(masked_data)
@@ -120,7 +144,7 @@ def run_preprocessing(
             print("PREPROCESSING: Gibbs ringing correction skipped")
 
     # -------------------------------------------------------------------------
-    # Step 5: Motion correction (optional)
+    # Step 6: Motion correction (optional)
     # -------------------------------------------------------------------------
     motion_correction_applied = False
     reg_affines = None
@@ -145,7 +169,7 @@ def run_preprocessing(
             print("PREPROCESSING: Motion correction skipped")
 
     # -------------------------------------------------------------------------
-    # Step 6: Save outputs
+    # Step 7: Save outputs
     # -------------------------------------------------------------------------
     suffix = "_mc" if motion_correction_applied else "_nomc"
     output_stem = f"{filename}_dwi_preproc{suffix}"
@@ -176,12 +200,14 @@ def run_preprocessing(
             'denoise_method': denoise_method,
             'gibbs_correction': apply_gibbs_correction,
             'motion_correction': motion_correction_applied,
+            'resliced': target_voxel_size is not None,
+            'target_voxel_size': target_voxel_size if target_voxel_size else None,
         }
     )
     print(f"PREPROCESSING: Saved outputs to {output_dir}")
 
     # -------------------------------------------------------------------------
-    # Step 7: Visualizations (optional)
+    # Step 8: Visualizations (optional)
     # -------------------------------------------------------------------------
     if save_visualizations:
         try:
