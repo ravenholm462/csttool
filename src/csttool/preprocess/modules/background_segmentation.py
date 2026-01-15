@@ -14,7 +14,7 @@ def background_segmentation(
     gtab=None,
     median_radius: int = 2,
     numpass: int = 1,
-    autocrop: bool = True
+    autocrop: bool = False
 ) -> tuple[np.ndarray, np.ndarray]:
     """
     Estimate brain mask with median Otsu.

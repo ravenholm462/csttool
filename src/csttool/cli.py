@@ -1212,7 +1212,7 @@ def cmd_extract(args: argparse.Namespace) -> dict | None:
             cst_result = extract_cst_passthrough(
                 streamlines=streamlines,
                 masks=masks,
-                affine=warped['subject_affine'],
+                affine=fa_affine,  # Use FA affine which matches tractogram space
                 min_length=args.min_length,
                 max_length=args.max_length,
                 verbose=verbose
@@ -1221,7 +1221,7 @@ def cmd_extract(args: argparse.Namespace) -> dict | None:
             cst_result = extract_bilateral_cst(
                 streamlines=streamlines,
                 masks=masks,
-                affine=warped['subject_affine'],
+                affine=fa_affine,  # Use FA affine which matches tractogram space
                 min_length=args.min_length,
                 max_length=args.max_length,
                 verbose=verbose
