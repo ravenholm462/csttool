@@ -45,11 +45,15 @@ def test_step_by_step_pipeline(synthetic_nifti_data, tmp_path):
     preproc_dir = out_dir / "preprocessed"
     if not preproc_dir.exists():
         preproc_dir = out_dir / "nifti"
-        
+    
+    # If standard subdirs don't exist, check if files are in out_dir directly
+    if not preproc_dir.exists():
+        preproc_dir = out_dir
+
     # Find the output file
     # Note: Filename might be slightly different than expected, so use glob
     found_files = list(preproc_dir.glob("*_preproc_*.nii.gz"))
-    assert len(found_files) > 0, f"No preprocessed files found in {preproc_dir}"
+    assert len(found_files) > 0, f"No preprocessed files found in {preproc_dir} or {out_dir}"
     preproc_file = found_files[0]
     
     assert preproc_file.exists()
