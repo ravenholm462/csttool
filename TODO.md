@@ -36,24 +36,24 @@
 - [X] Is NLMEANS denoising good enough? Resolved: Patch2Self is now default.
 
 ### Testing
-- [ ] Add unit tests for all new preprocessing modules:
+- [x] Add unit tests for all new preprocessing modules:
   - **`denoise.py`**:
-    - Test NLMeans denoising
-    - Test Patch2Self denoising
-    - Test brain mask handling (None vs provided)
-    - Test invalid method validation
+    - [x] Test NLMeans denoising
+    - [x] Test Patch2Self denoising
+    - [x] Test brain mask handling (None vs provided)
+    - [x] Test invalid method validation
   - **`load_dataset.py`**:
-    - Test NIfTI loading
-    - Test DICOM conversion
-    - Test gradient file detection (.bval/.bvec vs .bvals/.bvecs)
+    - [x] Test NIfTI loading
+    - [x] Test DICOM conversion
+    - [x] Test gradient file detection (.bval/.bvec vs .bvals/.bvecs)
   - **`background_segmentation.py`**:
-    - Test brain mask generation
+    - [x] Test brain mask generation
   - **`gibbs_unringing.py`**:
-    - Test Gibbs correction
+    - [x] Test Gibbs correction
   - **`perform_motion_correction.py`**:
-    - Test motion correction
+    - [x] Test motion correction
   - **`save_preprocessed.py`**:
-    - Test output structure and file naming
+    - [x] Test output structure and file naming
 
 ### Future Enhancements
 - [ ] Add timing information to processing functions (optional)

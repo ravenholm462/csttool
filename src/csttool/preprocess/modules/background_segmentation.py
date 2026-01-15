@@ -47,6 +47,10 @@ def background_segmentation(
         b0_idx = np.where(gtab.bvals < 50)[0]
         if b0_idx.size > 0:
             vol_idx = b0_idx
+    else:
+        # If no gtab provided, default to using the first volume
+        if data.ndim == 4:
+            vol_idx = [0]
     
     masked_data, mask = median_otsu(
         data,

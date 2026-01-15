@@ -38,7 +38,7 @@ def perform_motion_correction(
     """
     # Ensure mask is binary uint8 if provided
     if brain_mask is not None:
-        brain_mask = brain_mask.astype(np.uint8)
+        brain_mask = brain_mask.astype(np.float64)
         data_corrected, reg_affines = motion_correction(
             data,
             gtab,
