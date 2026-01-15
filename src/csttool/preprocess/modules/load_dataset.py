@@ -10,9 +10,9 @@ from pathlib import Path
 
 import dicom2nifti
 
+import nibabel as nib
 from dipy.core.gradients import gradient_table
 from dipy.io import read_bvals_bvecs
-from dipy.io.image import load_nifti
 
 def load_dataset(dir_path: str, fname: str):
     """
@@ -54,7 +54,7 @@ def load_dataset(dir_path: str, fname: str):
             str(nifti_dir / (fname + ".nii.gz")),
             reorient_nifti=True
         )
-        nii = load_nifti(result["NII_FILE"])[0]
+        nii = nib.load(result["NII_FILE"])
         bval_path = result.get("BVAL_FILE")
         bvec_path = result.get("BVEC_FILE") 
     else:
@@ -71,7 +71,7 @@ def load_dataset(dir_path: str, fname: str):
         if not os.path.exists(bvec_path):
             bvec_path = os.path.join(dir_path, fname + ".bvecs")
         
-        nii = load_nifti(nii_path)[0]
+        nii = nib.load(nii_path)
 
     # Read bvalues and bvectors, build a gradient table
     bvals, bvecs = read_bvals_bvecs(bval_path, bvec_path)
