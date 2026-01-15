@@ -23,7 +23,7 @@ from time import time
 import json
 
 from . import __version__
-import csttool.preprocess.funcs as preproc
+
 from csttool.tracking.modules import (
     fit_tensors,
     estimate_directions,
@@ -557,20 +557,48 @@ def add_io_arguments(p: argparse.ArgumentParser) -> None:
     )
 
 
+from csttool.preprocess.modules.load_dataset import load_dataset as load_dataset_module
+
 def resolve_nifti(args: argparse.Namespace) -> Path:
     """Resolve a NIfTI path from DICOM or explicit NIfTI."""
     nii: Path | None = None
 
     # DICOM case
-    if args.dicom and preproc.is_dicom_dir(args.dicom):
-        print("Valid DICOM directory. Converting to NIfTI...")
-        nii, _bval, _bvec = preproc.convert_to_nifti(args.dicom, args.out)
+    # Check for DICOM directory manually to avoid funcs.py dependency
+    is_dicom = False
+    if args.dicom and args.dicom.is_dir():
+        if any(f.suffix.lower() == ".dcm" for f in args.dicom.iterdir()):
+            is_dicom = True
+
+    if is_dicom:
+        print("Valid DICOM directory. Converting and/or loading...")
+        stem = args.dicom.name
+        
+        if not args.out:
+            pass
+
+        import dicom2nifti
+        
+        nifti_dir = args.out / "nifti"
+        nifti_dir.mkdir(parents=True, exist_ok=True)
+        output_nii = nifti_dir / (stem + ".nii.gz")
+        
+        print(f"Converting DICOM to NIfTI: {output_nii}")
+        dicom2nifti.dicom_series_to_nifti(
+            str(args.dicom),
+            str(output_nii),
+            reorient_nifti=True
+        )
+        nii = output_nii
 
     else:
         # Provided DICOM path is invalid
-        if args.dicom and not preproc.is_dicom_dir(args.dicom):
-            print(f"Warning: {args.dicom} is not a valid DICOM directory. "
-                  "Falling back to existing NIfTI.")
+        if args.dicom and args.dicom.is_dir():
+             # Check again if it was just empty or no dcm files
+             pass
+        elif args.dicom:
+             print(f"Warning: {args.dicom} is not a valid DICOM directory. "
+                   "Falling back to existing NIfTI.")
 
         # Use explicit NIfTI if given
         if args.nifti:
@@ -578,12 +606,17 @@ def resolve_nifti(args: argparse.Namespace) -> Path:
         else:
             # Try to find a NIfTI in the output directory
             print(f"Attempting to find NIfTI in {args.out}...")
-            candidates = list(args.out.glob("*.nii.gz")) + list(args.out.glob("*.nii"))
-            if not candidates:
-                raise FileNotFoundError(
-                    "No NIfTI file found. Provide --nifti or a valid --dicom directory."
-                )
-            nii = candidates[0]
+            # Use glob to find candidates
+            if args.out and args.out.exists():
+                candidates = list(args.out.glob("*.nii.gz")) + list(args.out.glob("*.nii"))
+                if not candidates:
+                    raise FileNotFoundError(
+                        "No NIfTI file found. Provide --nifti or a valid --dicom directory."
+                    )
+                nii = candidates[0]
+            else:
+                 if args.nifti is None:
+                     raise FileNotFoundError("Output directory does not exist and no NIfTI provided.")
 
     if not isinstance(nii, Path):
         nii = Path(nii)
@@ -595,7 +628,7 @@ def resolve_nifti(args: argparse.Namespace) -> Path:
 
 
 def load_with_preproc(nii: Path):
-    """Load data and gradients using preproc.load_dataset."""
+    """Load data and gradients using modules.load_dataset."""
     nifti_dir = str(nii.parent)
     name = nii.name
 
@@ -606,12 +639,19 @@ def load_with_preproc(nii: Path):
     else:
         raise ValueError("NIfTI must end with .nii or .nii.gz")
 
-    data, affine, img, gtab = preproc.load_dataset(
-        nifti_path=nifti_dir,
-        fname=fname,
-        visualize=False,
+    # Use the modular load_dataset
+    # Note: modules.load_dataset signature is (dir_path: str, fname: str)
+    # and returns (nii_img, gtab, nifti_dir_path)
+    
+    nii_img, gtab, _ = load_dataset_module(
+        dir_path=nifti_dir,
+        fname=fname
     )
-    hdr = img.header
+    
+    data = nii_img.get_fdata()
+    affine = nii_img.affine
+    hdr = nii_img.header
+    
     return data, affine, hdr, gtab
 
 
@@ -957,10 +997,11 @@ def cmd_track(args: argparse.Namespace) -> dict | None:
 
     # Step 1: Brain masking
     print("\nStep 1: Brain masking with median Otsu")
-    masked_data, brain_mask = preproc.background_segmentation(
+
+    from csttool.preprocess.modules.background_segmentation import background_segmentation
+    masked_data, brain_mask = background_segmentation(
         data,
-        gtab,
-        visualize=getattr(args, 'show_plots', False),
+        gtab
     )
 
     # Step 2: Tensor fitting

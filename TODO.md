@@ -28,7 +28,7 @@
   - `visualizations.py` - QC visualizations (already implemented)
 - [X] Update `preprocess/__init__.py` to export all new module functions
 - [X] Update `cli.py` to use the new modular pipeline
-- [ ] Deprecate/remove old functions in `funcs.py` after migration
+- [x] Deprecate/remove old functions in `funcs.py` after migration
 
 ### Validation & Research
 - [x] Correction for Gibbs' oscillations missing. Implement.

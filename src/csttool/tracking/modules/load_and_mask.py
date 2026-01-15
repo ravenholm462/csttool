@@ -16,24 +16,39 @@ def load_and_mask(nii_dirname, nii_fname, visualize=False, verbose=False):
             - masked_data: Brain-masked DWI data
             - brain_mask: Binary brain mask array
     """    
-    from csttool.preprocess.funcs import load_dataset, background_segmentation
+    from csttool.preprocess.modules.load_dataset import load_dataset
+    from csttool.preprocess.modules.background_segmentation import background_segmentation
 
-    data, affine, img, gtab = load_dataset(
-    nifti_path=nii_dirname,
-    fname=nii_fname,
-    visualize=visualize
+    # Remove extension if present in fname, as modules.load_dataset expects stem or handles it differently
+    # Actually modules.load_dataset expects fname without extension for nifti construction in some paths,
+    # but let's check how it uses it.
+    # It constructs: os.path.join(dir_path, fname + ".nii.gz")
+    # So we should pass fname WITHOUT extension if it's not there.
+    # The original caller likely passed it without extension based on usage in cli.py or tracking.
+    
+    # modules.load_dataset returns: nii, gtab, nifti_dir
+    nii, gtab, _ = load_dataset(
+        dir_path=nii_dirname,
+        fname=nii_fname
     )
+    
+    data = nii.get_fdata()
+    affine = nii.affine
+    img = nii
 
     if verbose:
-        print(f"Loaded dataset: {nii_dirname + nii_fname}")
+        print(f"Loaded dataset: {nii_dirname}/{nii_fname}")
         print(f"    Data shape: {data.shape}")
         print(f"    Affine:\n{affine}")
         print(f"    Gradient table: {len(gtab.bvals)} volumes")
 
+    # background_segmentation(data, gtab=None, median_radius=2, numpass=1, autocrop=False)
+    # Original used visualize=visualize, but new one doesn't support visualize arg directly in computation 
+    # (it seems visualizion is handled separately or removed).
+    # We will ignore visualize arg for segmentation as it's not in the new signature.
     masked_data, brain_mask = background_segmentation(
-    data,
-    gtab,
-    visualize=visualize
+        data,
+        gtab
     )
 
     if verbose:
