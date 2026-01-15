@@ -3,6 +3,7 @@
 ## General
 
 - [ ] Write project documentation.
+  - For troubleshooting documentation: patch2self denoising may produce streamlines that are too short -> extraction fails. Switching to NLMeans may help.
 - [ ] Review and update documentation after module integration
 
 ## CLI
