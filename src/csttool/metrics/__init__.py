@@ -36,6 +36,14 @@ from .modules.visualizations import (
     plot_tractogram_qc_preview,
 )
 
+from .modules.reports import (
+    save_json_report,
+    save_csv_summary,
+    save_html_report,
+    save_pdf_report,
+    generate_complete_report,
+)
+
 __all__ = [
     # Unilateral analysis
     'analyze_cst_hemisphere',
@@ -59,4 +67,11 @@ __all__ = [
     'plot_asymmetry_radar',
     'plot_stacked_profiles',
     'plot_tractogram_qc_preview',
+    
+    # Reports
+    'save_json_report',
+    'save_csv_summary',
+    'save_html_report',
+    'save_pdf_report',
+    'generate_complete_report',
 ]
