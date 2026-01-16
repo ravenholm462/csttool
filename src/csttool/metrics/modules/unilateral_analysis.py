@@ -19,6 +19,8 @@ def analyze_cst_hemisphere(
     streamlines,
     fa_map=None,
     md_map=None,
+    rd_map=None,
+    ad_map=None,
     affine=None,
     hemisphere='unknown'
 ):
@@ -33,6 +35,10 @@ def analyze_cst_hemisphere(
         3D fractional anisotropy map
     md_map : ndarray, optional
         3D mean diffusivity map
+    rd_map : ndarray, optional
+        3D radial diffusivity map
+    ad_map : ndarray, optional
+        3D axial diffusivity map
     affine : ndarray, optional
         4x4 affine transformation matrix
     hemisphere : str
@@ -45,6 +51,8 @@ def analyze_cst_hemisphere(
         - morphology: streamline count, length stats, volume
         - fa: mean, std, median, profile, all sampled values
         - md: mean, std, median, profile, all sampled values
+        - rd: mean, std, median, profile, all sampled values
+        - ad: mean, std, median, profile, all sampled values
         - hemisphere: identification string
     """
     
@@ -92,6 +100,44 @@ def analyze_cst_hemisphere(
         else:
              # Handle empty case
             metrics['md'] = {
+                'mean': 0.0, 'std': 0.0, 'median': 0.0, 'min': 0.0, 'max': 0.0,
+                'profile': [], 'n_samples': 0
+            }
+    
+    if rd_map is not None and affine is not None:
+        rd_values = sample_scalar_along_tract(streamlines, rd_map, affine)
+        if len(rd_values) > 0:
+            metrics['rd'] = {
+                'mean': float(np.mean(rd_values)),
+                'std': float(np.std(rd_values)),
+                'median': float(np.median(rd_values)),
+                'min': float(np.min(rd_values)),
+                'max': float(np.max(rd_values)),
+                'profile': compute_tract_profile(streamlines, rd_map, affine, n_points=20),
+                'n_samples': len(rd_values)
+            }
+            print(f"  RD: {metrics['rd']['mean']:.3e} ± {metrics['rd']['std']:.3e}")
+        else:
+            metrics['rd'] = {
+                'mean': 0.0, 'std': 0.0, 'median': 0.0, 'min': 0.0, 'max': 0.0,
+                'profile': [], 'n_samples': 0
+            }
+    
+    if ad_map is not None and affine is not None:
+        ad_values = sample_scalar_along_tract(streamlines, ad_map, affine)
+        if len(ad_values) > 0:
+            metrics['ad'] = {
+                'mean': float(np.mean(ad_values)),
+                'std': float(np.std(ad_values)),
+                'median': float(np.median(ad_values)),
+                'min': float(np.min(ad_values)),
+                'max': float(np.max(ad_values)),
+                'profile': compute_tract_profile(streamlines, ad_map, affine, n_points=20),
+                'n_samples': len(ad_values)
+            }
+            print(f"  AD: {metrics['ad']['mean']:.3e} ± {metrics['ad']['std']:.3e}")
+        else:
+            metrics['ad'] = {
                 'mean': 0.0, 'std': 0.0, 'median': 0.0, 'min': 0.0, 'max': 0.0,
                 'profile': [], 'n_samples': 0
             }

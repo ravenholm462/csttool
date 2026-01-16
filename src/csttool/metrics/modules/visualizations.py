@@ -22,7 +22,8 @@ def plot_tract_profiles(
     right_metrics,
     output_dir,
     subject_id,
-    scalar='fa'
+    scalar='fa',
+    anatomical_labels=True
 ):
     """
     Plot along-tract profiles for bilateral comparison.
@@ -42,6 +43,8 @@ def plot_tract_profiles(
         Subject identifier for filename
     scalar : str
         'fa' or 'md' - which scalar to plot
+    anatomical_labels : bool
+        If True, add anatomical labels to x-axis (Pontine Level, PLIC, Precentral Gyrus)
         
     Returns
     -------
@@ -77,14 +80,30 @@ def plot_tract_profiles(
     ax.axhline(right_mean, color='r', linestyle='--', alpha=0.5, label=f'Right mean: {right_mean:.3f}')
     
     # Labels and formatting
-    scalar_label = 'Fractional Anisotropy' if scalar == 'fa' else 'Mean Diffusivity'
-    ax.set_xlabel('Normalized Tract Position (%)', fontsize=12)
+    scalar_label = 'Fractional Anisotropy' if scalar == 'fa' else 'Mean Diffusivity (×10⁻³ mm²/s)'
+    
+    # Set x-axis with anatomical labels
+    if anatomical_labels:
+        ax.set_xticks([0, 50, 100])
+        ax.set_xticklabels(['0%', '50%', '100%'])
+        # Add anatomical labels as secondary text
+        ax.text(0, -0.12, 'Pontine Level', transform=ax.get_xaxis_transform(), 
+                ha='center', fontsize=9, style='italic')
+        ax.text(50, -0.12, 'PLIC', transform=ax.get_xaxis_transform(), 
+                ha='center', fontsize=9, style='italic')
+        ax.text(100, -0.12, 'Precentral Gyrus', transform=ax.get_xaxis_transform(), 
+                ha='center', fontsize=9, style='italic')
+        ax.set_xlabel('Normalized Tract Position', fontsize=12)
+    else:
+        ax.set_xlabel('Normalized Tract Position (%)', fontsize=12)
+    
     ax.set_ylabel(scalar_label, fontsize=12)
-    ax.set_title(f'{scalar_label} Profile - {subject_id}', fontsize=14, fontweight='bold')
+    ax.set_title(f'{scalar_label.split(" (")[0]} Profile - {subject_id}', fontsize=14, fontweight='bold')
     ax.legend(loc='best', fontsize=10)
     ax.grid(True, alpha=0.3)
     
     plt.tight_layout()
+    plt.subplots_adjust(bottom=0.15)  # Extra space for anatomical labels
     
     # Save figure
     fig_path = output_dir / f"{subject_id}_tract_profile_{scalar}.png"
@@ -92,6 +111,244 @@ def plot_tract_profiles(
     plt.close()
     
     print(f"✓ Tract profile saved: {fig_path}")
+    return fig_path
+
+
+def plot_stacked_profiles(
+    left_metrics,
+    right_metrics,
+    output_dir,
+    subject_id
+):
+    """
+    Create stacked FA and MD profile plots for PDF report.
+    
+    Creates a vertically stacked figure with:
+    - Top: FA profile (Left & Right CST)
+    - Bottom: MD profile (Left & Right CST)
+    Both with anatomical x-axis labels.
+    
+    Parameters
+    ----------
+    left_metrics : dict
+        Left hemisphere metrics with 'fa' and 'md' profiles
+    right_metrics : dict
+        Right hemisphere metrics with 'fa' and 'md' profiles
+    output_dir : str or Path
+        Output directory for saving figure
+    subject_id : str
+        Subject identifier
+        
+    Returns
+    -------
+    fig_path : Path
+        Path to saved figure
+    """
+    
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Check available scalars
+    has_fa = 'fa' in left_metrics and 'fa' in right_metrics
+    has_md = 'md' in left_metrics and 'md' in right_metrics
+    
+    if not has_fa and not has_md:
+        print("Warning: No FA or MD profiles available")
+        return None
+    
+    n_plots = int(has_fa) + int(has_md)
+    fig, axes = plt.subplots(n_plots, 1, figsize=(8, 3.5 * n_plots))
+    
+    if n_plots == 1:
+        axes = [axes]
+    
+    ax_idx = 0
+    
+    # Plot FA profile
+    if has_fa:
+        ax = axes[ax_idx]
+        left_profile = np.array(left_metrics['fa']['profile'])
+        right_profile = np.array(right_metrics['fa']['profile'])
+        n_points = len(left_profile)
+        x = np.linspace(0, 100, n_points)
+        
+        ax.plot(x, left_profile, 'b-', linewidth=2, label='Left CST', marker='o', markersize=3)
+        ax.plot(x, right_profile, 'r-', linewidth=2, label='Right CST', marker='s', markersize=3)
+        ax.set_ylabel('FA', fontsize=11)
+        ax.set_ylim(0, 0.7)
+        ax.set_title('Fractional Anisotropy Profile', fontsize=12, fontweight='bold')
+        ax.legend(loc='upper right', fontsize=9)
+        ax.grid(True, alpha=0.3)
+        
+        # Add anatomical labels
+        ax.set_xticks([0, 50, 100])
+        ax.set_xticklabels(['0%', '50%', '100%'])
+        ax.text(0, -0.18, 'Pontine\nLevel', transform=ax.get_xaxis_transform(), 
+                ha='center', fontsize=8, style='italic')
+        ax.text(50, -0.18, 'PLIC', transform=ax.get_xaxis_transform(), 
+                ha='center', fontsize=8, style='italic')
+        ax.text(100, -0.18, 'Precentral\nGyrus', transform=ax.get_xaxis_transform(), 
+                ha='center', fontsize=8, style='italic')
+        
+        ax_idx += 1
+    
+    # Plot MD profile
+    if has_md:
+        ax = axes[ax_idx]
+        left_profile = np.array(left_metrics['md']['profile']) * 1000  # Convert to ×10⁻³
+        right_profile = np.array(right_metrics['md']['profile']) * 1000
+        n_points = len(left_profile)
+        x = np.linspace(0, 100, n_points)
+        
+        ax.plot(x, left_profile, 'b-', linewidth=2, label='Left CST', marker='o', markersize=3)
+        ax.plot(x, right_profile, 'r-', linewidth=2, label='Right CST', marker='s', markersize=3)
+        ax.set_ylabel('MD (×10⁻³ mm²/s)', fontsize=11)
+        ax.set_ylim(0.6, 1.2)
+        ax.set_title('Mean Diffusivity Profile', fontsize=12, fontweight='bold')
+        ax.legend(loc='upper right', fontsize=9)
+        ax.grid(True, alpha=0.3)
+        
+        # Add anatomical labels (only on bottom plot)
+        ax.set_xticks([0, 50, 100])
+        ax.set_xticklabels(['0%', '50%', '100%'])
+        ax.text(0, -0.18, 'Pontine\nLevel', transform=ax.get_xaxis_transform(), 
+                ha='center', fontsize=8, style='italic')
+        ax.text(50, -0.18, 'PLIC', transform=ax.get_xaxis_transform(), 
+                ha='center', fontsize=8, style='italic')
+        ax.text(100, -0.18, 'Precentral\nGyrus', transform=ax.get_xaxis_transform(), 
+                ha='center', fontsize=8, style='italic')
+    
+    plt.tight_layout()
+    plt.subplots_adjust(hspace=0.4, bottom=0.12)
+    
+    fig_path = output_dir / f"{subject_id}_stacked_profiles.png"
+    plt.savefig(fig_path, dpi=150, bbox_inches='tight')
+    plt.close()
+    
+    print(f"✓ Stacked profiles saved: {fig_path}")
+    return fig_path
+
+
+def plot_tractogram_qc_preview(
+    streamlines_left,
+    streamlines_right,
+    background_image,
+    affine,
+    output_dir,
+    subject_id,
+    slice_type='axial',
+    max_streamlines=500
+):
+    """
+    Create compact 3D tractogram QC preview for PDF report.
+    
+    Renders left (blue) and right (red) CST streamlines overlaid
+    on a brain slice at the internal capsule level.
+    
+    Parameters
+    ----------
+    streamlines_left : Streamlines
+        Left CST streamlines
+    streamlines_right : Streamlines
+        Right CST streamlines
+    background_image : ndarray
+        3D T1 or FA image for background
+    affine : ndarray
+        4x4 affine transformation matrix
+    output_dir : str or Path
+        Output directory
+    subject_id : str
+        Subject identifier
+    slice_type : str
+        'axial', 'sagittal', or 'coronal'
+    max_streamlines : int
+        Maximum streamlines to render per hemisphere (for performance)
+        
+    Returns
+    -------
+    fig_path : Path
+        Path to saved figure
+    """
+    
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    fig, ax = plt.subplots(figsize=(4, 4))
+    
+    # Get slice at center (internal capsule level)
+    shape = background_image.shape
+    
+    if slice_type == 'axial':
+        slice_idx = shape[2] // 2 + 5  # Slightly above center for IC
+        bg_slice = background_image[:, :, slice_idx].T
+    elif slice_type == 'sagittal':
+        slice_idx = shape[0] // 2
+        bg_slice = background_image[slice_idx, :, :].T
+    else:  # coronal
+        slice_idx = shape[1] // 2
+        bg_slice = background_image[:, slice_idx, :].T
+    
+    # Display background
+    ax.imshow(bg_slice, cmap='gray', origin='lower', aspect='equal')
+    
+    # Project streamlines onto slice
+    def project_streamlines(streamlines, color, alpha=0.6):
+        """Project streamlines onto 2D and plot."""
+        count = 0
+        for sl in streamlines:
+            if count >= max_streamlines:
+                break
+            # Convert to voxel coordinates
+            inv_affine = np.linalg.inv(affine)
+            voxel_coords = np.dot(sl, inv_affine[:3, :3].T) + inv_affine[:3, 3]
+            
+            if slice_type == 'axial':
+                # Filter points near the slice
+                near_slice = np.abs(voxel_coords[:, 2] - slice_idx) < 5
+                if np.any(near_slice):
+                    ax.plot(voxel_coords[near_slice, 0], 
+                           voxel_coords[near_slice, 1], 
+                           color=color, linewidth=0.5, alpha=alpha)
+                    count += 1
+            elif slice_type == 'sagittal':
+                near_slice = np.abs(voxel_coords[:, 0] - slice_idx) < 5
+                if np.any(near_slice):
+                    ax.plot(voxel_coords[near_slice, 1], 
+                           voxel_coords[near_slice, 2], 
+                           color=color, linewidth=0.5, alpha=alpha)
+                    count += 1
+            else:  # coronal
+                near_slice = np.abs(voxel_coords[:, 1] - slice_idx) < 5
+                if np.any(near_slice):
+                    ax.plot(voxel_coords[near_slice, 0], 
+                           voxel_coords[near_slice, 2], 
+                           color=color, linewidth=0.5, alpha=alpha)
+                    count += 1
+    
+    # Plot streamlines
+    if len(streamlines_left) > 0:
+        project_streamlines(streamlines_left, '#2196F3')  # Blue
+    if len(streamlines_right) > 0:
+        project_streamlines(streamlines_right, '#F44336')  # Red
+    
+    # Add legend
+    from matplotlib.lines import Line2D
+    legend_elements = [
+        Line2D([0], [0], color='#2196F3', linewidth=2, label='Left CST'),
+        Line2D([0], [0], color='#F44336', linewidth=2, label='Right CST')
+    ]
+    ax.legend(handles=legend_elements, loc='upper right', fontsize=8)
+    
+    ax.set_title(f'CST Tractogram ({slice_type.title()})', fontsize=10, fontweight='bold')
+    ax.axis('off')
+    
+    plt.tight_layout()
+    
+    fig_path = output_dir / f"{subject_id}_tractogram_qc.png"
+    plt.savefig(fig_path, dpi=150, bbox_inches='tight', facecolor='white')
+    plt.close()
+    
+    print(f"✓ Tractogram QC preview saved: {fig_path}")
     return fig_path
 
 

@@ -73,6 +73,8 @@ def compute_laterality_indices(left_metrics, right_metrics):
         - mean length
         - mean FA (if available)
         - mean MD (if available)
+        - mean RD (if available)
+        - mean AD (if available)
     """
     
     asymmetry = {}
@@ -107,6 +109,18 @@ def compute_laterality_indices(left_metrics, right_metrics):
         asymmetry['md'] = compute_li(
             left_metrics['md']['mean'],
             right_metrics['md']['mean']
+        )
+    
+    if 'rd' in left_metrics and 'rd' in right_metrics:
+        asymmetry['rd'] = compute_li(
+            left_metrics['rd']['mean'],
+            right_metrics['rd']['mean']
+        )
+    
+    if 'ad' in left_metrics and 'ad' in right_metrics:
+        asymmetry['ad'] = compute_li(
+            left_metrics['ad']['mean'],
+            right_metrics['ad']['mean']
         )
     
     return asymmetry
