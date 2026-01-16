@@ -108,3 +108,23 @@
 
 - [ ] Implement metrics space conversion (Native ↔ MNI152 Template Space)
 - [ ] Update the .csv and .json report files to include the new metrics.
+
+## HTML Report System (NEW)
+
+- [ ] **Replace reportlab PDF with HTML-first system**:
+  - [ ] Extend JSON report schema with acquisition/processing metadata
+  - [ ] Create `save_html_report()` based on `report_mockup.html`
+  - [ ] Implement HTML→PDF conversion via weasyprint
+  - [ ] Add weasyprint as core dependency (document system deps: Cairo, Pango, GDK-PixBuf)
+
+## BIDS Structure Support (NEW)
+
+- [ ] **Parse acquisition parameters from BIDS sidecar JSON**:
+  - [ ] Detect BIDS-compliant directory structure
+  - [ ] Parse `*_dwi.json` sidecar for acquisition metadata:
+    - b-value (`DiffusionBValue`)
+    - directions (count from bvec file)  
+    - resolution (derive from NIfTI header)
+    - protocol (`ProtocolName` or `PulseSequenceName`)
+  - [ ] Add fallback to "PLACEHOLDER" when BIDS JSON not available
+  - [ ] Support non-BIDS data with CLI override arguments
