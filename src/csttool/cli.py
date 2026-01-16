@@ -1398,6 +1398,7 @@ def cmd_metrics(args: argparse.Namespace) -> dict | None:
         from csttool.metrics.modules.reports import (
             save_json_report,
             save_csv_summary,
+            save_html_report,
             save_pdf_report,
         )
     except ImportError as e:
@@ -1592,87 +1593,39 @@ def cmd_metrics(args: argparse.Namespace) -> dict | None:
     
     # Generate PDF if requested
     pdf_path = None
+    html_path = None
     if getattr(args, 'generate_pdf', False):
         try:
-            pdf_path = save_pdf_report(comparison, viz_paths, args.out, args.subject_id)
-            print(f"✓ PDF report: {pdf_path}")
+            # Use new HTML→PDF pipeline with metadata
+            space = getattr(args, 'space', "Native Space")
+            
+            # First generate HTML report
+            html_path = save_html_report(
+                comparison, 
+                viz_paths, 
+                args.out, 
+                args.subject_id,
+                space=space
+            )
+            print(f"✓ HTML report: {html_path}")
+            
+            # Then convert to PDF
+            pdf_path = save_pdf_report(
+                comparison, 
+                viz_paths, 
+                args.out, 
+                args.subject_id,
+                space=space
+            )
+            if pdf_path:
+                print(f"✓ PDF report: {pdf_path}")
         except Exception as e:
-            print(f"Warning: Could not generate PDF report: {e}")
+            print(f"Warning: Could not generate report: {e}")
+            import traceback
+            traceback.print_exc()
     
     # Summary
     print(f"\n{'='*60}")
-    try:
-        if args.generate_pdf:
-            # Generate visualizations for PDF
-            viz_dir = args.out / "visualizations"
-            viz_dir.mkdir(parents=True, exist_ok=True)
-            
-            pdf_viz_paths = {}
-            
-            # Stacked profiles (FA/MD/RD/AD)
-            if 'stacked_profiles' in available_viz_funcs:
-                pdf_viz_paths['stacked_profiles'] = available_viz_funcs['stacked_profiles'](
-                    comparison['left'],
-                    comparison['right'],
-                    viz_dir,
-                    args.subject_id
-                )
-            elif 'plot_stacked_profiles' in locals():
-                pdf_viz_paths['stacked_profiles'] = plot_stacked_profiles(
-                    comparison['left'],
-                    comparison['right'],
-                    viz_dir,
-                    args.subject_id
-                )
-            
-            # Tractogram QC
-            if 'tractogram_qc' in available_viz_funcs:
-                 # Generate all 3 views
-                pdf_viz_paths['tractogram_qc_axial'] = available_viz_funcs['tractogram_qc'](
-                    streamlines_left, streamlines_right, 
-                    fa_map if fa_map is not None else sft_left.get_data(), # fallback?
-                    affine, viz_dir, args.subject_id, 'axial'
-                )
-                pdf_viz_paths['tractogram_qc_sagittal'] = available_viz_funcs['tractogram_qc'](
-                    streamlines_left, streamlines_right, 
-                    fa_map if fa_map is not None else sft_left.get_data(),
-                    affine, viz_dir, args.subject_id, 'sagittal'
-                )
-                pdf_viz_paths['tractogram_qc_coronal'] = available_viz_funcs['tractogram_qc'](
-                    streamlines_left, streamlines_right, 
-                    fa_map if fa_map is not None else sft_left.get_data(),
-                    affine, viz_dir, args.subject_id, 'coronal'
-                )
-            elif 'plot_tractogram_qc_preview' in locals():
-                 pdf_viz_paths['tractogram_qc_axial'] = plot_tractogram_qc_preview(
-                    streamlines_left, streamlines_right, 
-                    fa_map if fa_map is not None else np.zeros((10,10,10)), # Fail safe
-                    affine, viz_dir, args.subject_id, 'axial'
-                )
-                 pdf_viz_paths['tractogram_qc_sagittal'] = plot_tractogram_qc_preview(
-                    streamlines_left, streamlines_right, 
-                    fa_map if fa_map is not None else np.zeros((10,10,10)),
-                    affine, viz_dir, args.subject_id, 'sagittal'
-                )
-                 pdf_viz_paths['tractogram_qc_coronal'] = plot_tractogram_qc_preview(
-                    streamlines_left, streamlines_right, 
-                    fa_map if fa_map is not None else np.zeros((10,10,10)),
-                    affine, viz_dir, args.subject_id, 'coronal'
-                )
-
-            pdf_path = save_pdf_report(
-                comparison, 
-                pdf_viz_paths, 
-                args.out, 
-                args.subject_id,
-                space=getattr(args, 'space', "Native Space")
-            )
-            print(f"✓ PDF report: {pdf_path}")
-    except Exception as e:
-        print(f"Error saving PDF report: {e}")
-        import traceback
-        traceback.print_exc()
-
     print("METRICS COMPLETE")
     print(f"{'='*60}")
     print(f"Subject: {args.subject_id}")
