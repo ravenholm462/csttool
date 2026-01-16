@@ -156,6 +156,609 @@ def save_csv_summary(comparison, output_dir, subject_id):
     return csv_path
 
 
+def save_html_report(
+    comparison,
+    visualization_paths,
+    output_dir,
+    subject_id,
+    version=None,
+    space="Native Space",
+    metadata=None
+):
+    """
+    Generate HTML report based on mockup design.
+    
+    Parameters
+    ----------
+    comparison : dict
+        Output from compare_bilateral_cst()
+    visualization_paths : dict
+        Paths to generated visualizations
+    output_dir : str or Path
+        Output directory
+    subject_id : str
+        Subject identifier
+    version : str, optional
+        csttool version (defaults to package version)
+    space : str
+        Space declaration (e.g., "Native Space")
+    metadata : dict, optional
+        Acquisition and processing metadata
+        
+    Returns
+    -------
+    html_path : Path
+        Path to saved HTML file
+    """
+    import base64
+    
+    if version is None:
+        version = __version__
+    
+    if metadata is None:
+        metadata = {}
+    
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Extract data
+    left = comparison['left']
+    right = comparison['right']
+    asym = comparison['asymmetry']
+    
+    # Get metadata with defaults
+    acquisition = metadata.get('acquisition', {})
+    processing = metadata.get('processing', {})
+    
+    # Calculate metrics
+    left_count = left['morphology']['n_streamlines']
+    right_count = right['morphology']['n_streamlines']
+    
+    def format_li(li_value):
+        """Format LI with appropriate CSS class."""
+        if li_value > 0:
+            return f'<td class="li-positive">+{li_value:.3f}</td>'
+        else:
+            return f'<td class="li-negative">{li_value:.3f}</td>'
+    
+    def embed_image(path):
+        """Embed image as base64 data URI."""
+        if path is None or not Path(path).exists():
+            return None
+        try:
+            with open(path, 'rb') as f:
+                data = base64.b64encode(f.read()).decode('utf-8')
+            ext = Path(path).suffix.lower()
+            mime = 'image/png' if ext == '.png' else 'image/jpeg'
+            return f'data:{mime};base64,{data}'
+        except Exception:
+            return None
+    
+    # Embed visualizations - individual profile plots
+    fa_profile = embed_image(visualization_paths.get('profile_fa'))
+    md_profile = embed_image(visualization_paths.get('profile_md'))
+    rd_profile = embed_image(visualization_paths.get('profile_rd'))
+    ad_profile = embed_image(visualization_paths.get('profile_ad'))
+    # Fallback to stacked profiles if individual not available
+    if not any([fa_profile, md_profile, rd_profile, ad_profile]):
+        stacked_profile = embed_image(visualization_paths.get('stacked_profiles'))
+    else:
+        stacked_profile = None
+    
+    qc_axial = embed_image(visualization_paths.get('tractogram_qc_axial'))
+    qc_sagittal = embed_image(visualization_paths.get('tractogram_qc_sagittal'))
+    qc_coronal = embed_image(visualization_paths.get('tractogram_qc_coronal'))
+    
+    # Build metrics table rows
+    metrics_rows = []
+    
+    # Streamlines
+    metrics_rows.append(f'''<tr>
+                    <td>Streamlines</td>
+                    <td>{left_count}</td>
+                    <td>{right_count}</td>
+                    {format_li(asym['streamline_count']['laterality_index'])}
+                </tr>''')
+    
+    # Volume (convert mm³ to cm³)
+    left_vol = left['morphology']['tract_volume'] / 1000.0
+    right_vol = right['morphology']['tract_volume'] / 1000.0
+    metrics_rows.append(f'''<tr>
+                    <td>Volume (cm³)</td>
+                    <td>{left_vol:.2f}</td>
+                    <td>{right_vol:.2f}</td>
+                    {format_li(asym['volume']['laterality_index'])}
+                </tr>''')
+    
+    # Length
+    metrics_rows.append(f'''<tr>
+                    <td>Length (mm)</td>
+                    <td>{left['morphology']['mean_length']:.1f}</td>
+                    <td>{right['morphology']['mean_length']:.1f}</td>
+                    {format_li(asym['mean_length']['laterality_index'])}
+                </tr>''')
+    
+    # FA
+    if 'fa' in left:
+        metrics_rows.append(f'''<tr>
+                    <td>FA</td>
+                    <td>{left['fa']['mean']:.3f}</td>
+                    <td>{right['fa']['mean']:.3f}</td>
+                    {format_li(asym['fa']['laterality_index'])}
+                </tr>''')
+    
+    # MD (×10⁻³ mm²/s)
+    if 'md' in left:
+        metrics_rows.append(f'''<tr>
+                    <td>MD (×10⁻³ mm²/s)</td>
+                    <td>{left['md']['mean']*1000:.2f}</td>
+                    <td>{right['md']['mean']*1000:.2f}</td>
+                    {format_li(asym['md']['laterality_index'])}
+                </tr>''')
+    
+    # RD (×10⁻³ mm²/s)
+    if 'rd' in left:
+        metrics_rows.append(f'''<tr>
+                    <td>RD (×10⁻³ mm²/s)</td>
+                    <td>{left['rd']['mean']*1000:.2f}</td>
+                    <td>{right['rd']['mean']*1000:.2f}</td>
+                    {format_li(asym['rd']['laterality_index'])}
+                </tr>''')
+    
+    # AD (×10⁻³ mm²/s)
+    if 'ad' in left:
+        metrics_rows.append(f'''<tr>
+                    <td>AD (×10⁻³ mm²/s)</td>
+                    <td>{left['ad']['mean']*1000:.2f}</td>
+                    <td>{right['ad']['mean']*1000:.2f}</td>
+                    {format_li(asym['ad']['laterality_index'])}
+                </tr>''')
+    
+    # Build profile visualization HTML
+    def make_profile_html(img_data, title, placeholder_text):
+        if img_data:
+            return f'''<div class="profile-plot">
+                    <h4>{title}</h4>
+                    <img src="{img_data}" alt="{title}" style="width:100%;height:auto">
+                </div>'''
+        else:
+            return f'''<div class="profile-plot">
+                    <h4>{title}</h4>
+                    <div class="profile-placeholder">{placeholder_text}</div>
+                </div>'''
+    
+    # Build profiles section
+    if stacked_profile:
+        # Use single stacked image
+        profiles_html = f'''<div class="profile-plot">
+                    <h4>Along-Tract Profiles</h4>
+                    <img src="{stacked_profile}" alt="Profiles" style="width:100%;height:auto">
+                </div>'''
+    else:
+        # Use individual profile plots
+        profiles_html = ''
+        profiles_html += make_profile_html(fa_profile, 'Fractional Anisotropy', 
+                                           '[FA Profile Plot]<br>0% Pontine → 50% PLIC → 100% Precentral')
+        profiles_html += make_profile_html(md_profile, 'Mean Diffusivity',
+                                           '[MD Profile Plot]<br>Left CST — Right CST')
+        profiles_html += make_profile_html(rd_profile, 'Radial Diffusivity', '[RD Profile Plot]')
+        profiles_html += make_profile_html(ad_profile, 'Axial Diffusivity', '[AD Profile Plot]')
+    
+    # Build tractogram visualization HTML
+    def make_tractogram_html(img_data, title, placeholder_text, include_legend=False):
+        legend_html = '''<div class="tractogram-legend">
+                        <span><span class="legend-line-left"></span> Left CST</span>
+                        <span><span class="legend-line-right"></span> Right CST</span>
+                    </div>''' if include_legend else ''
+        
+        if img_data:
+            return f'''<div class="tractogram-item">
+                    <h4>{title}</h4>
+                    <img src="{img_data}" alt="{title}" style="width:100%;height:auto">
+                    {legend_html}
+                </div>'''
+        else:
+            return f'''<div class="tractogram-item">
+                    <h4>{title}</h4>
+                    <div class="tractogram-placeholder">{placeholder_text}</div>
+                    {legend_html}
+                </div>'''
+    
+    tractograms_html = ''
+    tractograms_html += make_tractogram_html(qc_axial, 'CST Tractogram (Axial)', '[Axial View]')
+    tractograms_html += make_tractogram_html(qc_sagittal, 'CST Tractogram (Sagittal)', '[Sagittal View]')
+    tractograms_html += make_tractogram_html(qc_coronal, 'CST Tractogram (Coronal)', '[Coronal View]', include_legend=True)
+    
+    # Get whole brain streamline count
+    whole_brain = processing.get('whole_brain_streamlines', 'N/A')
+    if whole_brain != 'N/A' and isinstance(whole_brain, (int, float)):
+        whole_brain = f'{int(whole_brain):,} streamlines'
+    
+    # Build HTML document matching the mockup design
+    html_content = f'''<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CST Analysis Report</title>
+    <style>
+        * {{
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }}
+
+        body {{
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: white;
+            padding: 12px;
+            max-width: 210mm;
+            margin: 0 auto;
+            font-size: 10px;
+        }}
+
+        @media print {{
+            body {{
+                padding: 0;
+            }}
+
+            @page {{
+                size: A4 portrait;
+                margin: 10mm;
+            }}
+        }}
+
+        /* Header */
+        .header {{
+            text-align: center;
+            margin-bottom: 10px;
+        }}
+
+        .header h1 {{
+            color: #1976D2;
+            font-size: 22px;
+            margin-bottom: 4px;
+        }}
+
+        .header .meta {{
+            color: #555;
+            font-size: 11px;
+        }}
+
+        .extraction-badge {{
+            background: #E3F2FD;
+            color: #1565C0;
+            padding: 4px 12px;
+            border-radius: 4px;
+            display: inline-block;
+            font-weight: 600;
+            margin-top: 6px;
+            font-size: 10px;
+        }}
+
+        /* Parameters Row */
+        .params-row {{
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 12px;
+        }}
+
+        .param-box {{
+            background: #F8F9FA;
+            border-left: 3px solid #2196F3;
+            padding: 6px 10px;
+            border-radius: 3px;
+        }}
+
+        .param-box h3 {{
+            color: #1976D2;
+            font-size: 10px;
+            margin-bottom: 4px;
+            font-weight: 600;
+        }}
+
+        .param-grid {{
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 2px 8px;
+            font-size: 8px;
+        }}
+
+        .param-label {{
+            color: #666;
+        }}
+
+        .param-value {{
+            color: #333;
+            font-family: 'Consolas', 'Courier New', monospace;
+        }}
+
+        /* Section styling */
+        .section {{
+            margin-bottom: 10px;
+        }}
+
+        .section-title {{
+            color: #1976D2;
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 6px;
+        }}
+
+        /* Metrics Table */
+        .metrics-table {{
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 4px;
+            font-size: 10px;
+        }}
+
+        .metrics-table thead {{
+            background: linear-gradient(135deg, #2196F3, #1976D2);
+            color: white;
+        }}
+
+        .metrics-table th {{
+            padding: 6px 10px;
+            text-align: center;
+            font-weight: 600;
+        }}
+
+        .metrics-table th:first-child {{
+            text-align: left;
+        }}
+
+        .metrics-table td {{
+            padding: 5px 10px;
+            border-bottom: 1px solid #E0E0E0;
+            text-align: center;
+        }}
+
+        .metrics-table td:first-child {{
+            text-align: left;
+            font-weight: 500;
+        }}
+
+        .metrics-table tbody tr:nth-child(even) {{
+            background: #FAFAFA;
+        }}
+
+        .li-positive {{
+            color: #D32F2F;
+            font-weight: 600;
+        }}
+
+        .li-negative {{
+            color: #1976D2;
+            font-weight: 600;
+        }}
+
+        .legend {{
+            text-align: center;
+            font-size: 9px;
+            color: #666;
+            margin-top: 4px;
+        }}
+
+        .legend .left-gt {{
+            color: #D32F2F;
+        }}
+
+        .legend .right-gt {{
+            color: #1976D2;
+        }}
+
+        /* Visualizations Section - Two Column Layout */
+        .viz-section {{
+            display: grid;
+            grid-template-columns: 3fr 2fr;
+            gap: 12px;
+            margin-top: 6px;
+        }}
+
+        /* Left column: Along-tract profiles - LARGER */
+        .profiles-column {{
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }}
+
+        .profile-plot {{
+            border: 1px solid #E0E0E0;
+            border-radius: 4px;
+            padding: 5px;
+            background: white;
+        }}
+
+        .profile-plot h4 {{
+            color: #1976D2;
+            font-size: 10px;
+            font-weight: 600;
+            text-align: center;
+            margin-bottom: 3px;
+        }}
+
+        .profile-placeholder {{
+            background: linear-gradient(180deg, #FAFAFA 0%, #F0F0F0 100%);
+            height: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 3px;
+            color: #888;
+            font-style: italic;
+            font-size: 9px;
+            border: 1px dashed #CCC;
+            text-align: center;
+        }}
+
+        /* Right column: Tractograms - SMALLER */
+        .tractogram-column {{
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }}
+
+        .tractogram-item {{
+            border: 1px solid #E0E0E0;
+            border-radius: 4px;
+            padding: 5px;
+            background: white;
+        }}
+
+        .tractogram-item h4 {{
+            color: #1976D2;
+            font-size: 9px;
+            font-weight: 600;
+            text-align: center;
+            margin-bottom: 3px;
+        }}
+
+        .tractogram-placeholder {{
+            background: #2a2a2a;
+            height: 112px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 3px;
+            color: #888;
+            font-style: italic;
+            font-size: 8px;
+        }}
+
+        .tractogram-legend {{
+            display: flex;
+            justify-content: center;
+            gap: 12px;
+            font-size: 8px;
+            margin-top: 6px;
+            padding-top: 6px;
+            border-top: 1px solid #E0E0E0;
+        }}
+
+        .tractogram-legend span {{
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }}
+
+        .legend-line-left {{
+            width: 16px;
+            height: 2px;
+            background: #2196F3;
+        }}
+
+        .legend-line-right {{
+            width: 16px;
+            height: 2px;
+            background: #F44336;
+        }}
+
+        /* Footer */
+        .footer {{
+            margin-top: 8px;
+            padding-top: 6px;
+            border-top: 1px solid #E0E0E0;
+            text-align: center;
+            color: #666;
+            font-size: 8px;
+            line-height: 1.4;
+        }}
+    </style>
+</head>
+
+<body>
+    <!-- Header -->
+    <div class="header">
+        <h1>CST Analysis Report</h1>
+        <div class="meta">
+            Subject: <strong>{subject_id}</strong> |
+            Date: <strong>{datetime.now().strftime("%Y-%m-%d")}</strong> |
+            csttool <strong>v{version}</strong>
+        </div>
+        <div class="extraction-badge">Metrics Extracted In: {space}</div>
+    </div>
+
+    <!-- Acquisition & Processing Parameters -->
+    <div class="params-row">
+        <div class="param-box">
+            <h3>Acquisition Parameters</h3>
+            <div class="param-grid">
+                <span class="param-label">Protocol:</span><span class="param-value">{acquisition.get('protocol', 'Single-shell DTI')}</span>
+                <span class="param-label">b-value:</span><span class="param-value">{acquisition.get('b_value', '1000 s/mm²')}</span>
+                <span class="param-label">Directions:</span><span class="param-value">{acquisition.get('directions', '64')}</span>
+                <span class="param-label">Resolution:</span><span class="param-value">{acquisition.get('resolution', '2.0 × 2.0 × 2.0 mm³')}</span>
+            </div>
+        </div>
+        <div class="param-box">
+            <h3>Processing Parameters</h3>
+            <div class="param-grid">
+                <span class="param-label">Denoising:</span><span class="param-value">{processing.get('denoising', 'nlmeans')}</span>
+                <span class="param-label">Tracking:</span><span class="param-value">{processing.get('tracking_method', 'Deterministic (DTI)')}</span>
+                <span class="param-label">ROI Approach:</span><span class="param-value">{processing.get('roi_approach', 'Atlas-to-Subject (HO)')}</span>
+                <span class="param-label">Whole-brain:</span><span class="param-value">{whole_brain}</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Summary Metrics -->
+    <div class="section">
+        <h2 class="section-title">Summary Metrics</h2>
+
+        <table class="metrics-table">
+            <thead>
+                <tr>
+                    <th style="width: 40%;">Metric</th>
+                    <th style="width: 20%;">Left</th>
+                    <th style="width: 20%;">Right</th>
+                    <th style="width: 20%;">LI</th>
+                </tr>
+            </thead>
+            <tbody>
+                {"".join(metrics_rows)}
+            </tbody>
+        </table>
+
+        <div class="legend">
+            Legend: <span class="left-gt">Left&gt;Right</span>, <span class="right-gt">Right&gt;Left</span>
+        </div>
+    </div>
+
+    <!-- Visualizations: Profiles (large) + Tractograms (small) -->
+    <div class="section">
+        <h2 class="section-title">Visualizations</h2>
+
+        <div class="viz-section">
+            <!-- Left: Along-Tract Profiles (LARGER) -->
+            <div class="profiles-column">
+                {profiles_html}
+            </div>
+
+            <!-- Right: Tractograms (SMALLER) -->
+            <div class="tractogram-column">
+                {tractograms_html}
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+        Method: Deterministic tractography, DTI model | Generated by csttool
+    </div>
+</body>
+
+</html>'''
+    
+    html_path = output_dir / f"{subject_id}_report.html"
+    with open(html_path, 'w', encoding='utf-8') as f:
+        f.write(html_content)
+    
+    print(f"✓ HTML report saved: {html_path}")
+    return html_path
+
+
 def save_pdf_report(
     comparison,
     visualization_paths,
