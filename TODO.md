@@ -72,15 +72,25 @@
 
 ## Metrics
 
-- [ ] Revise PDF report.
-  -[ ] General:
-    - [ ] Make the report fit onto a single page.
-    - [ ] Fix formatting issues (mean MD, superscript not correctly shown)
-  - [ ] Header:
-    - [ ] Which space do the metrics come from? Native vs. template space? Add description.
-  - [ ] Tables:
-    - [ ] Add radial diffusivity and axial diffusivity to the table.
-  - [ ] Figures:
-    - [ ] Add a mean diffusivity profile analogous to the FA profile.
-    - [ ] For both profiles, add positional markings to the x axis (e.g. brainstem, motor cortex etc.). Think about which labels make sense and which should be included other than the ROI labels used.
-    - [ ] Think about which QC visualizations belong in the report.
+- [ ] Revise PDF report (single-page layout).
+  - [ ] **Header Block** (2-3 lines):
+    - [ ] Subject/Session ID, Date, csttool version
+    - [ ] Bold line: "Metrics Extracted In: Native Space" (explicit space declaration)
+  - [ ] **Metrics Table** (compact):
+    - [ ] Fix MD superscript formatting (×10⁻³)
+    - [ ] Add radial diffusivity (RD) and axial diffusivity (AD) columns
+    - [ ] Color-code Laterality Index values
+  - [ ] **Visualization Row** (side-by-side):
+    - [ ] Left (60% width): Stacked FA/MD profile plots
+      - X-axis: "Pontine Level (0%)" → "PLIC (50%)" → "Precentral Gyrus (100%)"
+      - FA Y-axis: 0 to ~0.6
+      - MD Y-axis: ×10⁻³ mm²/s (e.g., 0.7 to 1.1)
+    - [ ] Right (40% width): 3D tractogram QC preview
+      - Left/Right CST in different colors
+      - Overlay on mid-sagittal or axial T1 slice at internal capsule level
+  - [ ] **Footer Note** (tiny font, optional):
+    - [ ] Brief method note (e.g., "Probabilistic tractography, DTI model")
+  - [ ] Minimize margins for single-page fit
+
+- [ ] Implement metrics space conversion (Native ↔ MNI152 Template Space)
+- [ ] Update the .csv and .json report files to include the new metrics.
