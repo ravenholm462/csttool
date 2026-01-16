@@ -113,7 +113,8 @@
 
 - [ ] **Replace reportlab PDF with HTML-first system**:
   - [ ] Extend JSON report schema with acquisition/processing metadata
-  - [ ] Create `save_html_report()` based on `report_mockup.html`
+  - [X] Create `save_html_report()` based on `report_mockup.html`
+    - [ ] Fix inconsistent QC visualization sizing.
   - [ ] Implement HTML→PDF conversion via weasyprint
   - [ ] Add weasyprint as core dependency (document system deps: Cairo, Pango, GDK-PixBuf)
 
