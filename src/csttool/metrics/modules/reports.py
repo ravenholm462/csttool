@@ -400,7 +400,7 @@ def save_pdf_report(
     ]))
     
     story.append(table)
-    story.append(Spacer(1, 0.2*inch))
+    story.append(Spacer(1, 0.12*inch))
     
         # === VISUALIZATION ROW - FIXED VERSION ===
     story.append(Paragraph("Visualizations", heading_style))
@@ -414,8 +414,8 @@ def save_pdf_report(
         profile_path = visualization_paths['stacked_profiles']
         if profile_path and Path(profile_path).exists():
             try:
-                # Scale image to fit within column
-                profile_img = Image(str(profile_path), width=4.0*inch, height=6.0*inch)
+                # Scale image to fit within column - reduced height for single-page fit
+                profile_img = Image(str(profile_path), width=3.8*inch, height=4.5*inch)
                 left_column_content.append(profile_img)
             except Exception as e:
                 print(f"⚠️  Could not add profile image: {e}")
@@ -436,10 +436,12 @@ def save_pdf_report(
             img_path = visualization_paths[key]
             if img_path and Path(img_path).exists():
                 try:
-                    # Scale QC images appropriately
-                    img = Image(str(img_path), width=2.5*inch, height=2.0*inch)
+                    # Scale QC images smaller for single-page fit
+                    img = Image(str(img_path), width=2.5*inch, height=1.5*inch)
                     right_column_content.append(img)
-                    right_column_content.append(Spacer(1, 0.1*inch))  # Small space between images
+                    # Only add spacing between images, not after the last one
+                    if view != 'coronal':
+                        right_column_content.append(Spacer(1, 0.05*inch))
                     qc_images_added += 1
                 except Exception as e:
                     print(f"⚠️  Could not add {view} QC image: {e}")
@@ -450,7 +452,7 @@ def save_pdf_report(
     # Create two-column table
     viz_table = Table([
         [left_column_content, right_column_content]
-    ], colWidths=[4.5*inch, 3.0*inch])
+    ], colWidths=[4.2*inch, 3.3*inch])
     
     viz_table.setStyle(TableStyle([
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
@@ -460,7 +462,7 @@ def save_pdf_report(
     ]))
     
     story.append(viz_table)
-    story.append(Spacer(1, 0.2*inch))
+    story.append(Spacer(1, 0.1*inch))
     
     # === FOOTER ===
     story.append(Paragraph(
