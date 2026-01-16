@@ -75,6 +75,7 @@
 - [ ] Revise PDF report.
   -[ ] General:
     - [ ] Make the report fit onto a single page.
+    - [ ] Fix formatting issues (mean MD, superscript not correctly shown)
   - [ ] Header:
     - [ ] Which space do the metrics come from? Native vs. template space? Add description.
   - [ ] Tables:
