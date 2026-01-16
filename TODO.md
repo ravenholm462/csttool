@@ -72,7 +72,14 @@
 
 ## Metrics
 
-- [ ] Revise PDF report (content, formatting, missing visuals). Wait for response from mentor.
-- [ ] Fractional anisotropy PDF - add positional markings to the x axis (i.e. brainstem at the beginning, motor cortex at the end) to make orientation easier
-- [x] Delete clinical interpretation text. It is not a clinical tool yet.
-- [ ] Add QC visualizations to the report (e.g. the isolated CST, all 3 planes, see extraction visualizations)
+- [ ] Revise PDF report.
+  -[ ] General:
+    - [ ] Make the report fit onto a single page.
+  - [ ] Header:
+    - [ ] Which space do the metrics come from? Native vs. template space? Add description.
+  - [ ] Tables:
+    - [ ] Add radial diffusivity and axial diffusivity to the table.
+  - [ ] Figures:
+    - [ ] Add a mean diffusivity profile analogous to the FA profile.
+    - [ ] For both profiles, add positional markings to the x axis (e.g. brainstem, motor cortex etc.). Think about which labels make sense and which should be included other than the ROI labels used.
+    - [ ] Think about which QC visualizations belong in the report.
