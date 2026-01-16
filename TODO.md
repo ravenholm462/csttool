@@ -72,25 +72,30 @@
 
 ## Metrics
 
-- [ ] Revise PDF report (single-page layout).
-  - [ ] **Header Block** (2-3 lines):
-    - [ ] Subject/Session ID, Date, csttool version
-    - [ ] Bold line: "Metrics Extracted In: Native Space" (explicit space declaration)
-  - [ ] **Metrics Table** (compact):
-    - [ ] Fix MD superscript formatting (×10⁻³)
-    - [ ] Add radial diffusivity (RD) and axial diffusivity (AD) columns
-    - [ ] Color-code Laterality Index values
-  - [ ] **Visualization Row** (side-by-side):
-    - [ ] Left (60% width): Stacked FA/MD profile plots
+- [x] Revise PDF report (single-page layout).
+  - [x] **Header Block** (2-3 lines):
+    - [x] Subject/Session ID, Date, csttool version
+    - [x] Bold line: "Metrics Extracted In: Native Space" (explicit space declaration)
+  - [x] **Metrics Table** (compact):
+    - [x] Fix MD superscript formatting (×10⁻³)
+    - [x] Add radial diffusivity (RD) and axial diffusivity (AD) columns
+    - [x] Color-code Laterality Index values
+  - [x] **Visualization Row** (side-by-side):
+    - [x] Left (60% width): Stacked FA/MD profile plots
       - X-axis: "Pontine Level (0%)" → "PLIC (50%)" → "Precentral Gyrus (100%)"
       - FA Y-axis: 0 to ~0.6
       - MD Y-axis: ×10⁻³ mm²/s (e.g., 0.7 to 1.1)
-    - [ ] Right (40% width): 3D tractogram QC preview
+    - [x] Right (40% width): 3D tractogram QC preview
       - Left/Right CST in different colors
       - Overlay on mid-sagittal or axial T1 slice at internal capsule level
-  - [ ] **Footer Note** (tiny font, optional):
-    - [ ] Brief method note (e.g., "Probabilistic tractography, DTI model")
-  - [ ] Minimize margins for single-page fit
+  - [x] **Footer Note** (tiny font, optional):
+    - [x] Brief method note (e.g., "Probabilistic tractography, DTI model")
+  - [x] Minimize margins for single-page fit
+
+- [ ] Implement RD/AD pipeline integration:
+  - [ ] Compute RD and AD maps in tracking module (AD=λ₁, RD=(λ₂+λ₃)/2)
+  - [ ] Add --rd and --ad CLI arguments to `csttool metrics`
+  - [ ] Pass rd_map and ad_map to `analyze_cst_hemisphere()` in `cmd_metrics()`
 
 - [ ] Implement metrics space conversion (Native ↔ MNI152 Template Space)
 - [ ] Update the .csv and .json report files to include the new metrics.
