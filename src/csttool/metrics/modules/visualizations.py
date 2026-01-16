@@ -121,21 +121,24 @@ def plot_stacked_profiles(
     subject_id
 ):
     """
-    Create stacked FA and MD profile plots for PDF report.
+    Create stacked FA, MD, RD, and AD profile plots for PDF report.
     
-    Creates a vertically stacked figure with:
-    - Top: FA profile (Left & Right CST)
-    - Bottom: MD profile (Left & Right CST)
-    Both with anatomical x-axis labels.
+    Creates a vertically stacked figure with 4 subplots (if data available):
+    - FA profile
+    - MD profile
+    - RD profile
+    - AD profile
+    
+    All have shared x-axis (anatomical labels only on bottom).
     
     Parameters
     ----------
     left_metrics : dict
-        Left hemisphere metrics with 'fa' and 'md' profiles
+        Left hemisphere metrics
     right_metrics : dict
-        Right hemisphere metrics with 'fa' and 'md' profiles
+        Right hemisphere metrics
     output_dir : str or Path
-        Output directory for saving figure
+        Output directory
     subject_id : str
         Subject identifier
         
@@ -148,78 +151,82 @@ def plot_stacked_profiles(
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     
-    # Check available scalars
-    has_fa = 'fa' in left_metrics and 'fa' in right_metrics
-    has_md = 'md' in left_metrics and 'md' in right_metrics
+    # Define metrics to plot in order
+    metrics_config = [
+        {'key': 'fa', 'title': 'Fractional Anisotropy', 'ylabel': 'FA', 'ylim': (0, 0.8), 'scale': 1},
+        {'key': 'md', 'title': 'Mean Diffusivity', 'ylabel': 'MD (×10⁻³)', 'ylim': (0.5, 1.2), 'scale': 1000},
+        {'key': 'rd', 'title': 'Radial Diffusivity', 'ylabel': 'RD (×10⁻³)', 'ylim': (0.3, 1.0), 'scale': 1000},
+        {'key': 'ad', 'title': 'Axial Diffusivity', 'ylabel': 'AD (×10⁻³)', 'ylim': (0.8, 1.8), 'scale': 1000}
+    ]
     
-    if not has_fa and not has_md:
-        print("Warning: No FA or MD profiles available")
+    # Filter available metrics
+    available_metrics = []
+    for m in metrics_config:
+        if m['key'] in left_metrics and m['key'] in right_metrics:
+            available_metrics.append(m)
+    
+    if not available_metrics:
+        print("Warning: No profiles available for stacking")
         return None
     
-    n_plots = int(has_fa) + int(has_md)
-    fig, axes = plt.subplots(n_plots, 1, figsize=(8, 3.5 * n_plots))
+    n_plots = len(available_metrics)
+    # Fixed height per plot
+    fig, axes = plt.subplots(n_plots, 1, figsize=(6, 2.2 * n_plots), sharex=True)
     
     if n_plots == 1:
         axes = [axes]
     
-    ax_idx = 0
-    
-    # Plot FA profile
-    if has_fa:
-        ax = axes[ax_idx]
-        left_profile = np.array(left_metrics['fa']['profile'])
-        right_profile = np.array(right_metrics['fa']['profile'])
+    for i, (ax, m) in enumerate(zip(axes, available_metrics)):
+        key = m['key']
+        scale = m['scale']
+        
+        left_profile = np.array(left_metrics[key]['profile']) * scale
+        right_profile = np.array(right_metrics[key]['profile']) * scale
         n_points = len(left_profile)
         x = np.linspace(0, 100, n_points)
         
         ax.plot(x, left_profile, 'b-', linewidth=2, label='Left CST', marker='o', markersize=3)
         ax.plot(x, right_profile, 'r-', linewidth=2, label='Right CST', marker='s', markersize=3)
-        ax.set_ylabel('FA', fontsize=11)
-        ax.set_ylim(0, 0.7)
-        ax.set_title('Fractional Anisotropy Profile', fontsize=12, fontweight='bold')
-        ax.legend(loc='upper right', fontsize=9)
+        
+        ax.set_ylabel(m['ylabel'], fontsize=10)
+        # Auto stats for ylim might be better, but keeping fixed range as starting point logic
+        # If 'ylim' is provided, use it, else auto
+        if 'ylim' in m:
+             # Basic check to see if data fits in default range, if not, auto-scale
+             all_data = np.concatenate([left_profile, right_profile])
+             if np.min(all_data) < m['ylim'][0] or np.max(all_data) > m['ylim'][1]:
+                 # Auto scale with margin
+                 margin = (np.max(all_data) - np.min(all_data)) * 0.1
+                 ax.set_ylim(max(0, np.min(all_data) - margin), np.max(all_data) + margin)
+             else:
+                 ax.set_ylim(m['ylim'])
+                 
+        ax.text(0.5, 0.9, m['title'], transform=ax.transAxes, fontsize=10, fontweight='bold', ha='center')
+        
         ax.grid(True, alpha=0.3)
         
-        # Add anatomical labels
-        ax.set_xticks([0, 50, 100])
-        ax.set_xticklabels(['0%', '50%', '100%'])
-        ax.text(0, -0.18, 'Pontine\nLevel', transform=ax.get_xaxis_transform(), 
-                ha='center', fontsize=8, style='italic')
-        ax.text(50, -0.18, 'PLIC', transform=ax.get_xaxis_transform(), 
-                ha='center', fontsize=8, style='italic')
-        ax.text(100, -0.18, 'Precentral\nGyrus', transform=ax.get_xaxis_transform(), 
-                ha='center', fontsize=8, style='italic')
-        
-        ax_idx += 1
+        # Only add legend to first plot
+        if i == 0:
+            ax.legend(loc='upper right', fontsize=9, framealpha=0.9)
     
-    # Plot MD profile
-    if has_md:
-        ax = axes[ax_idx]
-        left_profile = np.array(left_metrics['md']['profile']) * 1000  # Convert to ×10⁻³
-        right_profile = np.array(right_metrics['md']['profile']) * 1000
-        n_points = len(left_profile)
-        x = np.linspace(0, 100, n_points)
-        
-        ax.plot(x, left_profile, 'b-', linewidth=2, label='Left CST', marker='o', markersize=3)
-        ax.plot(x, right_profile, 'r-', linewidth=2, label='Right CST', marker='s', markersize=3)
-        ax.set_ylabel('MD (×10⁻³ mm²/s)', fontsize=11)
-        ax.set_ylim(0.6, 1.2)
-        ax.set_title('Mean Diffusivity Profile', fontsize=12, fontweight='bold')
-        ax.legend(loc='upper right', fontsize=9)
-        ax.grid(True, alpha=0.3)
-        
-        # Add anatomical labels (only on bottom plot)
-        ax.set_xticks([0, 50, 100])
-        ax.set_xticklabels(['0%', '50%', '100%'])
-        ax.text(0, -0.18, 'Pontine\nLevel', transform=ax.get_xaxis_transform(), 
-                ha='center', fontsize=8, style='italic')
-        ax.text(50, -0.18, 'PLIC', transform=ax.get_xaxis_transform(), 
-                ha='center', fontsize=8, style='italic')
-        ax.text(100, -0.18, 'Precentral\nGyrus', transform=ax.get_xaxis_transform(), 
-                ha='center', fontsize=8, style='italic')
+    # Shared X-axis formatting (only on bottom plot)
+    axes[-1].set_xticks([0, 50, 100])
+    axes[-1].set_xticklabels(['0%', '50%', '100%'])
     
+    # Add anatomical annotations
+    # Create transform for the bottom axis
+    trans = axes[-1].get_xaxis_transform()
+    
+    axes[-1].text(0, -0.3, 'Pontine\nLevel', transform=trans, 
+            ha='center', fontsize=9, style='italic')
+    axes[-1].text(50, -0.3, 'PLIC', transform=trans, 
+            ha='center', fontsize=9, style='italic')
+    axes[-1].text(100, -0.3, 'Precentral\nGyrus', transform=trans, 
+            ha='center', fontsize=9, style='italic')
+            
     plt.tight_layout()
-    plt.subplots_adjust(hspace=0.4, bottom=0.12)
+    # Increase bottom margin to prevent x-axis overlap
+    plt.subplots_adjust(hspace=0.2, bottom=0.15)  # Minimize vertical space between plots
     
     fig_path = output_dir / f"{subject_id}_stacked_profiles.png"
     plt.savefig(fig_path, dpi=150, bbox_inches='tight')
@@ -290,6 +297,13 @@ def plot_tractogram_qc_preview(
     
     # Display background
     ax.imshow(bg_slice, cmap='gray', origin='lower', aspect='equal')
+
+    # Adjust figure size to match data aspect ratio
+    # logical_height / logical_width
+    data_ratio = bg_slice.shape[0] / bg_slice.shape[1]
+    
+    # Set fixed width of 4 inches and adjust height
+    fig.set_size_inches(4, 4 * data_ratio)
     
     # Project streamlines onto slice
     def project_streamlines(streamlines, color, alpha=0.6):
@@ -344,7 +358,7 @@ def plot_tractogram_qc_preview(
     
     plt.tight_layout()
     
-    fig_path = output_dir / f"{subject_id}_tractogram_qc.png"
+    fig_path = output_dir / f"{subject_id}_tractogram_qc_{slice_type}.png"
     plt.savefig(fig_path, dpi=150, bbox_inches='tight', facecolor='white')
     plt.close()
     

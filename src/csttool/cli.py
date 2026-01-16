@@ -344,6 +344,12 @@ def main() -> None:
         help="Subject identifier for reports"
     )
     p_metrics.add_argument(
+        "--space",
+        type=str,
+        default="Native Space",
+        help="Space declaration for report header (default: Native Space)"
+    )
+    p_metrics.add_argument(
         "--generate-pdf",
         action="store_true",
         help="Generate PDF clinical report"
@@ -391,6 +397,12 @@ def main() -> None:
         type=str,
         default=None,
         help="Subject identifier for all outputs"
+    )
+    p_run.add_argument(
+        "--space",
+        type=str,
+        default="Native Space",
+        help="Space declaration for report header (default: Native Space)"
     )
     
     # Import options
@@ -1564,15 +1576,17 @@ def cmd_metrics(args: argparse.Namespace) -> dict | None:
                  bg_affine = None
             
             if bg_img is not None:
-                viz_paths['tractogram_qc'] = plot_tractogram_qc_preview(
-                    streamlines_left,
-                    streamlines_right,
-                    bg_img,
-                    bg_affine,
-                    viz_dir,
-                    args.subject_id
-                )
-                print(f"✓ Tractogram QC: {viz_paths['tractogram_qc']}")
+                for view in ['axial', 'sagittal', 'coronal']:
+                    viz_paths[f'tractogram_qc_{view}'] = plot_tractogram_qc_preview(
+                        streamlines_left,
+                        streamlines_right,
+                        bg_img,
+                        bg_affine,
+                        viz_dir,
+                        args.subject_id,
+                        slice_type=view
+                    )
+                    print(f"✓ Tractogram QC ({view}): {viz_paths[f'tractogram_qc_{view}']}")
         except Exception as e:
             print(f"Warning: Could not generate tractogram QC: {e}")
     
@@ -1587,14 +1601,86 @@ def cmd_metrics(args: argparse.Namespace) -> dict | None:
     
     # Summary
     print(f"\n{'='*60}")
+    try:
+        if args.generate_pdf:
+            # Generate visualizations for PDF
+            viz_dir = args.out / "visualizations"
+            viz_dir.mkdir(parents=True, exist_ok=True)
+            
+            pdf_viz_paths = {}
+            
+            # Stacked profiles (FA/MD/RD/AD)
+            if 'stacked_profiles' in available_viz_funcs:
+                pdf_viz_paths['stacked_profiles'] = available_viz_funcs['stacked_profiles'](
+                    comparison['left'],
+                    comparison['right'],
+                    viz_dir,
+                    args.subject_id
+                )
+            elif 'plot_stacked_profiles' in locals():
+                pdf_viz_paths['stacked_profiles'] = plot_stacked_profiles(
+                    comparison['left'],
+                    comparison['right'],
+                    viz_dir,
+                    args.subject_id
+                )
+            
+            # Tractogram QC
+            if 'tractogram_qc' in available_viz_funcs:
+                 # Generate all 3 views
+                pdf_viz_paths['tractogram_qc_axial'] = available_viz_funcs['tractogram_qc'](
+                    streamlines_left, streamlines_right, 
+                    fa_map if fa_map is not None else sft_left.get_data(), # fallback?
+                    affine, viz_dir, args.subject_id, 'axial'
+                )
+                pdf_viz_paths['tractogram_qc_sagittal'] = available_viz_funcs['tractogram_qc'](
+                    streamlines_left, streamlines_right, 
+                    fa_map if fa_map is not None else sft_left.get_data(),
+                    affine, viz_dir, args.subject_id, 'sagittal'
+                )
+                pdf_viz_paths['tractogram_qc_coronal'] = available_viz_funcs['tractogram_qc'](
+                    streamlines_left, streamlines_right, 
+                    fa_map if fa_map is not None else sft_left.get_data(),
+                    affine, viz_dir, args.subject_id, 'coronal'
+                )
+            elif 'plot_tractogram_qc_preview' in locals():
+                 pdf_viz_paths['tractogram_qc_axial'] = plot_tractogram_qc_preview(
+                    streamlines_left, streamlines_right, 
+                    fa_map if fa_map is not None else np.zeros((10,10,10)), # Fail safe
+                    affine, viz_dir, args.subject_id, 'axial'
+                )
+                 pdf_viz_paths['tractogram_qc_sagittal'] = plot_tractogram_qc_preview(
+                    streamlines_left, streamlines_right, 
+                    fa_map if fa_map is not None else np.zeros((10,10,10)),
+                    affine, viz_dir, args.subject_id, 'sagittal'
+                )
+                 pdf_viz_paths['tractogram_qc_coronal'] = plot_tractogram_qc_preview(
+                    streamlines_left, streamlines_right, 
+                    fa_map if fa_map is not None else np.zeros((10,10,10)),
+                    affine, viz_dir, args.subject_id, 'coronal'
+                )
+
+            pdf_path = save_pdf_report(
+                comparison, 
+                pdf_viz_paths, 
+                args.out, 
+                args.subject_id,
+                space=getattr(args, 'space', "Native Space")
+            )
+            print(f"✓ PDF report: {pdf_path}")
+    except Exception as e:
+        print(f"Error saving PDF report: {e}")
+        import traceback
+        traceback.print_exc()
+
     print("METRICS COMPLETE")
     print(f"{'='*60}")
     print(f"Subject: {args.subject_id}")
     print(f"\nMorphology:")
     print(f"  Left CST:  {left_metrics['morphology']['n_streamlines']:,} streamlines, "
-          f"volume = {left_metrics['morphology']['tract_volume']:.0f} mm³")
+          f"volume = {left_metrics['morphology']['tract_volume']/1000:.2f} cm³")
     print(f"  Right CST: {right_metrics['morphology']['n_streamlines']:,} streamlines, "
-          f"volume = {right_metrics['morphology']['tract_volume']:.0f} mm³")
+          f"volume = {right_metrics['morphology']['tract_volume']/1000:.2f} cm³")
     
     if 'fa' in left_metrics:
         print(f"\nFA:")
@@ -2096,7 +2182,8 @@ def cmd_run(args: argparse.Namespace) -> None:
             generate_pdf=getattr(args, 'generate_pdf', False),
             save_visualizations=getattr(args, 'save_visualizations', False),
             verbose=verbose,
-            out=metrics_out
+            out=metrics_out,
+            space=getattr(args, 'space', "Native Space")
         )
         
         metrics_result = cmd_metrics(metrics_args)

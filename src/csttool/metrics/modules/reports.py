@@ -161,7 +161,8 @@ def save_pdf_report(
     visualization_paths,
     output_dir,
     subject_id,
-    version=None
+    version=None,
+    space="Native Space"
 ):
     """
     Generate single-page clinical PDF report with metrics and visualizations.
@@ -177,13 +178,15 @@ def save_pdf_report(
     comparison : dict
         Output from compare_bilateral_cst()
     visualization_paths : dict
-        Paths to generated visualization figures (stacked_profiles, tractogram_qc)
+        Paths to generated visualization figures (stacked_profiles, tractogram_qc_*)
     output_dir : str or Path
         Output directory
     subject_id : str
         Subject identifier
     version : str
         csttool version string
+    space : str
+        Space declaration (e.g. "Native Space", "MNI152")
         
     Returns
     -------
@@ -276,10 +279,10 @@ def save_pdf_report(
         f"Subject: {subject_id} | Date: {datetime.now().strftime('%Y-%m-%d')} | csttool v{version}",
         header_style
     ))
-    story.append(Paragraph("<b>Metrics Extracted In: Native Space</b>", space_style))
+    story.append(Paragraph(f"<b>Metrics Extracted In: {space}</b>", space_style))
     story.append(Spacer(1, 0.1*inch))
     
-    # === METRICS TABLE ===
+    # === METRICS TABLE - FIXED VERSION ===
     story.append(Paragraph("Summary Metrics", heading_style))
     
     left = comparison['left']
@@ -295,124 +298,165 @@ def save_pdf_report(
         else:
             return f"<font color='red'>{li_value:+.3f}</font>"
     
-    # Build table data with Paragraphs for formatting
+    # Build table data - FIX COLUMN HEADERS
     table_data = [
-        [
-            Paragraph('<b>Metric</b>', styles['Normal']),
-            Paragraph('<b>Left</b>', styles['Normal']),
-            Paragraph('<b>Right</b>', styles['Normal']),
-            Paragraph('<b>LI</b>', styles['Normal'])
-        ],
-        [
-            'Streamlines',
-            str(left['morphology']['n_streamlines']),
-            str(right['morphology']['n_streamlines']),
-            Paragraph(format_li(asym['streamline_count']['laterality_index']), styles['Normal'])
-        ],
-        [
-            'Volume (mm³)',
-            f"{left['morphology']['tract_volume']:.0f}",
-            f"{right['morphology']['tract_volume']:.0f}",
-            Paragraph(format_li(asym['volume']['laterality_index']), styles['Normal'])
-        ],
-        [
-            'Length (mm)',
-            f"{left['morphology']['mean_length']:.1f}",
-            f"{right['morphology']['mean_length']:.1f}",
-            Paragraph(format_li(asym['mean_length']['laterality_index']), styles['Normal'])
-        ]
+        ['Metric', 'Left', 'Right', 'LI'],  # Simple strings, not Paragraphs for headers
     ]
     
+    # Add rows - ensure proper formatting
+    header = Paragraph("Streamlines", styles['Normal']) 
+    table_data.append([
+        header,
+        str(left['morphology']['n_streamlines']),
+        str(right['morphology']['n_streamlines']),
+        Paragraph(format_li(asym['streamline_count']['laterality_index']), styles['Normal'])
+    ])
+    
+    # Convert volume from mm³ to cm³ correctly
+    left_volume_cm3 = left['morphology']['tract_volume'] / 1000.0
+    right_volume_cm3 = right['morphology']['tract_volume'] / 1000.0
+    
+    header = Paragraph("Volume (cm³)", styles['Normal'])
+    table_data.append([
+        header,
+        f"{left_volume_cm3:.2f}",
+        f"{right_volume_cm3:.2f}",
+        Paragraph(format_li(asym['volume']['laterality_index']), styles['Normal'])
+    ])
+    
+    header = Paragraph("Length (mm)", styles['Normal'])
+    table_data.append([
+        header,
+        f"{left['morphology']['mean_length']:.1f}",
+        f"{right['morphology']['mean_length']:.1f}",
+        Paragraph(format_li(asym['mean_length']['laterality_index']), styles['Normal'])
+    ])
+    
+    # Add diffusion metrics if available
     if 'fa' in left:
+        header = Paragraph("FA", styles['Normal'])
         table_data.append([
-            'Mean FA',
+            header,
             f"{left['fa']['mean']:.3f}",
             f"{right['fa']['mean']:.3f}",
             Paragraph(format_li(asym['fa']['laterality_index']), styles['Normal'])
         ])
     
     if 'md' in left:
+        # MD is typically in ×10⁻³ mm²/s
+        header = Paragraph("MD (×10<sup>-3</sup> mm<sup>2</sup>/s)", styles['Normal'])
         table_data.append([
-            Paragraph('MD (×10<super>-3</super>)', styles['Normal']),
+            header,
             f"{left['md']['mean']*1000:.2f}",
             f"{right['md']['mean']*1000:.2f}",
             Paragraph(format_li(asym['md']['laterality_index']), styles['Normal'])
         ])
     
     if 'rd' in left:
+        header = Paragraph("RD (×10<sup>-3</sup> mm<sup>2</sup>/s)", styles['Normal'])
         table_data.append([
-            Paragraph('RD (×10<super>-3</super>)', styles['Normal']),
+            header,
             f"{left['rd']['mean']*1000:.2f}",
             f"{right['rd']['mean']*1000:.2f}",
             Paragraph(format_li(asym['rd']['laterality_index']), styles['Normal'])
         ])
     
     if 'ad' in left:
+        header = Paragraph("AD (×10<sup>-3</sup> mm<sup>2</sup>/s)", styles['Normal'])
         table_data.append([
-            Paragraph('AD (×10<super>-3</super>)', styles['Normal']),
+            header,
             f"{left['ad']['mean']*1000:.2f}",
             f"{right['ad']['mean']*1000:.2f}",
             Paragraph(format_li(asym['ad']['laterality_index']), styles['Normal'])
         ])
     
-    table = Table(table_data, colWidths=[1.8*inch, 1.0*inch, 1.0*inch, 0.8*inch])
+    # Legend row - FIX: Use proper string formatting
+    table_data.append([
+        Paragraph("Legend: <font color='blue'>Left>Right</font>, <font color='red'>Right>Left</font>", 
+                 ParagraphStyle('Legend', parent=styles['Normal'], fontSize=8)),
+        '', '', ''
+    ])
+    
+    # Create table with adjusted column widths
+    col_widths = [1.8*inch, 1.2*inch, 1.2*inch, 0.8*inch]
+    table = Table(table_data, colWidths=col_widths, repeatRows=1)
+    
+    # Apply table style
     table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4CAF50')),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 9),
-        ('FONTSIZE', (0, 1), (-1, -1), 8),
+        ('FONTSIZE', (0, 0), (-1, 0), 10),
+        ('FONTSIZE', (0, 1), (-1, -2), 9),  # All data rows except legend
         ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
-        ('TOPPADDING', (0, 1), (-1, -1), 4),
-        ('BOTTOMPADDING', (0, 1), (-1, -1), 4),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.Color(0.95, 0.95, 0.95)]),
+        ('TOPPADDING', (0, 1), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 1), (-1, -1), 6),
+        ('GRID', (0, 0), (-1, -2), 0.5, colors.grey),
+        ('SPAN', (0, -1), (-1, -1)),  # Legend spans all columns
+        ('ALIGN', (0, -1), (-1, -1), 'LEFT'),
+        ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#F5F5F5')),
     ]))
     
     story.append(table)
-    story.append(Spacer(1, 0.15*inch))
+    story.append(Spacer(1, 0.2*inch))
     
-    # === VISUALIZATION ROW (side-by-side) ===
+        # === VISUALIZATION ROW - FIXED VERSION ===
     story.append(Paragraph("Visualizations", heading_style))
     
-    viz_row_data = [[]]
+    # Create a two-column layout
+    viz_data = []
     
-    # Left: Stacked profiles (60% width)
+    # Left column: Stacked profiles
+    left_column_content = []
     if visualization_paths and 'stacked_profiles' in visualization_paths:
         profile_path = visualization_paths['stacked_profiles']
         if profile_path and Path(profile_path).exists():
             try:
-                profile_img = Image(str(profile_path), width=4.2*inch, height=3.5*inch)
-                viz_row_data[0].append(profile_img)
+                # Scale image to fit within column
+                profile_img = Image(str(profile_path), width=4.0*inch, height=6.0*inch)
+                left_column_content.append(profile_img)
             except Exception as e:
                 print(f"⚠️  Could not add profile image: {e}")
-                viz_row_data[0].append(Paragraph("Profile plot unavailable", styles['Normal']))
+                left_column_content.append(Paragraph("Profile plot unavailable", styles['Normal']))
         else:
-            viz_row_data[0].append(Paragraph("Profile plot unavailable", styles['Normal']))
+            left_column_content.append(Paragraph("Profile plot not found", styles['Normal']))
     else:
-        viz_row_data[0].append(Paragraph("Profile plot unavailable", styles['Normal']))
+        left_column_content.append(Paragraph("Profile plot unavailable", styles['Normal']))
     
-    # Right: Tractogram QC (40% width)
-    if visualization_paths and 'tractogram_qc' in visualization_paths:
-        tractogram_path = visualization_paths['tractogram_qc']
-        if tractogram_path and Path(tractogram_path).exists():
-            try:
-                tractogram_img = Image(str(tractogram_path), width=2.8*inch, height=2.8*inch)
-                viz_row_data[0].append(tractogram_img)
-            except Exception as e:
-                print(f"⚠️  Could not add tractogram image: {e}")
-                viz_row_data[0].append(Paragraph("Tractogram unavailable", styles['Normal']))
-        else:
-            viz_row_data[0].append(Paragraph("Tractogram unavailable", styles['Normal']))
-    else:
-        viz_row_data[0].append(Paragraph("Tractogram unavailable", styles['Normal']))
+    # Right column: QC images stacked vertically
+    right_column_content = []
+    qc_views = ['axial', 'sagittal', 'coronal']
+    qc_images_added = 0
     
-    viz_table = Table(viz_row_data, colWidths=[4.4*inch, 3.0*inch])
+    for view in qc_views:
+        key = f'tractogram_qc_{view}'
+        if visualization_paths and key in visualization_paths:
+            img_path = visualization_paths[key]
+            if img_path and Path(img_path).exists():
+                try:
+                    # Scale QC images appropriately
+                    img = Image(str(img_path), width=2.5*inch, height=2.0*inch)
+                    right_column_content.append(img)
+                    right_column_content.append(Spacer(1, 0.1*inch))  # Small space between images
+                    qc_images_added += 1
+                except Exception as e:
+                    print(f"⚠️  Could not add {view} QC image: {e}")
+    
+    if qc_images_added == 0:
+        right_column_content.append(Paragraph("Tractogram visualizations unavailable", styles['Normal']))
+    
+    # Create two-column table
+    viz_table = Table([
+        [left_column_content, right_column_content]
+    ], colWidths=[4.5*inch, 3.0*inch])
+    
     viz_table.setStyle(TableStyle([
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 5),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 5),
     ]))
     
     story.append(viz_table)
@@ -438,7 +482,8 @@ def generate_complete_report(
     output_dir,
     subject_id,
     background_image=None,
-    version=None
+    version=None,
+    space="Native Space"
 ):
     """
     Generate all report formats: JSON, CSV, and PDF with visualizations.
@@ -503,16 +548,17 @@ def generate_complete_report(
         subject_id
     )
     
-    # Tractogram QC preview for PDF
-    pdf_viz_paths['tractogram_qc'] = plot_tractogram_qc_preview(
-        streamlines_left,
-        streamlines_right,
-        background_image,
-        affine,
-        viz_dir,
-        subject_id,
-        slice_type='axial'
-    )
+    # Tractogram QC preview for PDF (Axial, Sagittal, Coronal)
+    for view in ['axial', 'sagittal', 'coronal']:
+        pdf_viz_paths[f'tractogram_qc_{view}'] = plot_tractogram_qc_preview(
+            streamlines_left,
+            streamlines_right,
+            background_image,
+            affine,
+            viz_dir,
+            subject_id,
+            slice_type=view
+        )
     
     # Also generate individual plots for detailed analysis
     viz_paths = {}
@@ -558,7 +604,7 @@ def generate_complete_report(
     report_paths = {
         'json': save_json_report(comparison, output_dir, subject_id),
         'csv': save_csv_summary(comparison, output_dir, subject_id),
-        'pdf': save_pdf_report(comparison, pdf_viz_paths, output_dir, subject_id, version),
+        'pdf': save_pdf_report(comparison, pdf_viz_paths, output_dir, subject_id, version, space),
         'visualizations': viz_paths
     }
     
