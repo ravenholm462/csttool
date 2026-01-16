@@ -75,19 +75,28 @@
 - [x] Revise PDF report (single-page layout).
   - [x] **Header Block** (2-3 lines):
     - [x] Subject/Session ID, Date, csttool version
-    - [x] Bold line: "Metrics Extracted In: Native Space" (explicit space declaration)
+    - [ ] Bold line: "Metrics Extracted In: {space}" (explicit space declaration)
+      - [ ] Current declaration hardcoded. Fix.
   - [x] **Metrics Table** (compact):
     - [x] Fix MD superscript formatting (×10⁻³)
     - [x] Add radial diffusivity (RD) and axial diffusivity (AD) columns
     - [x] Color-code Laterality Index values
+    - [ ] Add color code legend.
+    - [ ] Fix font and size mismatch in "Metrics" column
+  - [ ] Volume: transform mm^3 to cm^3.
   - [x] **Visualization Row** (side-by-side):
     - [x] Left (60% width): Stacked FA/MD profile plots
       - X-axis: "Pontine Level (0%)" → "PLIC (50%)" → "Precentral Gyrus (100%)"
       - FA Y-axis: 0 to ~0.6
       - MD Y-axis: ×10⁻³ mm²/s (e.g., 0.7 to 1.1)
+      - [ ] Add RD profile (analog to FA and MD)
+      - [ ] Add AD profile (analog to FA and MD)
+      - [ ] Make x axis shared between the plots.
     - [x] Right (40% width): 3D tractogram QC preview
       - Left/Right CST in different colors
       - Overlay on mid-sagittal or axial T1 slice at internal capsule level
+      - [ ] Add sagittal view (analog to axial)
+      - [ ] Add coronal view (analog to axial)
   - [x] **Footer Note** (tiny font, optional):
     - [x] Brief method note (e.g., "Probabilistic tractography, DTI model")
   - [x] Minimize margins for single-page fit
