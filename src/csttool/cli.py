@@ -1380,6 +1380,8 @@ def cmd_metrics(args: argparse.Namespace) -> dict | None:
             print_bilateral_summary,
             plot_tract_profiles,
             plot_bilateral_comparison,
+            plot_stacked_profiles,
+            plot_tractogram_qc_preview,
         )
         from csttool.metrics.modules.reports import (
             save_json_report,
@@ -1538,6 +1540,41 @@ def cmd_metrics(args: argparse.Namespace) -> dict | None:
         print(f"✓ Bilateral comparison: {viz_paths['bilateral_comparison']}")
     except Exception as e:
         print(f"Warning: Could not generate bilateral comparison: {e}")
+
+    # Generate additional visualizations for PDF if requested
+    if getattr(args, 'generate_pdf', False) or getattr(args, 'save_visualizations', False):
+        try:
+            viz_paths['stacked_profiles'] = plot_stacked_profiles(
+                left_metrics, right_metrics, viz_dir, args.subject_id
+            )
+            print(f"✓ Stacked profiles: {viz_paths['stacked_profiles']}")
+        except Exception as e:
+            print(f"Warning: Could not generate stacked profiles: {e}")
+            
+        try:
+            # For QC preview, we need background image (FA) and affine
+            # If FA is not available, we can try to use a dummy or skip
+            if fa_map is not None:
+                bg_img = fa_map
+                bg_affine = affine
+            else:
+                 # TODO: Handle case where FA is missing more gracefully if possible
+                 # For now, skip if no background
+                 bg_img = None
+                 bg_affine = None
+            
+            if bg_img is not None:
+                viz_paths['tractogram_qc'] = plot_tractogram_qc_preview(
+                    streamlines_left,
+                    streamlines_right,
+                    bg_img,
+                    bg_affine,
+                    viz_dir,
+                    args.subject_id
+                )
+                print(f"✓ Tractogram QC: {viz_paths['tractogram_qc']}")
+        except Exception as e:
+            print(f"Warning: Could not generate tractogram QC: {e}")
     
     # Generate PDF if requested
     pdf_path = None

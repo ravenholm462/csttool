@@ -31,7 +31,9 @@ from .modules.visualizations import (
     plot_bilateral_comparison,
     plot_3d_streamlines,
     create_summary_figure,
-    plot_asymmetry_radar
+    plot_asymmetry_radar,
+    plot_stacked_profiles,
+    plot_tractogram_qc_preview,
 )
 
 __all__ = [
@@ -55,4 +57,6 @@ __all__ = [
     'plot_3d_streamlines',
     'create_summary_figure',
     'plot_asymmetry_radar',
+    'plot_stacked_profiles',
+    'plot_tractogram_qc_preview',
 ]
