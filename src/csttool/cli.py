@@ -328,6 +328,16 @@ def main() -> None:
         help="MD map for microstructural analysis"
     )
     p_metrics.add_argument(
+        "--rd",
+        type=Path,
+        help="RD (radial diffusivity) map for microstructural analysis"
+    )
+    p_metrics.add_argument(
+        "--ad",
+        type=Path,
+        help="AD (axial diffusivity) map for microstructural analysis"
+    )
+    p_metrics.add_argument(
         "--subject-id",
         type=str,
         default="subject",
@@ -1005,9 +1015,9 @@ def cmd_track(args: argparse.Namespace) -> dict | None:
     )
 
     # Step 2: Tensor fitting
-    print("\nStep 2: Tensor fit and scalar measures (FA, MD)")
+    print("\nStep 2: Tensor fit and scalar measures (FA, MD, RD, AD)")
     try:
-        tenfit, fa, md, white_matter = fit_tensors(
+        tenfit, fa, md, rd, ad, white_matter = fit_tensors(
             masked_data, 
             gtab, 
             brain_mask,
@@ -1088,6 +1098,8 @@ def cmd_track(args: argparse.Namespace) -> dict | None:
             affine,
             out_dir=args.out,
             stem=stem,
+            rd=rd,
+            ad=ad,
             tracking_params=tracking_params,
             verbose=verbose
         )
@@ -1128,6 +1140,8 @@ def cmd_track(args: argparse.Namespace) -> dict | None:
         'tractogram_path': outputs['tractogram'],
         'fa_path': outputs['fa_map'],
         'md_path': outputs['md_map'],
+        'rd_path': outputs.get('rd_map'),  # May be None if not computed
+        'ad_path': outputs.get('ad_map'),  # May be None if not computed
         'n_streamlines': len(streamlines),
         'stem': stem
     }
@@ -1413,6 +1427,24 @@ def cmd_metrics(args: argparse.Namespace) -> dict | None:
         else:
             print(f"Warning: MD map not found: {args.md}")
     
+    # Load RD and AD maps if provided
+    rd_map = None
+    ad_map = None
+    
+    if getattr(args, 'rd', None):
+        if args.rd.exists():
+            print(f"Loading RD map: {args.rd}")
+            rd_map, _ = load_nifti(str(args.rd))
+        else:
+            print(f"Warning: RD map not found: {args.rd}")
+    
+    if getattr(args, 'ad', None):
+        if args.ad.exists():
+            print(f"Loading AD map: {args.ad}")
+            ad_map, _ = load_nifti(str(args.ad))
+        else:
+            print(f"Warning: AD map not found: {args.ad}")
+    
     affine = fa_affine if fa_affine is not None else sft_left.affine
     
     # Analyze hemispheres
@@ -1424,6 +1456,8 @@ def cmd_metrics(args: argparse.Namespace) -> dict | None:
             streamlines=streamlines_left,
             fa_map=fa_map,
             md_map=md_map,
+            rd_map=rd_map,
+            ad_map=ad_map,
             affine=affine,
             hemisphere='left'
         )
@@ -1441,6 +1475,8 @@ def cmd_metrics(args: argparse.Namespace) -> dict | None:
             streamlines=streamlines_right,
             fa_map=fa_map,
             md_map=md_map,
+            rd_map=rd_map,
+            ad_map=ad_map,
             affine=affine,
             hemisphere='right'
         )
@@ -1891,6 +1927,8 @@ def cmd_run(args: argparse.Namespace) -> None:
     tractogram_path = None
     fa_path = None
     md_path = None
+    rd_path = None
+    ad_path = None
     
     try:
         if preproc_path is None:
@@ -1916,6 +1954,9 @@ def cmd_run(args: argparse.Namespace) -> None:
             tractogram_path = Path(track_result['tractogram_path'])
             fa_path = Path(track_result['fa_path'])
             md_path = Path(track_result['md_path'])
+            # RD and AD maps (if available)
+            rd_path = Path(track_result['rd_path']) if 'rd_path' in track_result else None
+            ad_path = Path(track_result['ad_path']) if 'ad_path' in track_result else None
             step_results['track'] = {'success': True, 'result': track_result}
         else:
             raise RuntimeError("Tracking failed")
@@ -2012,6 +2053,8 @@ def cmd_run(args: argparse.Namespace) -> None:
             cst_right=cst_right_path,
             fa=fa_path,
             md=md_path,
+            rd=rd_path,
+            ad=ad_path,
             subject_id=subject_id,
             generate_pdf=getattr(args, 'generate_pdf', False),
             save_visualizations=getattr(args, 'save_visualizations', False),

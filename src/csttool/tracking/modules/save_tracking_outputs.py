@@ -1,4 +1,4 @@
-def save_tracking_outputs(streamlines, img, fa, md, affine, out_dir, stem, tracking_params=None, verbose=False):
+def save_tracking_outputs(streamlines, img, fa, md, affine, out_dir, stem, rd=None, ad=None, tracking_params=None, verbose=False):
     """Save tractography outputs: tractogram, scalar maps, and processing report.
     
     Args:
@@ -9,6 +9,8 @@ def save_tracking_outputs(streamlines, img, fa, md, affine, out_dir, stem, track
         affine (ndarray): 4x4 affine transformation matrix.
         out_dir (str or Path): Output directory.
         stem (str): Subject/scan identifier for filenames.
+        rd (ndarray, optional): Radial diffusivity map (X, Y, Z).
+        ad (ndarray, optional): Axial diffusivity map (X, Y, Z).
         tracking_params (dict): Parameters used for tracking (for reproducibility).
         verbose (bool): Print processing details.
         
@@ -17,6 +19,8 @@ def save_tracking_outputs(streamlines, img, fa, md, affine, out_dir, stem, track
             - tractogram: Path to .trk file
             - fa_map: Path to FA NIfTI
             - md_map: Path to MD NIfTI
+            - rd_map: Path to RD NIfTI (if provided)
+            - ad_map: Path to AD NIfTI (if provided)
             - report: Path to JSON report
     """
     from pathlib import Path
@@ -66,7 +70,25 @@ def save_tracking_outputs(streamlines, img, fa, md, affine, out_dir, stem, track
     if verbose:
         print(f"MD map: {md_path}")
     
-    # 4. Compute statistics for report
+    # 4. Save RD map (if provided)
+    if rd is not None:
+        rd_path = scalar_dir / f"{stem}_rd.nii.gz"
+        nib.save(nib.Nifti1Image(rd.astype(np.float32), affine), rd_path)
+        outputs['rd_map'] = rd_path
+        
+        if verbose:
+            print(f"RD map: {rd_path}")
+    
+    # 5. Save AD map (if provided)
+    if ad is not None:
+        ad_path = scalar_dir / f"{stem}_ad.nii.gz"
+        nib.save(nib.Nifti1Image(ad.astype(np.float32), affine), ad_path)
+        outputs['ad_map'] = ad_path
+        
+        if verbose:
+            print(f"AD map: {ad_path}")
+    
+    # 6. Compute statistics for report
     lengths = np.array([length(s) for s in streamlines]) if len(streamlines) > 0 else np.array([])
     
     fa_valid = fa[fa > 0]
@@ -75,6 +97,39 @@ def save_tracking_outputs(streamlines, img, fa, md, affine, out_dir, stem, track
     # Default tracking parameters if not provided
     if tracking_params is None:
         tracking_params = {}
+    
+    scalar_stats = {
+        'fa_mean': float(fa_valid.mean()) if len(fa_valid) > 0 else 0.0,
+        'fa_std': float(fa_valid.std()) if len(fa_valid) > 0 else 0.0,
+        'fa_median': float(np.median(fa_valid)) if len(fa_valid) > 0 else 0.0,
+        'md_mean': float(md_valid.mean()) if len(md_valid) > 0 else 0.0,
+        'md_std': float(md_valid.std()) if len(md_valid) > 0 else 0.0,
+        'md_median': float(np.median(md_valid)) if len(md_valid) > 0 else 0.0,
+    }
+    
+    # Add RD stats if available
+    if rd is not None:
+        rd_valid = rd[rd > 0]
+        scalar_stats['rd_mean'] = float(rd_valid.mean()) if len(rd_valid) > 0 else 0.0
+        scalar_stats['rd_std'] = float(rd_valid.std()) if len(rd_valid) > 0 else 0.0
+        scalar_stats['rd_median'] = float(np.median(rd_valid)) if len(rd_valid) > 0 else 0.0
+    
+    # Add AD stats if available
+    if ad is not None:
+        ad_valid = ad[ad > 0]
+        scalar_stats['ad_mean'] = float(ad_valid.mean()) if len(ad_valid) > 0 else 0.0
+        scalar_stats['ad_std'] = float(ad_valid.std()) if len(ad_valid) > 0 else 0.0
+        scalar_stats['ad_median'] = float(np.median(ad_valid)) if len(ad_valid) > 0 else 0.0
+    
+    output_files = {
+        'tractogram': str(tractogram_path),
+        'fa_map': str(fa_path),
+        'md_map': str(md_path),
+    }
+    if rd is not None:
+        output_files['rd_map'] = str(outputs['rd_map'])
+    if ad is not None:
+        output_files['ad_map'] = str(outputs['ad_map'])
     
     report = {
         'processing_info': {
@@ -105,22 +160,11 @@ def save_tracking_outputs(streamlines, img, fa, md, affine, out_dir, stem, track
             'length_max_mm': float(lengths.max()) if len(lengths) > 0 else 0.0,
             'length_median_mm': float(np.median(lengths)) if len(lengths) > 0 else 0.0,
         },
-        'scalar_stats': {
-            'fa_mean': float(fa_valid.mean()) if len(fa_valid) > 0 else 0.0,
-            'fa_std': float(fa_valid.std()) if len(fa_valid) > 0 else 0.0,
-            'fa_median': float(np.median(fa_valid)) if len(fa_valid) > 0 else 0.0,
-            'md_mean': float(md_valid.mean()) if len(md_valid) > 0 else 0.0,
-            'md_std': float(md_valid.std()) if len(md_valid) > 0 else 0.0,
-            'md_median': float(np.median(md_valid)) if len(md_valid) > 0 else 0.0,
-        },
-        'output_files': {
-            'tractogram': str(tractogram_path),
-            'fa_map': str(fa_path),
-            'md_map': str(md_path),
-        }
+        'scalar_stats': scalar_stats,
+        'output_files': output_files
     }
     
-    # 5. Save report
+    # 7. Save report
     report_path = log_dir / f"{stem}_tracking_report.json"
     with open(report_path, 'w') as f:
         json.dump(report, f, indent=2)

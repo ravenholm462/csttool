@@ -40,7 +40,7 @@ print(f"Time: {time() - t0:.1f}s")
 # Step 2: Fit tensors
 print("\n[2/6] TENSOR FITTING")
 t0 = time()
-tenfit, fa, md, white_matter = fit_tensors(
+tenfit, fa, md, rd, ad, white_matter = fit_tensors(
     masked_data, gtab, brain_mask,
     fa_thresh=tracking_params['fa_thresh'],
     verbose=True
@@ -85,6 +85,8 @@ outputs = save_tracking_outputs(
     streamlines, img, fa, md, affine,
     out_dir=out_dir,
     stem=nii_fname,
+    rd=rd,
+    ad=ad,
     tracking_params=tracking_params,
     verbose=True
 )

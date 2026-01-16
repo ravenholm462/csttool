@@ -1,5 +1,5 @@
 def fit_tensors(data, gtab, brain_mask, fa_thresh=0.2, visualize=False, verbose=False):
-    """Fit diffusion tensor model and compute scalar maps (FA, MD) plus white matter mask.
+    """Fit diffusion tensor model and compute scalar maps (FA, MD, RD, AD) plus white matter mask.
     
     Args:
         data (ndarray): 4D DWI data array (X, Y, Z, N).
@@ -10,13 +10,15 @@ def fit_tensors(data, gtab, brain_mask, fa_thresh=0.2, visualize=False, verbose=
         verbose (bool): Print processing details.
         
     Returns:
-        tuple: (tenfit, fa, md, white_matter)
+        tuple: (tenfit, fa, md, rd, ad, white_matter)
             - tenfit: Fitted TensorModel object
             - fa: Fractional anisotropy map (X, Y, Z)
             - md: Mean diffusivity map (X, Y, Z)
+            - rd: Radial diffusivity map (X, Y, Z) = (λ₂ + λ₃) / 2
+            - ad: Axial diffusivity map (X, Y, Z) = λ₁
             - white_matter: Binary white matter mask (dilated)
     """
-    from dipy.reconst.dti import TensorModel, mean_diffusivity
+    from dipy.reconst.dti import TensorModel, mean_diffusivity, radial_diffusivity, axial_diffusivity
     from scipy.ndimage import binary_dilation
     import numpy as np
     import matplotlib.pyplot as plt
@@ -28,16 +30,22 @@ def fit_tensors(data, gtab, brain_mask, fa_thresh=0.2, visualize=False, verbose=
     tenmodel = TensorModel(gtab)
     tenfit = tenmodel.fit(data, mask=brain_mask)
     
-    # Compute FA and MD with NaN handling
+    # Compute scalar maps with NaN handling
     # Current approach: set all implausible values to 0. Revise if results not satisfactory.
     fa = np.nan_to_num(tenfit.fa, nan=0.0, posinf=0.0, neginf=0.0)
     md = np.nan_to_num(mean_diffusivity(tenfit.evals), nan=0.0, posinf=0.0, neginf=0.0)
+    rd = np.nan_to_num(radial_diffusivity(tenfit.evals), nan=0.0, posinf=0.0, neginf=0.0)
+    ad = np.nan_to_num(axial_diffusivity(tenfit.evals), nan=0.0, posinf=0.0, neginf=0.0)
     
     if verbose:
         fa_brain = fa[brain_mask > 0]
         md_brain = md[brain_mask > 0]
+        rd_brain = rd[brain_mask > 0]
+        ad_brain = ad[brain_mask > 0]
         print(f"    FA in brain: mean={fa_brain.mean():.3f}, std={fa_brain.std():.3f}")
         print(f"    MD in brain: mean={md_brain.mean():.2e}, std={md_brain.std():.2e}")
+        print(f"    RD in brain: mean={rd_brain.mean():.2e}, std={rd_brain.std():.2e}")
+        print(f"    AD in brain: mean={ad_brain.mean():.2e}, std={ad_brain.std():.2e}")
     
     # Create white matter mask
     white_matter = (fa > fa_thresh) & brain_mask
@@ -90,4 +98,4 @@ def fit_tensors(data, gtab, brain_mask, fa_thresh=0.2, visualize=False, verbose=
         plt.tight_layout()
         plt.show()
     
-    return tenfit, fa, md, white_matter
+    return tenfit, fa, md, rd, ad, white_matter

@@ -92,10 +92,10 @@
     - [x] Brief method note (e.g., "Probabilistic tractography, DTI model")
   - [x] Minimize margins for single-page fit
 
-- [ ] Implement RD/AD pipeline integration:
-  - [ ] Compute RD and AD maps in tracking module (AD=λ₁, RD=(λ₂+λ₃)/2)
-  - [ ] Add --rd and --ad CLI arguments to `csttool metrics`
-  - [ ] Pass rd_map and ad_map to `analyze_cst_hemisphere()` in `cmd_metrics()`
+- [x] Implement RD/AD pipeline integration:
+  - [x] Compute RD and AD maps in tracking module (AD=λ₁, RD=(λ₂+λ₃)/2)
+  - [x] Add --rd and --ad CLI arguments to `csttool metrics`
+  - [x] Pass rd_map and ad_map to `analyze_cst_hemisphere()` in `cmd_metrics()`
 
 - [ ] Implement metrics space conversion (Native ↔ MNI152 Template Space)
 - [ ] Update the .csv and .json report files to include the new metrics.

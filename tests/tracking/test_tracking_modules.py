@@ -18,7 +18,7 @@ def test_fit_tensors(synthetic_image_data, synthetic_gtab):
     
     mask = np.ones(synthetic_image_data.shape, dtype=np.uint8)
     
-    tenfit, fa, md, wm_mask = fit_tensors(
+    tenfit, fa, md, rd, ad, wm_mask = fit_tensors(
         data, 
         synthetic_gtab, 
         mask, 
@@ -30,12 +30,16 @@ def test_fit_tensors(synthetic_image_data, synthetic_gtab):
     # Check outputs
     assert fa.shape == synthetic_image_data.shape
     assert md.shape == synthetic_image_data.shape
+    assert rd.shape == synthetic_image_data.shape
+    assert ad.shape == synthetic_image_data.shape
     assert wm_mask.shape == synthetic_image_data.shape
     assert wm_mask.dtype == bool or wm_mask.dtype == np.uint8
     
     # Values should be in valid ranges
     assert np.all(fa >= 0) and np.all(fa <= 1.0)
     assert np.all(md >= 0)
+    assert np.all(rd >= 0)
+    assert np.all(ad >= 0)
 
 def test_estimate_directions(synthetic_image_data, synthetic_gtab):
     """Test CSA ODF direction estimation."""
