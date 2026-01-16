@@ -19,7 +19,8 @@ dependencies = [
     "nibabel",
     "dicom2nifti",
     "nilearn",
-    "reportlab"
+    "reportlab",
+    "weasyprint",
 ]
 
 [project.optional-dependencies]
