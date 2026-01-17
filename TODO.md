@@ -70,8 +70,8 @@
 - [x] Revise PDF report (single-page layout).
   - [x] **Header Block** (2-3 lines):
     - [x] Subject/Session ID, Date, csttool version
-    - [ ] Bold line: "Metrics Extracted In: {space}" (explicit space declaration)
-      - [ ] Current declaration hardcoded. Fix.
+    - [x] Bold line: "Metrics Extracted In: {space}" (explicit space declaration)
+      - [x] Current declaration hardcoded. Fix.
   - [x] **Metrics Table** (compact):
     - [x] Fix MD superscript formatting (×10⁻³)
     - [x] Add radial diffusivity (RD) and axial diffusivity (AD) columns
@@ -84,6 +84,7 @@
     - [x] Left (60% width): Stacked FA/MD profile plots
       - X-axis: "Pontine Level (0%)" → "PLIC (50%)" → "Precentral Gyrus (100%)"
       - [ ] Add length scale to x axis.
+      - [ ] Make y axis scale dynamically.
       - FA Y-axis: 0 to ~0.6
       - MD Y-axis: ×10⁻³ mm²/s (e.g., 0.7 to 1.1)
       - [X] Add RD profile (analog to FA and MD)
