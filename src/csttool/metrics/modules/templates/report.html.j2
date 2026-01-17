@@ -1,0 +1,129 @@
+{# CST Analysis Report Template #}
+{# Uses Jinja2 templating with raw data passed from Python #}
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CST Analysis Report</title>
+    <style>{{ css }}</style>
+</head>
+
+<body>
+    <div class="page-container">
+        {# ===== Header ===== #}
+        <header class="header">
+            <h1>CST Analysis Report</h1>
+            <div class="meta">
+                Subject: <strong>{{ subject_id }}</strong> |
+                Date: <strong>{{ date }}</strong> |
+                csttool <strong>v{{ version }}</strong>
+            </div>
+            <div class="extraction-badge">Metrics Extracted In: {{ space }}</div>
+        </header>
+
+        {# ===== Acquisition & Processing Parameters ===== #}
+        <div class="params-row">
+            <div class="param-box">
+                <h3>Acquisition Parameters</h3>
+                <div class="param-grid">
+                    <span class="param-label">Protocol:</span>
+                    <span class="param-value">{{ acquisition.protocol | default('Single-shell DTI') }}</span>
+                    <span class="param-label">b-value:</span>
+                    <span class="param-value">{{ acquisition.b_value | default('1000 s/mm²') }}</span>
+                    <span class="param-label">Directions:</span>
+                    <span class="param-value">{{ acquisition.directions | default('64') }}</span>
+                    <span class="param-label">Resolution:</span>
+                    <span class="param-value">{{ acquisition.resolution | default('2.0 × 2.0 × 2.0 mm³') }}</span>
+                </div>
+            </div>
+            <div class="param-box">
+                <h3>Processing Parameters</h3>
+                <div class="param-grid">
+                    <span class="param-label">Denoising:</span>
+                    <span class="param-value">{{ processing.denoising | default('nlmeans') }}</span>
+                    <span class="param-label">Tracking:</span>
+                    <span class="param-value">{{ processing.tracking_method | default('Deterministic (DTI)') }}</span>
+                    <span class="param-label">ROI Approach:</span>
+                    <span class="param-value">{{ processing.roi_approach | default('Atlas-to-Subject (HO)') }}</span>
+                    <span class="param-label">Whole-brain:</span>
+                    <span class="param-value">{{ processing.whole_brain | default('N/A') }}</span>
+                </div>
+            </div>
+        </div>
+
+        {# ===== Metrics Table ===== #}
+        <div class="metrics-section">
+            <table class="metrics-table">
+                <thead>
+                    <tr>
+                        <th style="width: 40%;">Metric</th>
+                        <th style="width: 20%;">Left</th>
+                        <th style="width: 20%;">Right</th>
+                        <th style="width: 20%;">LI</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for m in metrics %}
+                    <tr>
+                        <td>{{ m.label }}</td>
+                        <td>{{ m.left }}</td>
+                        <td>{{ m.right }}</td>
+                        <td class="{{ 'li-positive' if m.li > 0 else 'li-negative' }}">
+                            {%- if m.li > 0 %}+{% endif %}{{ "%.3f" | format(m.li) }}
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+
+            <div class="legend">
+                Legend: <span class="left-gt">Left&gt;Right</span>, <span class="right-gt">Right&gt;Left</span>
+            </div>
+        </div>
+
+        {# ===== Visualizations ===== #}
+        <div class="viz-section">
+            {# Left column: Along-Tract Profiles #}
+            <div class="profiles-column">
+            {% if viz.stacked_profiles %}
+                <div class="stacked-profiles">
+                    <h4>Along-Tract Profiles</h4>
+                    <img src="{{ viz.stacked_profiles }}" alt="Stacked Profiles">
+                </div>
+            {% else %}
+                {% for profile in viz.profiles %}
+                <div class="profile-plot">
+                    <h4>{{ profile.title }}</h4>
+                    {% if profile.data %}
+                    <img src="{{ profile.data }}" alt="{{ profile.title }}">
+                    {% else %}
+                    <div class="profile-placeholder">[{{ profile.title }} Plot]</div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            {% endif %}
+            </div>
+
+            {# Right column: Tractograms #}
+            <div class="tractogram-column">
+            {% for tract in viz.tractograms %}
+                <div class="tractogram-item">
+                    <h4>{{ tract.title }}</h4>
+                    {% if tract.data %}
+                    <img src="{{ tract.data }}" alt="{{ tract.title }}">
+                    {% else %}
+                    <div class="tractogram-placeholder">[{{ tract.title }} View]</div>
+                    {% endif %}
+                </div>
+            {% endfor %}
+            </div>
+        </div>
+
+        {# ===== Footer ===== #}
+        <footer class="footer">
+            Method: Deterministic tractography, DTI model | Generated by csttool
+        </footer>
+    </div>
+</body>
+</html>
