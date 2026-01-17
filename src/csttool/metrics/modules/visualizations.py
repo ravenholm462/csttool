@@ -244,7 +244,8 @@ def plot_tractogram_qc_preview(
     output_dir,
     subject_id,
     slice_type='axial',
-    max_streamlines=500
+    max_streamlines=500,
+    set_title=True
 ):
     """
     Create compact 3D tractogram QC preview for PDF report.
@@ -353,7 +354,9 @@ def plot_tractogram_qc_preview(
     ]
     ax.legend(handles=legend_elements, loc='upper right', fontsize=8)
     
-    ax.set_title(f'CST Tractogram ({slice_type.title()})', fontsize=10, fontweight='bold')
+    if set_title is True:
+        ax.set_title(f'CST Tractogram ({slice_type.title()})', fontsize=10, fontweight='bold')
+    
     ax.axis('off')
     
     plt.tight_layout()
