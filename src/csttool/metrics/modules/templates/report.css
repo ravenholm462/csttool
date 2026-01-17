@@ -18,8 +18,10 @@
 
 body {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    width: 190mm;   /* A4 width (210mm) - 2×10mm margins */
-    height: 277mm;  /* A4 height (297mm) - 2×10mm margins */
+    width: 190mm;
+    /* A4 width (210mm) - 2×10mm margins */
+    height: 277mm;
+    /* A4 height (297mm) - 2×10mm margins */
     margin: 0 auto;
     font-size: 10pt;
     color: #333;
@@ -36,9 +38,9 @@ body {
     overflow: hidden;
 }
 
-/* ===== Header (18mm) ===== */
+/* ===== Header (14mm) ===== */
 .header {
-    height: 18mm;
+    height: 14mm;
     text-align: center;
     margin-bottom: 4mm;
     flex-shrink: 0;
@@ -58,11 +60,10 @@ body {
 .extraction-badge {
     background: #E3F2FD;
     color: #1565C0;
-    padding: 1mm 3mm;
+    padding: 0.5mm 2mm;
     border-radius: 2mm;
-    display: inline-block;
+    display: inline;
     font-weight: 600;
-    margin-top: 2mm;
     font-size: 8pt;
 }
 
@@ -182,7 +183,8 @@ body {
     gap: 4mm;
     margin-bottom: 4mm;
     overflow: hidden;
-    min-height: 0;  /* Critical for flex shrinking */
+    min-height: 0;
+    /* Critical for flex shrinking */
 }
 
 /* Left column: Profiles (60%) */

@@ -354,7 +354,7 @@ def plot_tractogram_qc_preview(
     ]
     ax.legend(handles=legend_elements, loc='upper right', fontsize=8)
     
-    if set_title is True:
+    if set_title:
         ax.set_title(f'CST Tractogram ({slice_type.title()})', fontsize=10, fontweight='bold')
     
     ax.axis('off')

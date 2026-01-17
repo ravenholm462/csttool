@@ -1585,7 +1585,8 @@ def cmd_metrics(args: argparse.Namespace) -> dict | None:
                         bg_affine,
                         viz_dir,
                         args.subject_id,
-                        slice_type=view
+                        slice_type=view,
+                        set_title=False  # HTML template adds titles
                     )
                     print(f"✓ Tractogram QC ({view}): {viz_paths[f'tractogram_qc_{view}']}")
         except Exception as e:
