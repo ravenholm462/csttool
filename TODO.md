@@ -55,14 +55,9 @@
   - **`save_preprocessed.py`**:
     - [x] Test output structure and file naming
 
-### Future Enhancements
-- [ ] Add timing information to processing functions (optional)
-- [ ] Ensure visualization.py handles all QC visualizations
-
 ## Tracking
 
 - [x] Visualization of full brain tractogram is too messy. Fix.
-- [ ] Add heatmap legends for MD, directions etc.
 
 ## Extraction
 
@@ -81,12 +76,14 @@
     - [x] Fix MD superscript formatting (×10⁻³)
     - [x] Add radial diffusivity (RD) and axial diffusivity (AD) columns
     - [x] Color-code Laterality Index values
-    - [ ] Add color code legend.
-    - [ ] Fix font and size mismatch in "Metrics" column
+    - [x] Add color code legend.
+    - [x] Fix font and size mismatch in "Metrics" column
+    - [ ] Research standard values for healthy controls, add to metrics.
   - [X] Volume: transform mm^3 to cm^3.
   - [x] **Visualization Row** (side-by-side):
     - [x] Left (60% width): Stacked FA/MD profile plots
       - X-axis: "Pontine Level (0%)" → "PLIC (50%)" → "Precentral Gyrus (100%)"
+      - [ ] Add length scale to x axis.
       - FA Y-axis: 0 to ~0.6
       - MD Y-axis: ×10⁻³ mm²/s (e.g., 0.7 to 1.1)
       - [X] Add RD profile (analog to FA and MD)
@@ -106,26 +103,16 @@
   - [x] Add --rd and --ad CLI arguments to `csttool metrics`
   - [x] Pass rd_map and ad_map to `analyze_cst_hemisphere()` in `cmd_metrics()`
 
+- [ ] Figure out if metrics calculated in native or MNI space first.
 - [ ] Implement metrics space conversion (Native ↔ MNI152 Template Space)
 - [X] Update the .csv and .json report files to include the new metrics.
 
 ## HTML Report System (NEW)
 
-- [ ] **Replace reportlab PDF with HTML-first system**:
+- [x] **Replace reportlab PDF with HTML-first system**:
   - [ ] Extend JSON report schema with acquisition/processing metadata
   - [X] Create `save_html_report()` based on `report_mockup.html`
-    - [ ] Fix inconsistent QC visualization sizing.
-  - [ ] Implement HTML→PDF conversion via weasyprint
-  - [ ] Add weasyprint as core dependency (document system deps: Cairo, Pango, GDK-PixBuf)
+    - [x] Fix inconsistent QC visualization sizing.
+  - [x] Implement HTML→PDF conversion via weasyprint
+  - [x] Add weasyprint as core dependency (document system deps: Cairo, Pango, GDK-PixBuf)
 
-## BIDS Structure Support (NEW)
-
-- [ ] **Parse acquisition parameters from BIDS sidecar JSON**:
-  - [ ] Detect BIDS-compliant directory structure
-  - [ ] Parse `*_dwi.json` sidecar for acquisition metadata:
-    - b-value (`DiffusionBValue`)
-    - directions (count from bvec file)  
-    - resolution (derive from NIfTI header)
-    - protocol (`ProtocolName` or `PulseSequenceName`)
-  - [ ] Add fallback to "PLACEHOLDER" when BIDS JSON not available
-  - [ ] Support non-BIDS data with CLI override arguments
