@@ -21,6 +21,7 @@ dependencies = [
     "nilearn",
     "reportlab",
     "weasyprint",
+    "jinja2",
 ]
 
 [project.optional-dependencies]
