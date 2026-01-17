@@ -1615,7 +1615,8 @@ def cmd_metrics(args: argparse.Namespace) -> dict | None:
                 viz_paths, 
                 args.out, 
                 args.subject_id,
-                space=space
+                space=space,
+                html_path=html_path
             )
             if pdf_path:
                 print(f"✓ PDF report: {pdf_path}")
