@@ -127,7 +127,7 @@ The import step will report:
 
 ---
 
-# Recommended Datasets
+## Recommended Datasets
 
 For testing or learning, use these publicly available diffusion MRI datasets:
 
