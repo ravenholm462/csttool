@@ -6,12 +6,25 @@ Run the entire CST assessment pipeline in one command.
 
 ## The `csttool run` Command
 
-```bash
-csttool run --nifti /path/to/dwi.nii.gz --out /path/to/output --generate-pdf --save-visualizations
-```
+=== "NIfTI Input"
+
+    ```bash
+    csttool run --nifti /path/to/dwi.nii.gz --out /path/to/output \
+        --subject-id sub-01 --generate-pdf --save-visualizations
+    ```
+
+=== "DICOM Input"
+
+    ```bash
+    csttool run --dicom /path/to/study/ --out /path/to/output \
+        --subject-id sub-01 --generate-pdf --save-visualizations
+    ```
 
 !!! tip "Need sample data?"
     See [recommended datasets](data-requirements.md#recommended-datasets) for freely available diffusion MRI data.
+
+!!! note "Runtime & disk space"
+    Typical runtime is **2–10 minutes** depending on data size, hardware and chosen parameters. Notably, `patch2self` denoising and the `--perform-motion-correction` flag will increase runtime (in the latter case quite substantially). The pipeline generates up to **500 MB** of output files (tractograms, scalar maps, reports) per pipeline run.
 
 ---
 
