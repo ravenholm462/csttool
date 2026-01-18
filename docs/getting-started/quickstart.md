@@ -20,7 +20,7 @@ Given an input directory with DWI-MRI data in either DICOM or NIfTI format, and 
 The `--save-visualizations` flag will preserve visualizations of each step for quality control.
 
 !!! tip "Need sample data?"
-    See [recommended datasets](data-requirements.md#recommended-datasets#recommended-datasets) for freely available diffusion MRI data.
+    See [recommended datasets](data-requirements.md#recommended-datasets) for freely available diffusion MRI data.
 
 ## Output structure
 
