@@ -1516,11 +1516,28 @@ def cmd_metrics(args: argparse.Namespace) -> dict | None:
     print("Generating reports")
     print("="*60)
     
+    # Build metadata for reports
+    metadata = {
+        'acquisition': {},  # Populated by cmd_run when full pipeline is used
+        'processing': {
+            'tracking_method': 'Deterministic (DTI)',
+            'roi_approach': 'Atlas-to-Subject (HO)',
+        },
+        'qc_thresholds': {
+            'fa_threshold': getattr(args, 'fa_threshold', None),
+            'min_length': getattr(args, 'min_length', None),
+            'max_length': getattr(args, 'max_length', None),
+        }
+    }
+    
+    # Remove None values from qc_thresholds
+    metadata['qc_thresholds'] = {k: v for k, v in metadata['qc_thresholds'].items() if v is not None}
+    
     json_path = None
     csv_path = None
     
     try:
-        json_path = save_json_report(comparison, args.out, args.subject_id)
+        json_path = save_json_report(comparison, args.out, args.subject_id, metadata=metadata)
         print(f"✓ JSON report: {json_path}")
     except Exception as e:
         print(f"Error saving JSON report: {e}")
@@ -1606,7 +1623,8 @@ def cmd_metrics(args: argparse.Namespace) -> dict | None:
                 viz_paths, 
                 args.out, 
                 args.subject_id,
-                space=space
+                space=space,
+                metadata=metadata
             )
             print(f"✓ HTML report: {html_path}")
             
