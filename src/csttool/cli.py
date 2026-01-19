@@ -27,6 +27,7 @@ from . import __version__
 from csttool.tracking.modules import (
     fit_tensors,
     estimate_directions,
+    validate_sh_order,
     seed_and_stop,
     run_tractography,
     save_tracking_outputs,
@@ -117,7 +118,7 @@ def main() -> None:
         "--coil-count",
         type=int,
         default=4,
-        help="Number of receiver coils for PIESNO noise estimation (N)."
+        help="Number of receiver coils for PIESNO noise estimation. Only used with --denoise-method nlmeans (ignored for patch2self)."
     )
     p_preproc.add_argument(
         "--denoise-method",
@@ -418,7 +419,7 @@ def main() -> None:
         "--coil-count",
         type=int,
         default=4,
-        help="Number of receiver coils for PIESNO (default: 4)"
+        help="Number of receiver coils for PIESNO. Only used with --denoise-method nlmeans (ignored for patch2self)."
     )
     p_run.add_argument(
         "--denoise-method",
@@ -1090,11 +1091,14 @@ def cmd_track(args: argparse.Namespace) -> dict | None:
     # Step 6: Save outputs
     print("\nStep 6: Saving tractogram, scalar maps, and report")
     
+    # Get the validated SH order (may have been reduced due to insufficient directions)
+    validated_sh_order = validate_sh_order(gtab, args.sh_order, verbose=False)
+    
     tracking_params = {
         'step_size': args.step_size,
         'fa_thresh': args.fa_thr,
         'seed_density': args.seed_density,
-        'sh_order': args.sh_order,
+        'sh_order': validated_sh_order,
         'sphere': 'symmetric362',
         'stopping_criterion': 'fa_threshold',
         'relative_peak_threshold': 0.8,
