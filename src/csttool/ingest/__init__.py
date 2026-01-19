@@ -59,6 +59,8 @@ from .modules.save_ingest_outputs import (
     get_nifti_stem
 )
 
+from .modules.assess_quality import assess_acquisition_quality
+
 
 def run_ingest_pipeline(
     study_dir,
@@ -267,4 +269,7 @@ __all__ = [
     'save_ingest_outputs',
     'print_import_summary',
     'get_nifti_stem',
+    
+    # Quality Assessment
+    'assess_acquisition_quality',
 ]
