@@ -6,7 +6,12 @@ Exports the main pipeline functions for tractography and visualization.
 
 from .load_and_mask import load_and_mask
 from .fit_tensors import fit_tensors
-from .estimate_directions import estimate_directions
+from .estimate_directions import (
+    estimate_directions,
+    get_max_sh_order,
+    validate_sh_order,
+    _count_gradient_directions,
+)
 from .seed_and_stop import seed_and_stop
 from .run_tractography import run_tractography
 from .save_tracking_outputs import save_tracking_outputs
@@ -25,6 +30,8 @@ __all__ = [
     'load_and_mask',
     'fit_tensors',
     'estimate_directions',
+    'get_max_sh_order',
+    'validate_sh_order',
     'seed_and_stop',
     'run_tractography',
     'save_tracking_outputs',
