@@ -54,7 +54,7 @@ def _embed_image(path):
         return None
 
 
-def save_json_report(comparison, output_dir, subject_id):
+def save_json_report(comparison, output_dir, subject_id, metadata=None):
     """
     Save comprehensive metrics report as JSON.
     
@@ -66,6 +66,11 @@ def save_json_report(comparison, output_dir, subject_id):
         Output directory
     subject_id : str
         Subject identifier
+    metadata : dict, optional
+        Additional metadata including:
+        - acquisition: dict with protocol, b_values, n_directions, resolution
+        - processing: dict with denoising_method, tracking_method, etc.
+        - qc_thresholds: dict with fa_threshold, min_length, max_length
         
     Returns
     -------
@@ -76,10 +81,18 @@ def save_json_report(comparison, output_dir, subject_id):
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     
-    # Add metadata
+    # Initialize metadata if not provided
+    if metadata is None:
+        metadata = {}
+    
+    # Build report with extended schema
     report = {
         'subject_id': subject_id,
         'processing_date': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        'csttool_version': __version__,
+        'acquisition': metadata.get('acquisition', {}),
+        'processing': metadata.get('processing', {}),
+        'qc_thresholds': metadata.get('qc_thresholds', {}),
         'metrics': comparison
     }
     
@@ -425,7 +438,8 @@ def generate_complete_report(
     subject_id,
     background_image=None,
     version=None,
-    space="Native Space"
+    space="Native Space",
+    metadata=None
 ):
     """
     Generate all report formats: JSON, CSV, and PDF with visualizations.
@@ -545,13 +559,13 @@ def generate_complete_report(
     
     # Generate reports
     # 1. HTML Report (now critical as PDF is derived from it)
-    html_path = save_html_report(comparison, pdf_viz_paths, output_dir, subject_id, version, space)
+    html_path = save_html_report(comparison, pdf_viz_paths, output_dir, subject_id, version, space, metadata)
     
     # 2. PDF Report (from HTML)
     pdf_path = save_pdf_report(comparison, pdf_viz_paths, output_dir, subject_id, version, space, html_path)
     
     report_paths = {
-        'json': save_json_report(comparison, output_dir, subject_id),
+        'json': save_json_report(comparison, output_dir, subject_id, metadata=metadata),
         'csv': save_csv_summary(comparison, output_dir, subject_id),
         'html': html_path,
         'pdf': pdf_path,
