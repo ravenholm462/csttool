@@ -9,7 +9,7 @@ Uses Harvard-Oxford atlas from templateflow for ROI definition: https://nilearn.
 import numpy as np
 import nibabel as nib
 from pathlib import Path
-from dipy.align.imaffine import AffineMap
+from nilearn import image
 
 
 # Harvard-Oxford label definitions for CST extraction
@@ -160,26 +160,32 @@ def resample_atlas_to_mni_grid(atlas_img, mni_shape, mni_affine, verbose=True):
     atlas_data = atlas_img.get_fdata()
     atlas_affine = atlas_img.affine
     
+    
     if verbose:
         print(f"    Resampling atlas from {atlas_data.shape} to {mni_shape}...")
     
-    # Create affine mapping from atlas grid to MNI template grid
-    identity = np.eye(4)
-    affine_map = AffineMap(
-        identity,
-        mni_shape, mni_affine,           # Target (MNI template grid)
-        atlas_data.shape, atlas_affine   # Source (Harvard-Oxford atlas grid)
+    # Create a proxy image for the MNI template (target geometry)
+    # We only need the grid definition (shape + affine), not the data
+    # (Creating a dummy image is cheap)
+    mni_proxy = nib.Nifti1Image(np.zeros(mni_shape), mni_affine)
+
+    # Resample atlas to match MNI template grid
+    # nilearn.image.resample_to_img robustly handles inconsistent affines/grids
+    # by resampling the source image to match the target image's geometry
+    resampled_img = image.resample_to_img(
+        source_img=atlas_img,
+        target_img=mni_proxy,
+        interpolation='nearest'
     )
     
-    # Resample with nearest-neighbor to preserve discrete labels
-    resampled = affine_map.transform(atlas_data, interpolation='nearest')
+    resampled_data = resampled_img.get_fdata()
     
     if verbose:
         orig_labels = np.unique(atlas_data[atlas_data > 0])
-        new_labels = np.unique(resampled[resampled > 0])
+        new_labels = np.unique(resampled_data[resampled_data > 0])
         print(f"    ✓ Resampled: {len(orig_labels)} → {len(new_labels)} labels preserved")
     
-    return resampled
+    return resampled_data
 
 
 def warp_atlas_to_subject(
