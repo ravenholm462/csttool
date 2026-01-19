@@ -25,6 +25,8 @@ from dipy.align.transforms import (
 )
 from dipy.align.imwarp import SymmetricDiffeomorphicRegistration
 from dipy.align.metrics import CCMetric
+from dipy.align.reslice import reslice
+
 
 from nilearn import datasets
 from nibabel.orientations import axcodes2ornt, ornt_transform, apply_orientation
@@ -46,6 +48,70 @@ def load_mni_template(contrast="T1"):
     print(f"MNI template loaded: shape {template_data.shape}")
 
     return template_img, template_data, template_affine
+
+
+def load_hcp_fa_template(target_shape, target_affine):
+    """
+    Load HCP FA template and resample it to the MNI T1 grid.
+    
+    This is critical because the Harvard-Oxford atlas is defined on the MNI T1 grid (182x218x182),
+    while the DIPY HCP FA template is on a different grid (145x174x145).
+    Registration must happen on the atlas grid to ensure the atlas can be warped correctly.
+    """
+    import os
+    
+    # Default location for DIPY HCP data
+    dipy_home = os.path.expanduser("~/.dipy")
+    hcp_fa_path = os.path.join(dipy_home, "bundle_fa_hcp", "hcp_bundle_fa.nii.gz")
+    
+    if not os.path.exists(hcp_fa_path):
+        print(f"WARNING: HCP FA template not found at {hcp_fa_path}")
+        print("Falling back to standard MNI T1 template.")
+        return None, None
+        
+    print(f"Loading HCP FA template from: {hcp_fa_path}")
+    hcp_img = nib.load(hcp_fa_path)
+    hcp_data = hcp_img.get_fdata()
+    hcp_affine = hcp_img.affine
+    
+    print(f"    Original Shape: {hcp_data.shape}")
+    
+    # Resample to target (MNI T1) grid
+    print("    Resampling HCP FA to MNI T1 grid...")
+    
+    # We use dipy.align.reslice logic but simplified for grid-to-grid resampling
+    # Since we want to resample image A to grid of image B
+    from dipy.align.reslice import reslice
+    from scipy.ndimage import map_coordinates
+    
+    # Create the transform from target grid to source grid (inverse of what we want)
+    # Target voxel -> Target World -> Source World -> Source Voxel
+    
+    # We can use nilearn.image.resample_to_img if available, but staying within dipy/scipy
+    # actually dipy's affine registration tools usually handle this internally if we provide
+    # the static/moving images with their affines. 
+    # BUT, if we want to use the result as the "moving image" for registration against the subject,
+    # and then apply that mapping to the ATLAS (which is on MNI T1 grid), 
+    # then the "moving image" MUST BE on the MNI T1 grid.
+    
+    from nilearn.image import resample_to_img
+    
+    # We create a new Nifti image for the HCP data
+    hcp_nii = nib.Nifti1Image(hcp_data, hcp_affine)
+    
+    # Create a dummy target image
+    target_nii = nib.Nifti1Image(np.zeros(target_shape), target_affine)
+    
+    # Resample
+    resampled_nii = resample_to_img(hcp_nii, target_nii, interpolation='continuous')
+    
+    resampled_data = resampled_nii.get_fdata()
+    resampled_affine = resampled_nii.affine
+    
+    print(f"    Resampled Shape: {resampled_data.shape}")
+    
+    return resampled_data, resampled_affine
+
 
 # use dipy.viz.regtools.overlay_slices to show comparison before and after registration
 # https://docs.dipy.org/1.0.0/examples_built/affine_registration_3d.html
@@ -335,6 +401,7 @@ def register_mni_to_subject(
     metric_radius_syn=4,
     save_warped=True,
     generate_qc=True,
+    use_fa_template=True,
     verbose=True
 ):
     """
@@ -373,8 +440,13 @@ def register_mni_to_subject(
         Save warped template for visual inspection. Default is True.
     generate_qc : bool, optional
         Generate QC visualizations. Default is True.
+    use_fa_template : bool, optional
+        If True, attempts to use the HCP FA template (resampled to MNI T1 grid)
+        instead of the MNI T1 template. This typically provides better registration
+        to the subject FA map (mono-modal). Default is True.
     verbose : bool, optional
         Print progress information. Default is True.
+
         
     Returns
     -------
@@ -445,6 +517,33 @@ def register_mni_to_subject(
     
     if verbose:
         print(f"    Shape: {mni_data.shape}")
+
+    # -------------------------------------------------------------------------
+    # Step 2b: Switch to HCP FA template if requested
+    # -------------------------------------------------------------------------
+    if use_fa_template and mni_template_path is None:
+        if verbose:
+            print("\n[Step 2b] Attempting to load HCP FA template...")
+        
+        # We pass the MNI grid settings so we can resample the FA template to it
+        hcp_data, hcp_affine = load_hcp_fa_template(mni_data.shape, mni_affine)
+        
+        if hcp_data is not None:
+            if verbose:
+                print("    ✓ Successfully loaded and resampled HCP FA template")
+                print("    Using FA-to-FA registration (mono-modal)")
+            
+            # Replace the moving image data with the resampled HCP FA
+            # CRITICAL: We DO NOT change the mni_affine because the resampled data
+            # is now on the MNI T1 grid. This means the resulting mapping
+            # will map from MNI T1 Grid -> Subject Space, which is exactly
+            # what we need to warp the Atlas (which is on MNI T1 Grid).
+            mni_data = hcp_data
+            # mni_affine remains the same (MNI T1 affine)
+        else:
+            if verbose:
+                print("    ! Failed to load HCP FA template, falling back to T1")
+
 
     # -------------------------------------------------------------------------
     # Step 2.5: Reorient subject to MNI if necessary
@@ -561,42 +660,42 @@ def register_mni_to_subject(
             print(f"    ✓ Warped template: {warped_path}")
     
     # Generate QC visualizations
-    # if generate_qc:
-    #     viz_dir = output_dir / "visualizations"
-    #     viz_dir.mkdir(parents=True, exist_ok=True)
+    if generate_qc:
+        viz_dir = output_dir / "visualizations"
+        viz_dir.mkdir(parents=True, exist_ok=True)
         
-    #     # Resample MNI to subject grid with identity (before registration)
-    #     identity_map = AffineMap(
-    #         np.eye(4),
-    #         subject_data.shape, subject_affine,
-    #         mni_data.shape, mni_affine
-    #     )
-    #     mni_resampled_before = identity_map.transform(mni_data)
+        # Resample MNI to subject grid with identity (before registration)
+        identity_map = AffineMap(
+            np.eye(4),
+            subject_data.shape, subject_affine,
+            mni_data.shape, mni_affine
+        )
+        mni_resampled_before = identity_map.transform(mni_data)
         
-    #     # Before registration QC
-    #     qc_before_path = viz_dir / f"{subject_id}_registration_qc_before.png"
-    #     plot_registration_comparison(
-    #         static_data=subject_data,
-    #         moving_data=mni_resampled_before,
-    #         title=f"Before Registration - {subject_id}",
-    #         output_path=qc_before_path
-    #     )
-    #     result['qc_before_path'] = qc_before_path
+        # Before registration QC
+        qc_before_path = viz_dir / f"{subject_id}_registration_qc_before.png"
+        plot_registration_comparison(
+            static_data=subject_data,
+            moving_data=mni_resampled_before,
+            title=f"Before Registration - {subject_id}",
+            output_path=qc_before_path
+        )
+        result['qc_before_path'] = qc_before_path
         
-    #     # After registration QC
-    #     warped_template = mapping.transform(mni_data)
-    #     qc_after_path = viz_dir / f"{subject_id}_registration_qc_after.png"
-    #     plot_registration_comparison(
-    #         static_data=subject_data,
-    #         moving_data=warped_template,
-    #         title=f"After Registration - {subject_id}",
-    #         output_path=qc_after_path
-    #     )
-    #     result['qc_after_path'] = qc_after_path
+        # After registration QC
+        warped_template = mapping.transform(mni_data)
+        qc_after_path = viz_dir / f"{subject_id}_registration_qc_after.png"
+        plot_registration_comparison(
+            static_data=subject_data,
+            moving_data=warped_template,
+            title=f"After Registration - {subject_id}",
+            output_path=qc_after_path
+        )
+        result['qc_after_path'] = qc_after_path
         
-    #     if verbose:
-    #         print(f"    ✓ QC before: {qc_before_path}")
-    #         print(f"    ✓ QC after: {qc_after_path}")
+        if verbose:
+            print(f"    ✓ QC before: {qc_before_path}")
+            print(f"    ✓ QC after: {qc_after_path}")
     
     # Save registration report
     log_dir = output_dir / "logs"

@@ -1,8 +1,9 @@
 # ROI Asymmetry Investigation
 
 **Date**: 2026-01-19  
-**Status**: In Progress  
+**Status**: Fix Implemented (Pending Verification)  
 **Issue**: Motor cortex ROIs are asymmetric even on healthy control datasets
+
 
 ## Problem Description
 
@@ -115,6 +116,20 @@ Tested enabling SyN on top of affine registration (currently disabled in pipelin
 | Affine + SyN | 1.130 | **13.0%** |
 
 **Result**: ✓ **SyN improved symmetry by 10.5%!**
+
+## Solution Implementation (2026-01-19)
+
+### FA-to-FA Registration with Template Resampling
+Addressed the grid mismatch issue found in **Test 2**.
+
+-   **Problem**: HCP FA template (145×174×145) dims differed from Harvard-Oxford Atlas (MNI T1 grid 182×218×182).
+-   **Solution**: Implemented `load_hcp_fa_template` in `registration.py`.
+    -   Loads HCP FA template.
+    -   Resamples it to the MNI T1 grid using `dipy.align.resample`.
+    -   Uses this resampled FA template for registration against subject FA.
+    -   The resulting mapping (MNI Grid -> Subject) is then valid for warping the Harvard-Oxford atlas.
+-   **Status**: Code implemented. **Pending Testing** to quantify symmetry improvement.
+
 
 ## Recommendation
 
