@@ -23,9 +23,8 @@ from dipy.align.transforms import (
     RigidTransform3D,
     AffineTransform3D
 )
-from dipy.align.imwarp import SymmetricDiffeomorphicRegistration
-from dipy.align.metrics import CCMetric
-from dipy.data import fetch_mni_template, read_mni_template
+
+from nilearn import datasets
 from nibabel.orientations import axcodes2ornt, ornt_transform, apply_orientation
 from dipy.viz import regtools
 import json
@@ -33,14 +32,14 @@ from datetime import datetime
 
 def load_mni_template(contrast="T1"):
     
-    print(f"Fetching MNI template (contrast: {contrast})")
+    print(f"Fetching MNI template (contrast: {contrast}) from Nilearn")
 
-    fetch_mni_template()
-    template_img = read_mni_template(contrast=contrast)
+    # Nilearn's MNI152 template is skull-stripped and 1mm resolution by default
+    # This matches the Harvard-Oxford atlas better than DIPY's non-skull-stripped template
+    template_img = datasets.load_mni152_template(resolution=1)
 
     template_data = template_img.get_fdata()
     template_affine = template_img.affine
-
 
     print(f"MNI template loaded: shape {template_data.shape}")
 
@@ -433,8 +432,7 @@ def register_mni_to_subject(
     if mni_template_path is not None:
         mni_img = nib.load(mni_template_path)
     else:
-        fetch_mni_template()
-        mni_img = read_mni_template(contrast="T1")
+        mni_img, _, _ = load_mni_template()
     
     mni_data = mni_img.get_fdata()
     mni_affine = mni_img.affine
@@ -475,19 +473,17 @@ def register_mni_to_subject(
     # -------------------------------------------------------------------------
     # Step 4: SyN non-linear registration
     # -------------------------------------------------------------------------
+    
+    # [Step 4/5] SyN non-linear registration
+    # SKIP: SyN uses Cross-Correlation (CC) which fails for Multi-Modal (T1 -> FA) registration.
+    # It causes severe distortion (e.g. Brainstem correlation 0.08).
+    # Affine registration (using Mutual Information) is robust and sufficient for ROI placement.
     if verbose:
         print("\n[Step 4/5] SyN non-linear registration...")
+        print("    ! Skipping SyN (using Affine-only) to avoid multi-modal distortion.")
     
-    mapping = compute_syn_registration(
-        static_image=subject_data,
-        static_affine=subject_affine,
-        moving_image=mni_data,
-        moving_affine=mni_affine,
-        prealign=affine_map.affine,
-        level_iters=level_iters_syn,
-        metric_radius=metric_radius_syn,
-        verbose=verbose
-    )
+    # Use Affine result as the final mapping
+    mapping = affine_map
     
     # -------------------------------------------------------------------------
     # Step 5: Save outputs and generate QC
