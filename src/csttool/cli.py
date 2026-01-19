@@ -1319,7 +1319,9 @@ def cmd_extract(args: argparse.Namespace) -> dict | None:
             dilate_motor=args.dilate_motor,
             output_dir=args.out,
             subject_id=args.subject_id,
-            verbose=verbose
+            verbose=verbose,
+            original_subject_affine=warped.get('original_subject_affine'),
+            reorientation_transform=warped.get('reorientation_transform')
         )
     except Exception as e:
         print(f"Error creating ROI masks: {e}")
@@ -1817,7 +1819,9 @@ def _run_roi_seeded_extraction(
         dilate_motor=getattr(args, 'dilate_motor', 1),
         output_dir=output_dir,
         subject_id=subject_id,
-        verbose=verbose
+        verbose=verbose,
+        original_subject_affine=warped.get('original_subject_affine'),
+        reorientation_transform=warped.get('reorientation_transform')
     )
     
     # Step 4: ROI-seeded extraction
@@ -1971,7 +1975,18 @@ def cmd_run(args: argparse.Namespace) -> None:
     nifti_path = None
     
     try:
-        if args.nifti and args.nifti.exists():
+        if args.nifti:
+            # Check if file exists (handles broken symlinks too)
+            if not args.nifti.exists():
+                # Check if it's a broken symlink (e.g., git-annex)
+                if args.nifti.is_symlink():
+                    raise FileNotFoundError(
+                        f"NIfTI file is a broken symlink: {args.nifti}\n"
+                        f"If using git-annex, run: git annex get {args.nifti}"
+                    )
+                else:
+                    raise FileNotFoundError(f"NIfTI file does not exist: {args.nifti}")
+            
             # Use provided NIfTI directly
             nifti_path = args.nifti
             print(f"Using existing NIfTI: {nifti_path}")

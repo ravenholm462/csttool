@@ -10,6 +10,7 @@ import numpy as np
 import nibabel as nib
 from pathlib import Path
 from nilearn import image
+from nibabel.orientations import apply_orientation, ornt_transform, inv_ornt_aff
 
 
 # Harvard-Oxford label definitions for CST extraction
@@ -50,6 +51,42 @@ CST_ROI_CONFIG = {
         'description': 'Right Precentral Gyrus - superior CST endpoint'
     }
 }
+
+
+def reorient_to_original(data, reorientation_transform):
+    """
+    Apply inverse of reorientation transform to convert RAS data back to original orientation.
+    
+    Parameters
+    ----------
+    data : ndarray
+        Data in RAS orientation.
+    reorientation_transform : ndarray
+        Transform that was used to convert original -> RAS.
+        
+    Returns
+    -------
+    reoriented_data : ndarray
+        Data in original orientation.
+    """
+    # Compute inverse transform: RAS -> original
+    # The reorientation_transform maps original axes to RAS axes
+    # We need to invert this to map RAS -> original
+    inverse_transform = ornt_transform(
+        nib.io_orientation(np.eye(4)),  # RAS orientation
+        reorientation_transform          # Original orientation in transform coords
+    )
+    # Actually, we need to invert: swap start_ornt and end_ornt
+    # reorientation_transform was: ornt_transform(original -> RAS)
+    # inverse is: ornt_transform(RAS -> original)
+    n_axes = len(reorientation_transform)
+    inverse_transform = np.zeros_like(reorientation_transform)
+    for i, (axis, flip) in enumerate(reorientation_transform):
+        axis = int(axis)
+        inverse_transform[axis, 0] = i
+        inverse_transform[axis, 1] = flip
+    
+    return apply_orientation(data, inverse_transform)
 
 
 def fetch_harvard_oxford(verbose=True):
@@ -330,9 +367,14 @@ def warp_harvard_oxford_to_subject(
     # Extract registration components
     mapping = registration_result['mapping']
     subject_shape = registration_result['subject_shape']
-    subject_affine = registration_result['subject_affine']
+    subject_affine = registration_result['subject_affine']  # RAS affine (for warping)
     mni_shape = registration_result.get('mni_shape')
     mni_affine = registration_result.get('mni_affine')
+    
+    # Original orientation info (for saving outputs)
+    original_subject_affine = registration_result.get('original_subject_affine', subject_affine)
+    was_reoriented = registration_result.get('was_reoriented', False)
+    reorientation_transform = registration_result.get('reorientation_transform')
     
     # Step 1: Fetch atlases
     if verbose:
@@ -374,7 +416,10 @@ def warp_harvard_oxford_to_subject(
         'subcortical_warped': subcortical_warped,
         'cortical_warped_path': None,
         'subcortical_warped_path': None,
-        'subject_affine': subject_affine,
+        'subject_affine': subject_affine,  # RAS affine (for internal processing)
+        'original_subject_affine': original_subject_affine,  # Original affine (for saving)
+        'was_reoriented': was_reoriented,
+        'reorientation_transform': reorientation_transform,
         'roi_config': CST_ROI_CONFIG
     }
     
@@ -388,10 +433,23 @@ def warp_harvard_oxford_to_subject(
         
         prefix = f"{subject_id}_" if subject_id else ""
         
+        # Determine which affine and data to use for saving
+        # If subject was reoriented for registration, transform data back to original orientation
+        if was_reoriented and reorientation_transform is not None:
+            if verbose:
+                print("    Transforming to original orientation for saving...")
+            subcortical_to_save = reorient_to_original(subcortical_warped, reorientation_transform)
+            cortical_to_save = reorient_to_original(cortical_warped, reorientation_transform)
+            save_affine = original_subject_affine
+        else:
+            subcortical_to_save = subcortical_warped
+            cortical_to_save = cortical_warped
+            save_affine = subject_affine
+        
         # Save subcortical
         subcort_path = nifti_dir / f"{prefix}harvard_oxford_subcortical_warped.nii.gz"
         nib.save(
-            nib.Nifti1Image(subcortical_warped, subject_affine),
+            nib.Nifti1Image(subcortical_to_save, save_affine),
             subcort_path
         )
         result['subcortical_warped_path'] = subcort_path
@@ -401,7 +459,7 @@ def warp_harvard_oxford_to_subject(
         # Save cortical
         cort_path = nifti_dir / f"{prefix}harvard_oxford_cortical_warped.nii.gz"
         nib.save(
-            nib.Nifti1Image(cortical_warped, subject_affine),
+            nib.Nifti1Image(cortical_to_save, save_affine),
             cort_path
         )
         result['cortical_warped_path'] = cort_path

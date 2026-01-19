@@ -11,6 +11,34 @@ import numpy as np
 import nibabel as nib
 from pathlib import Path
 from scipy.ndimage import binary_dilation
+from nibabel.orientations import apply_orientation, ornt_transform
+
+
+def reorient_to_original(data, reorientation_transform):
+    """
+    Apply inverse of reorientation transform to convert RAS data back to original orientation.
+    
+    Parameters
+    ----------
+    data : ndarray
+        Data in RAS orientation.
+    reorientation_transform : ndarray
+        Transform that was used to convert original -> RAS.
+        
+    Returns
+    -------
+    reoriented_data : ndarray
+        Data in original orientation.
+    """
+    # Compute inverse transform: RAS -> original
+    n_axes = len(reorientation_transform)
+    inverse_transform = np.zeros_like(reorientation_transform)
+    for i, (axis, flip) in enumerate(reorientation_transform):
+        axis = int(axis)
+        inverse_transform[axis, 0] = i
+        inverse_transform[axis, 1] = flip
+    
+    return apply_orientation(data, inverse_transform)
 
 
 def extract_roi_mask(warped_atlas, label, verbose=True):
@@ -173,7 +201,9 @@ def create_cst_roi_masks(
     output_dir=None,
     subject_id=None,
     save_masks=True,
-    verbose=True
+    verbose=True,
+    original_subject_affine=None,
+    reorientation_transform=None
 ):
     """
     Create all ROI masks needed for bilateral CST extraction.
@@ -214,6 +244,12 @@ def create_cst_roi_masks(
         - 'brainstem_path': Path to saved brainstem mask (if saved)
         - 'motor_left_path': Path to saved left motor mask (if saved)
         - 'motor_right_path': Path to saved right motor mask (if saved)
+        
+    Notes
+    -----
+    If original_subject_affine and reorientation_transform are provided,
+    masks will be saved in the original subject orientation (e.g., LAS)
+    rather than the RAS orientation used internally for processing.
     """
     if save_masks and output_dir is None:
         raise ValueError("output_dir required when save_masks=True")
@@ -300,10 +336,25 @@ def create_cst_roi_masks(
         
         prefix = f"{subject_id}_" if subject_id else ""
         
+        # Determine which affine and data to use for saving
+        # If subject was reoriented for registration, transform data back to original orientation
+        if original_subject_affine is not None and reorientation_transform is not None:
+            if verbose:
+                print("    Transforming to original orientation for saving...")
+            brainstem_to_save = reorient_to_original(brainstem_mask.astype(np.uint8), reorientation_transform)
+            motor_left_to_save = reorient_to_original(motor_left_mask.astype(np.uint8), reorientation_transform)
+            motor_right_to_save = reorient_to_original(motor_right_mask.astype(np.uint8), reorientation_transform)
+            save_affine = original_subject_affine
+        else:
+            brainstem_to_save = brainstem_mask.astype(np.uint8)
+            motor_left_to_save = motor_left_mask.astype(np.uint8)
+            motor_right_to_save = motor_right_mask.astype(np.uint8)
+            save_affine = subject_affine
+        
         # Save brainstem
         brainstem_path = nifti_dir / f"{prefix}roi_brainstem.nii.gz"
         nib.save(
-            nib.Nifti1Image(brainstem_mask.astype(np.uint8), subject_affine),
+            nib.Nifti1Image(brainstem_to_save, save_affine),
             brainstem_path
         )
         masks['brainstem_path'] = brainstem_path
@@ -313,7 +364,7 @@ def create_cst_roi_masks(
         # Save motor left
         motor_left_path = nifti_dir / f"{prefix}roi_motor_left.nii.gz"
         nib.save(
-            nib.Nifti1Image(motor_left_mask.astype(np.uint8), subject_affine),
+            nib.Nifti1Image(motor_left_to_save, save_affine),
             motor_left_path
         )
         masks['motor_left_path'] = motor_left_path
@@ -323,7 +374,7 @@ def create_cst_roi_masks(
         # Save motor right
         motor_right_path = nifti_dir / f"{prefix}roi_motor_right.nii.gz"
         nib.save(
-            nib.Nifti1Image(motor_right_mask.astype(np.uint8), subject_affine),
+            nib.Nifti1Image(motor_right_to_save, save_affine),
             motor_right_path
         )
         masks['motor_right_path'] = motor_right_path
@@ -337,8 +388,12 @@ def create_cst_roi_masks(
         combined[motor_right_mask] = 3
         
         combined_path = nifti_dir / f"{prefix}roi_cst_combined.nii.gz"
+        if original_subject_affine is not None and reorientation_transform is not None:
+            combined_to_save = reorient_to_original(combined, reorientation_transform)
+        else:
+            combined_to_save = combined
         nib.save(
-            nib.Nifti1Image(combined, subject_affine),
+            nib.Nifti1Image(combined_to_save, save_affine),
             combined_path
         )
         masks['combined_path'] = combined_path
