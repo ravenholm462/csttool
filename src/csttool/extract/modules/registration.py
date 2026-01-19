@@ -23,6 +23,8 @@ from dipy.align.transforms import (
     RigidTransform3D,
     AffineTransform3D
 )
+from dipy.align.imwarp import SymmetricDiffeomorphicRegistration
+from dipy.align.metrics import CCMetric
 
 from nilearn import datasets
 from nibabel.orientations import axcodes2ornt, ornt_transform, apply_orientation
@@ -418,6 +420,10 @@ def register_mni_to_subject(
     subject_data = subject_img.get_fdata()
     subject_affine = subject_img.affine
     
+    # Store original affine BEFORE any reorientation
+    original_subject_affine = subject_affine.copy()
+    original_subject_shape = subject_data.shape
+    
     if verbose:
         voxel_size = np.sqrt(np.sum(subject_affine[:3, :3]**2, axis=0))
         print(f"    Shape: {subject_data.shape}")
@@ -445,9 +451,19 @@ def register_mni_to_subject(
     # -------------------------------------------------------------------------
 
     # Reorient to RAS if needed
-    if nib.aff2axcodes(subject_img.affine) != ('R', 'A', 'S'):
+    original_orientation = nib.aff2axcodes(subject_img.affine)
+    was_reoriented = original_orientation != ('R', 'A', 'S')
+    reorientation_transform = None
+    
+    if was_reoriented:
         if verbose:
-            print(f"    Reorienting from {nib.aff2axcodes(subject_img.affine)} to RAS...")
+            print(f"    Reorienting from {original_orientation} to RAS...")
+        
+        # Store the orientation transform for later inverse application
+        current_ornt = nib.io_orientation(subject_img.affine)
+        target_ornt = axcodes2ornt(('R', 'A', 'S'))
+        reorientation_transform = ornt_transform(current_ornt, target_ornt)
+        
         subject_img = reorient_to_ras(subject_img)
 
     subject_data = subject_img.get_fdata()
@@ -473,17 +489,19 @@ def register_mni_to_subject(
     # -------------------------------------------------------------------------
     # Step 4: SyN non-linear registration
     # -------------------------------------------------------------------------
-    
-    # [Step 4/5] SyN non-linear registration
-    # SKIP: SyN uses Cross-Correlation (CC) which fails for Multi-Modal (T1 -> FA) registration.
-    # It causes severe distortion (e.g. Brainstem correlation 0.08).
-    # Affine registration (using Mutual Information) is robust and sufficient for ROI placement.
     if verbose:
         print("\n[Step 4/5] SyN non-linear registration...")
-        print("    ! Skipping SyN (using Affine-only) to avoid multi-modal distortion.")
     
-    # Use Affine result as the final mapping
-    mapping = affine_map
+    mapping = compute_syn_registration(
+        static_image=subject_data,
+        static_affine=subject_affine,
+        moving_image=mni_data,
+        moving_affine=mni_affine,
+        prealign=affine_map.affine,
+        level_iters=level_iters_syn,
+        metric_radius=metric_radius_syn,
+        verbose=verbose
+    )
     
     # -------------------------------------------------------------------------
     # Step 5: Save outputs and generate QC
@@ -494,13 +512,19 @@ def register_mni_to_subject(
     result = {
         'mapping': mapping,
         'affine_map': affine_map,
-        'subject_affine': subject_affine,
-        'subject_shape': subject_data.shape,
+        'subject_affine': subject_affine,  # RAS affine (used internally for registration)
+        'subject_shape': subject_data.shape,  # Shape after reorientation (same as original)
         'mni_affine': mni_affine,
         'mni_shape': mni_data.shape,
         'warped_template_path': None,
         'qc_before_path': None,
-        'qc_after_path': None
+        'qc_after_path': None,
+        # Original orientation info for saving outputs
+        'original_subject_affine': original_subject_affine,
+        'original_subject_shape': original_subject_shape,
+        'was_reoriented': was_reoriented,
+        'original_orientation': original_orientation,
+        'reorientation_transform': reorientation_transform  # Transform from orig -> RAS
     }
     
     # Save warped template
@@ -509,9 +533,27 @@ def register_mni_to_subject(
         nifti_dir.mkdir(parents=True, exist_ok=True)
 
         warped_template = mapping.transform(mni_data)
+        
+        # Transform back to original orientation if subject was reoriented
+        if was_reoriented and reorientation_transform is not None:
+            if verbose:
+                print("    Transforming warped template to original orientation for saving...")
+            from nibabel.orientations import apply_orientation
+            # Compute inverse transform
+            n_axes = len(reorientation_transform)
+            inverse_transform = np.zeros_like(reorientation_transform)
+            for i, (axis, flip) in enumerate(reorientation_transform):
+                axis = int(axis)
+                inverse_transform[axis, 0] = i
+                inverse_transform[axis, 1] = flip
+            warped_template = apply_orientation(warped_template, inverse_transform)
+            save_affine = original_subject_affine
+        else:
+            save_affine = subject_affine
+        
         warped_path = nifti_dir / f"{subject_id}_mni_warped_to_subject.nii.gz"
         nib.save(
-            nib.Nifti1Image(warped_template.astype(np.float32), subject_affine),
+            nib.Nifti1Image(warped_template.astype(np.float32), save_affine),
             warped_path
         )
         result['warped_template_path'] = warped_path
