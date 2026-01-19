@@ -301,7 +301,11 @@ def extract_cst_roi_seeded(
     if verbose:
         print("\n[Step 2/5] Estimating fiber directions (CSA-ODF)...")
     
-    csa_model = CsaOdfModel(gtab, sh_order=sh_order)
+    # Validate SH order based on available gradient directions
+    from csttool.tracking.modules.estimate_directions import validate_sh_order
+    validated_sh_order = validate_sh_order(gtab, sh_order, verbose=verbose)
+    
+    csa_model = CsaOdfModel(gtab, sh_order=validated_sh_order)
     
     # Create white matter mask for direction estimation
     wm_mask = fa_map > fa_threshold
@@ -452,7 +456,7 @@ def extract_cst_roi_seeded(
         'step_size': step_size,
         'min_length': min_length,
         'max_length': max_length,
-        'sh_order': sh_order,
+        'sh_order': validated_sh_order,
         'relative_peak_threshold': relative_peak_threshold,
         'min_separation_angle': min_separation_angle,
     }
