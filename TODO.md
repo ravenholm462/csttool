@@ -111,7 +111,7 @@
 ## HTML Report System (NEW)
 
 - [x] **Replace reportlab PDF with HTML-first system**:
-  - [ ] Extend JSON report schema with acquisition/processing metadata
+  - [x] Extend JSON report schema with acquisition/processing metadata
   - [X] Create `save_html_report()` based on `report_mockup.html`
     - [x] Fix inconsistent QC visualization sizing.
   - [x] Implement HTML→PDF conversion via weasyprint
