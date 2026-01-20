@@ -63,4 +63,4 @@ def synthetic_bvecs():
 def synthetic_gtab(synthetic_bvals, synthetic_bvecs):
     """Returns a synthetic gradient table."""
     from dipy.core.gradients import gradient_table
-    return gradient_table(synthetic_bvals, synthetic_bvecs)
+    return gradient_table(synthetic_bvals, bvecs=synthetic_bvecs)

@@ -313,7 +313,8 @@ def resample_atlas_to_mni_grid(atlas_img, mni_shape, mni_affine, verbose=True):
     resampled_img = image.resample_to_img(
         source_img=atlas_img,
         target_img=mni_proxy,
-        interpolation='nearest'
+        interpolation='nearest',
+        copy_header=True
     )
     
     resampled_data = resampled_img.get_fdata()

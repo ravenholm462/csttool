@@ -26,7 +26,7 @@ def synthetic_dwi_data():
 @pytest.fixture
 def synthetic_gtab_fixture(synthetic_bvals, synthetic_bvecs):
     from dipy.core.gradients import gradient_table
-    return gradient_table(synthetic_bvals, synthetic_bvecs)
+    return gradient_table(synthetic_bvals, bvecs=synthetic_bvecs)
 
 class TestDenoise:
     def test_denoise_nlmeans(self, synthetic_dwi_data):
