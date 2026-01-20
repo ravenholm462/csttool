@@ -44,4 +44,8 @@
 
 - [x] Figure out if metrics calculated in native or MNI space first. (Answer: Native)
 - [ ] Implement metrics space conversion (Native ↔ MNI152 Template Space)
+- [ ] Acquisiton and processing parameters are hardcoded, fix.
+- [ ] Decide which acquistion and processing parameters to report.
+  - [ ] Update the pipeline to report the selected parameters.
+
 
