@@ -87,14 +87,36 @@ def extract_cst_passthrough(
     
     cst_left_list = []
     cst_right_list = []
+    bilateral_excluded_count = 0
+    midline_excluded_count = 0
     
     for i, sl in enumerate(streamlines_filtered):
         passes_bs = streamline_passes_through(sl, brainstem, affine)
         
         if passes_bs:
-            if streamline_passes_through(sl, motor_left, affine):
+            # Check mutual exclusivity (bilateral motor)
+            passes_left = streamline_passes_through(sl, motor_left, affine)
+            passes_right = streamline_passes_through(sl, motor_right, affine)
+            
+            if passes_left and passes_right:
+                bilateral_excluded_count += 1
+                continue
+            
+            # Check midline crossing with tolerance for registration imperfection
+            # This catches streamlines that grossly cross hemispheres (commissural)
+            x_coords = sl[:, 0]
+            x_min, x_max = np.min(x_coords), np.max(x_coords)
+            MIDLINE_TOLERANCE_MM = 8.0  # Allow minor medial excursion
+            
+            # Only exclude if streamline has substantial extent on BOTH sides
+            # i.e., it starts/ends deep in left AND goes deep into right
+            if x_min < -MIDLINE_TOLERANCE_MM and x_max > MIDLINE_TOLERANCE_MM:
+                midline_excluded_count += 1
+                continue
+            
+            if passes_left:
                 cst_left_list.append(sl)
-            if streamline_passes_through(sl, motor_right, affine):
+            elif passes_right:
                 cst_right_list.append(sl)
         
         if verbose and (i + 1) % 50000 == 0:
@@ -110,6 +132,8 @@ def extract_cst_passthrough(
         'cst_left_count': len(cst_left),
         'cst_right_count': len(cst_right),
         'cst_total_count': len(cst_combined),
+        'bilateral_excluded': bilateral_excluded_count,
+        'midline_excluded': midline_excluded_count,
         'extraction_rate': len(cst_combined) / len(streamlines) * 100 if len(streamlines) > 0 else 0,
     }
     
@@ -121,6 +145,8 @@ def extract_cst_passthrough(
         print(f"    Left CST:  {stats['cst_left_count']:,} streamlines")
         print(f"    Right CST: {stats['cst_right_count']:,} streamlines")
         print(f"    Total:     {stats['cst_total_count']:,} streamlines")
+        print(f"    Rejected (Bilateral): {bilateral_excluded_count:,} streamlines")
+        print(f"    Rejected (Midline):   {midline_excluded_count:,} streamlines")
     
     return {
         'cst_left': cst_left,
