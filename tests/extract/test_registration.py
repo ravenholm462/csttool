@@ -9,8 +9,8 @@ from csttool.extract.modules.registration import (
 
 def test_load_mni_template():
     """Test MNI template loading (mocked)."""
-    with patch('csttool.extract.modules.registration.read_mni_template') as mock_load, \
-         patch('csttool.extract.modules.registration.fetch_mni_template'):
+    # Fix: Patch nilearn.datasets.load_mni152_template instead of non-existent local functions
+    with patch('csttool.extract.modules.registration.datasets.load_mni152_template') as mock_load:
         # Mock what dipy returns (img, data, affine) ?? or just img?
         # csttool implementation: mni_img = load_mni152_template()
         # then mni_data = mni_img.get_fdata(), mni_affine = mni_img.affine

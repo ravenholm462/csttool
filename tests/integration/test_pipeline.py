@@ -52,9 +52,12 @@ def test_step_by_step_pipeline(synthetic_nifti_data, tmp_path):
 
     # Find the output file
     # Note: Filename might be slightly different than expected, so use glob
+    # Fix: Ensure we don't pick up the mask file (which also contains 'preproc' and ends in .nii.gz)
     found_files = list(preproc_dir.glob("*_preproc_*.nii.gz"))
-    assert len(found_files) > 0, f"No preprocessed files found in {preproc_dir} or {out_dir}"
-    preproc_file = found_files[0]
+    data_files = [f for f in found_files if "mask" not in f.name]
+    
+    assert len(data_files) > 0, f"No preprocessed data files found in {preproc_dir} or {out_dir}"
+    preproc_file = data_files[0]
     
     assert preproc_file.exists()
     
