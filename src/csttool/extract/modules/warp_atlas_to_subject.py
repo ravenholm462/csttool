@@ -1,3 +1,4 @@
+print("DEBUG: warp_atlas_to_subject module imported")
 """
 warp_atlas_to_subject.py
 
@@ -46,7 +47,7 @@ CST_ROI_CONFIG = {
     },
     'motor_right': {
         'atlas': 'cortical', 
-        'label': 7,
+        'label': 107,
         'hemisphere': 'right',
         'description': 'Right Precentral Gyrus - superior CST endpoint'
     }
@@ -169,6 +170,106 @@ def fetch_harvard_oxford(verbose=True):
     }
 
 
+def split_atlas_hemispheres_mni(atlas_img, verbose=True):
+    """
+    Split atlas labels into Left and Right hemispheres in MNI space.
+    
+    Modifies label values in the Right Hemisphere (X >= 0) by adding an offset of 100.
+    Left Hemisphere labels remain unchanged.
+    
+    This must be done in MNI space *before* warping to subject space, because
+    non-linear registration warps the anatomical midline. Splitting at X=0
+    in subject space is inaccurate due to these warps and potential subject offsets.
+    
+    Parameters
+    ----------
+    atlas_img : Nifti1Image
+        Atlas image in MNI space (must be RAS).
+    verbose : bool, optional
+        Print progress information.
+        
+    Returns
+    -------
+    modified_img : Nifti1Image
+        Atlas image with separate L/R labels.
+    """
+    if verbose:
+        print("\nSplitting atlas hemispheres in MNI space...")
+    
+    # Validation: Check orientation is RAS
+    # We rely on X axis being the first dimension and positive direction being Right
+    current_ornt = nib.io_orientation(atlas_img.affine)
+    expected_ornt = nib.orientations.axcodes2ornt(('R', 'A', 'S'))
+    
+    if not np.array_equal(current_ornt, expected_ornt):
+        # Allow L, A, S as well, just need to know which is X
+        axcodes = nib.orientations.aff2axcodes(atlas_img.affine)
+        if verbose:
+            print(f"    Atlas orientation: {axcodes}")
+        
+        if axcodes != ('R', 'A', 'S'):
+             raise ValueError(f"Atlas must be in RAS orientation for splitting. Got: {axcodes}")
+    
+    data = atlas_img.get_fdata().astype(np.int32)
+    affine = atlas_img.affine
+    shape = data.shape
+    
+    # Create coordinate grid in world space
+    # Optimization: Only compute X coordinates since that's all we need
+    # i index corresponds to x dimension in RAS image space
+    i_indices = np.arange(shape[0])
+    
+    # Compute World X for each i index
+    # world_x = affine[0,0]*i + affine[0,1]*j + ... + offset
+    # In pure RAS, affine[0,:] controls X. vectorizing:
+    # We need to know if the image is rotated. MNI templates usually are aligned.
+    
+    # safer full meshgrid approach, but memory intensive? 1mm brain is small enough (~8MB floats)
+    # actually 182*218*182 is ~7M voxels.
+    
+    i, j, k = np.meshgrid(
+        np.arange(shape[0]),
+        np.arange(shape[1]),
+        np.arange(shape[2]),
+        indexing='ij'
+    )
+    
+    # Calculate World X coordinate
+    # x_world = M[0,0]*i + M[0,1]*j + M[0,2]*k + M[0,3]
+    x_world = (affine[0, 0] * i + 
+               affine[0, 1] * j + 
+               affine[0, 2] * k + 
+               affine[0, 3])
+    
+    # In RAS space: X > 0 is Right, X < 0 is Left
+    # (Using >= 0 for Right to include midline in Right, or split? 
+    # MNI midline is 0. Let's say X >= 0 is Right)
+    right_hemisphere_mask = x_world >= 0
+    
+    # Modify labels in right hemisphere
+    # Only modify non-zero labels
+    mask_to_modify = right_hemisphere_mask & (data > 0)
+    
+    # Add offset (e.g., 100) to Right hemisphere labels
+    # Label 7 (Precentral) -> 107 (Right Precentral)
+    offset = 100
+    
+    modified_data = data.copy()
+    modified_data[mask_to_modify] += offset
+    
+    if verbose:
+        n_modified = np.sum(mask_to_modify)
+        print(f"    ✓ Modified {n_modified:,} voxels in Right Hemisphere (Offset +{offset})")
+        
+        # Check label 7 specifically
+        orig_7 = np.sum(data == 7)
+        new_7 = np.sum(modified_data == 7)
+        new_107 = np.sum(modified_data == 107)
+        print(f"    Label 7 (Total): {orig_7} -> Left: {new_7}, Right: {new_107}")
+        
+    return nib.Nifti1Image(modified_data, affine, atlas_img.header)
+
+
 def resample_atlas_to_mni_grid(atlas_img, mni_shape, mni_affine, verbose=True):
     """
     Resample a Harvard-Oxford atlas to match the DIPY MNI template grid.
@@ -280,6 +381,7 @@ def warp_atlas_to_subject(
     
     if verbose:
         unique_labels = np.unique(atlas_data[atlas_data > 0])
+        print(f"DEBUG: Running fixed warp function for {len(unique_labels)} labels")
         print(f"Warping atlas to subject space...")
         print(f"    Atlas shape: {atlas_shape}")
         print(f"    Target shape: {subject_shape}")
@@ -293,10 +395,15 @@ def warp_atlas_to_subject(
         atlas_data = resample_atlas_to_mni_grid(atlas_img, mni_shape, mni_affine, verbose=verbose)
     
     # Apply the mapping with nearest-neighbor interpolation
-    # mapping.transform() warps from moving (MNI) to static (subject) space
+    # Registration was: static=subject, moving=MNI template
+    # mapping.transform() warps from domain (MNI) to codomain (subject)
+    # Must provide image_world2grid to tell DIPY how to interpret the input coordinates
+    image_world2grid = np.linalg.inv(mni_affine) if mni_affine is not None else None
+    
     warped_atlas = mapping.transform(
         atlas_data,
-        interpolation=interpolation
+        interpolation=interpolation,
+        image_world2grid=image_world2grid
     )
     
     # Ensure integer labels
@@ -400,8 +507,12 @@ def warp_harvard_oxford_to_subject(
     if verbose:
         print("\n[Step 3/3] Warping cortical atlas...")
     
+    # SPLIT HEMISPHERES IN MNI SPACE BEFORE WARPING
+    # This fixes the asymmetry issue caused by splitting in subject space
+    cortical_split = split_atlas_hemispheres_mni(atlases['cortical_img'], verbose=verbose)
+    
     cortical_warped = warp_atlas_to_subject(
-        atlas_img=atlases['cortical_img'],
+        atlas_img=cortical_split,
         mapping=mapping,
         subject_shape=subject_shape,
         subject_affine=subject_affine,

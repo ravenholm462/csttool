@@ -68,93 +68,7 @@ def extract_roi_mask(warped_atlas, label, verbose=True):
     return mask
 
 
-def separate_hemispheres(mask, affine, method='midline', verbose=True):
-    """
-    Separate a bilateral mask into left and right hemisphere components.
-    
-    In RAS+ orientation:
-    - X < midline = Left hemisphere
-    - X > midline = Right hemisphere
-    
-    Parameters
-    ----------
-    mask : ndarray
-        Binary mask containing both hemispheres.
-    affine : ndarray
-        4x4 affine matrix for the mask image.
-    method : str, optional
-        Method for hemisphere separation:
-        - 'midline': Split at X=0 in world coordinates (RAS)
-        - 'center': Split at image center
-        Default is 'midline'.
-    verbose : bool, optional
-        Print hemisphere statistics.
-        
-    Returns
-    -------
-    left_mask : ndarray
-        Binary mask for left hemisphere only.
-    right_mask : ndarray
-        Binary mask for right hemisphere only.
-        
-    Notes
-    -----
-    Assumes RAS+ orientation where:
-    - Positive X = Right
-    - Negative X = Left
-    
-    The midline method uses X=0 in world coordinates, which is the
-    standard midsagittal plane in MNI/RAS space.
-    """
-    shape = mask.shape
-    
-    if method == 'midline':
-        # Create coordinate grid in world space
-        i, j, k = np.meshgrid(
-            np.arange(shape[0]),
-            np.arange(shape[1]),
-            np.arange(shape[2]),
-            indexing='ij'
-        )
-        
-        # Convert voxel coordinates to world coordinates
-        # world = affine @ [i, j, k, 1]
-        x_world = affine[0, 0] * i + affine[0, 1] * j + affine[0, 2] * k + affine[0, 3]
-        
-        # In RAS+: X < 0 is left, X > 0 is right
-        left_hemisphere = x_world < 0
-        right_hemisphere = x_world >= 0
-        
-    elif method == 'center':
-        # Simple split at image center
-        mid_x = shape[0] // 2
-        left_hemisphere = np.zeros(shape, dtype=bool)
-        right_hemisphere = np.zeros(shape, dtype=bool)
-        
-        # Check affine to determine which side is which
-        if affine[0, 0] > 0:  # RAS orientation
-            left_hemisphere[:mid_x, :, :] = True
-            right_hemisphere[mid_x:, :, :] = True
-        else:  # LAS orientation
-            right_hemisphere[:mid_x, :, :] = True
-            left_hemisphere[mid_x:, :, :] = True
-    else:
-        raise ValueError(f"Unknown method: {method}. Use 'midline' or 'center'.")
-    
-    # Apply hemisphere masks
-    left_mask = mask & left_hemisphere
-    right_mask = mask & right_hemisphere
-    
-    if verbose:
-        total = np.sum(mask)
-        left_count = np.sum(left_mask)
-        right_count = np.sum(right_mask)
-        print(f"    Hemisphere separation ({method}):")
-        print(f"        Total: {total:,} voxels")
-        print(f"        Left:  {left_count:,} voxels ({100*left_count/total:.1f}%)")
-        print(f"        Right: {right_count:,} voxels ({100*right_count/total:.1f}%)")
-    
-    return left_mask, right_mask
+
 
 
 def dilate_mask(mask, iterations=1, verbose=True):
@@ -290,31 +204,33 @@ def create_cst_roi_masks(
     masks['brainstem'] = brainstem_mask
     
     # -------------------------------------------------------------------------
-    # Step 2: Extract motor cortex mask (both hemispheres)
+    # Step 2: Extract motor cortex masks (using separate L/R labels)
     # -------------------------------------------------------------------------
     if verbose:
-        print("\n[Step 2/3] Extracting motor cortex mask...")
+        print("\n[Step 2/3] Extracting motor cortex masks...")
     
-    motor_label = roi_config['motor_left']['label']  # Same label for both hemispheres
-    motor_bilateral = extract_roi_mask(warped_cortical, motor_label, verbose=verbose)
+    # Left Motor (Label 7)
+    motor_left_label = roi_config['motor_left']['label']
+    if verbose:
+        print("    Left Hemisphere:")
+    motor_left_raw = extract_roi_mask(warped_cortical, motor_left_label, verbose=verbose)
+    
+    # Right Motor (Label 107)
+    motor_right_label = roi_config['motor_right']['label']
+    if verbose:
+        print("    Right Hemisphere:")
+    motor_right_raw = extract_roi_mask(warped_cortical, motor_right_label, verbose=verbose)
     
     # -------------------------------------------------------------------------
-    # Step 3: Separate into left and right hemispheres
+    # Step 3: Dilate masks
     # -------------------------------------------------------------------------
     if verbose:
-        print("\n[Step 3/3] Separating hemispheres...")
-    
-    motor_left_raw, motor_right_raw = separate_hemispheres(
-        motor_bilateral,
-        subject_affine,
-        method='midline',
-        verbose=verbose
-    )
+        print("\n[Step 3/3] Dilating masks...")
     
     # Dilate motor masks
     if dilate_motor > 0:
         if verbose:
-            print("\n    Dilating motor masks...")
+            print("    Dilating motor masks...")
         motor_left_mask = dilate_mask(motor_left_raw, iterations=dilate_motor, verbose=verbose)
         motor_right_mask = dilate_mask(motor_right_raw, iterations=dilate_motor, verbose=verbose)
     else:
