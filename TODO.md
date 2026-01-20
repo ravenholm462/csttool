@@ -9,12 +9,12 @@
   - [x] Remove unused dependencies
   - [x] Remove unused files
   - [ ] Remove unused directories
-  - [/] Fix warning print statements
+  - [x] Fix warning print statements
   - [/] Format all print statements throughout the codebase so they are unified and minimal.
 
 ## CLI
-- [ ] `cli.py` is an absolute monster of a script. Needs refactoring.
-  - [ ] Break down `cli.py` into submodules (e.g., `cli/commands/*.py`).
+- [x] `cli.py` is an absolute monster of a script. Needs refactoring.
+  - [x] Break down `cli.py` into submodules (e.g., `cli/commands/*.py`).
 
 ## Batch processing
 - [ ] **See:** `src/csttool/batch/IMPLEMENTATION_PLAN.md` for detailed tracking.
