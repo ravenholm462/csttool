@@ -990,7 +990,7 @@ authors:
   - family-names: Nalo
     given-names: Alem
 title: "csttool: Automated CST Assessment Using Diffusion MRI"
-version: 0.1.0
+version: 0.2.0
 date-released: 2025-01-XX
 url: "https://github.com/ravenholm462/csttool"
 ```

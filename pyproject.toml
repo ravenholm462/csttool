@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "csttool"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Simple, modular CST assessment tool (DW-MRI)."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -36,6 +36,9 @@ test = [
 
 [project.scripts]
 csttool = "csttool.cli:main"
+
+[tool.hatch.version]
+path = "src/csttool/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/csttool"]
