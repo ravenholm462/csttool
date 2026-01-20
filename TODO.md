@@ -4,13 +4,13 @@
 
 - [ ] Write project documentation.
   - See `docs/DOCUMENTATION_CHECKLIST.md` for detailed status.
-- [ ] Trim down the codebase.
-  - [ ] Remove unused code
-  - [ ] Remove unused dependencies
-  - [ ] Remove unused files
+- [/] Trim down the codebase.
+  - [x] Remove unused code
+  - [x] Remove unused dependencies
+  - [x] Remove unused files
   - [ ] Remove unused directories
-  - [ ] Fix warning print statements
-  - [ ] Format all print statements throughout the codebase so they are unified and minimal.
+  - [/] Fix warning print statements
+  - [/] Format all print statements throughout the codebase so they are unified and minimal.
 
 ## CLI
 - [ ] `cli.py` is an absolute monster of a script. Needs refactoring.

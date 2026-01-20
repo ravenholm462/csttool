@@ -655,7 +655,7 @@ def resolve_nifti(args: argparse.Namespace) -> Path:
              # Check again if it was just empty or no dcm files
              pass
         elif args.dicom:
-             print(f"Warning: {args.dicom} is not a valid DICOM directory. "
+             print(f"⚠️ {args.dicom} is not a valid DICOM directory. "
                    "Falling back to existing NIfTI.")
 
         # Use explicit NIfTI if given
@@ -885,10 +885,10 @@ def cmd_check(args: argparse.Namespace) -> bool:
     
     # Check optional dependencies
     try:
-        import reportlab
-        print(f"✓ ReportLab: {reportlab.Version}")
+        import weasyprint
+        print(f"✓ Weasyprint: {weasyprint.__version__}")
     except ImportError:
-        print("○ ReportLab: NOT FOUND (optional, for PDF reports)")
+        print("○ Weasyprint: NOT FOUND (optional, for PDF reports)")
     
     # Check ingest module
     try:
