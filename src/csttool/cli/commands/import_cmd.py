@@ -59,7 +59,7 @@ def cmd_import_legacy(args: argparse.Namespace) -> dict | None:
         print(f"Error: {e}")
         return None
 
-    data, _affine, hdr, gtab = load_with_preproc(nii)
+    data, _affine, hdr, gtab, metadata = load_with_preproc(nii)
 
     print(f"\nDataset Information:")
     print(f"  File: {nii}")
@@ -69,8 +69,15 @@ def cmd_import_legacy(args: argparse.Namespace) -> dict | None:
     print(f"  Voxel size (mm): {voxel_size}")
     print(f"  B-values: {sorted(set(gtab.bvals.astype(int)))}")
     
+    # Merge basic info into metadata if not present
+    if 'VoxelSize' not in metadata:
+        metadata['VoxelSize'] = voxel_size
+    if 'NumDirections' not in metadata:
+        metadata['NumDirections'] = len(gtab.bvals)
+    
     return {
         'nifti_path': nii,
         'data_shape': data.shape,
-        'n_gradients': len(gtab.bvals)
+        'n_gradients': len(gtab.bvals),
+        'metadata': metadata
     }

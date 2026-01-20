@@ -190,5 +190,6 @@ def cmd_track(args: argparse.Namespace) -> dict | None:
         'rd_path': outputs.get('rd_map'),  # May be None if not computed
         'ad_path': outputs.get('ad_map'),  # May be None if not computed
         'n_streamlines': len(streamlines),
-        'stem': stem
+        'stem': stem,
+        'tracking_params': tracking_params
     }

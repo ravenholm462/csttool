@@ -62,7 +62,7 @@ class TestLoadDataset:
         bvec_path = tmp_path / f"{fname}.bvec"
         np.savetxt(bvec_path, synthetic_bvecs.T)
         
-        nii, gtab, nifti_dir = load_dataset(str(tmp_path), fname)
+        nii, gtab, nifti_dir, metadata = load_dataset(str(tmp_path), fname)
         
         assert isinstance(nii, nib.Nifti1Image)
         assert str(nifti_dir) == str(tmp_path)
@@ -75,7 +75,7 @@ class TestLoadDataset:
         np.savetxt(tmp_path / f"{fname}.bvals", synthetic_bvals)
         np.savetxt(tmp_path / f"{fname}.bvecs", synthetic_bvecs.T)
         
-        nii, gtab, _ = load_dataset(str(tmp_path), fname)
+        nii, gtab, _, _ = load_dataset(str(tmp_path), fname)
         assert len(gtab.bvals) == len(synthetic_bvals)
 
     @patch('csttool.preprocess.modules.load_dataset.dicom2nifti.dicom_series_to_nifti')
@@ -101,7 +101,7 @@ class TestLoadDataset:
         with patch('csttool.preprocess.modules.load_dataset.read_bvals_bvecs') as mock_read:
             mock_read.return_value = (np.array([0, 1000]), np.array([[0,0,0], [1,0,0]]))
             
-            nii, gtab, out_dir = load_dataset(str(dcm_dir), fname)
+            nii, gtab, out_dir, metadata = load_dataset(str(dcm_dir), fname)
             
             mock_dicom2nifti.assert_called_once()
             assert str(out_dir) == str(nifti_dir)

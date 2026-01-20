@@ -89,7 +89,7 @@ def run_preprocessing(
     if verbose:
         print(f"Loading dataset from {input_dir}")
     
-    nii, gtab, nifti_dir = load_dataset(str(input_dir), filename)
+    nii, gtab, nifti_dir, metadata = load_dataset(str(input_dir), filename)
     data = np.asarray(nii.dataobj) if hasattr(nii, 'dataobj') else nii
     affine = nii.affine if hasattr(nii, 'affine') else np.eye(4)
     

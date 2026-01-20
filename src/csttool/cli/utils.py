@@ -115,7 +115,7 @@ def load_with_preproc(nii: Path):
     # Note: modules.load_dataset signature is (dir_path: str, fname: str)
     # and returns (nii_img, gtab, nifti_dir_path)
     
-    nii_img, gtab, _ = load_dataset_module(
+    nii_img, gtab, _, metadata = load_dataset_module(
         dir_path=nifti_dir,
         fname=fname
     )
@@ -124,7 +124,7 @@ def load_with_preproc(nii: Path):
     affine = nii_img.affine
     hdr = nii_img.header
     
-    return data, affine, hdr, gtab
+    return data, affine, hdr, gtab, metadata
 
 
 def get_gtab_for_preproc(preproc_nii: Path):

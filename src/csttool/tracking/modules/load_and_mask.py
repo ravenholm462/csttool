@@ -26,8 +26,8 @@ def load_and_mask(nii_dirname, nii_fname, visualize=False, verbose=False):
     # So we should pass fname WITHOUT extension if it's not there.
     # The original caller likely passed it without extension based on usage in cli.py or tracking.
     
-    # modules.load_dataset returns: nii, gtab, nifti_dir
-    nii, gtab, _ = load_dataset(
+    # modules.load_dataset returns: nii, gtab, nifti_dir, metadata
+    nii, gtab, _, _ = load_dataset(
         dir_path=nii_dirname,
         fname=nii_fname
     )

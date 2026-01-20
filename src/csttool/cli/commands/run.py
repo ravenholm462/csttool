@@ -129,6 +129,12 @@ def cmd_run(args: argparse.Namespace) -> None:
             if import_result and import_result.get('nifti_path'):
                 nifti_path = Path(import_result['nifti_path'])
                 step_results['import'] = {'success': True, 'result': import_result}
+                
+                # capture metadata from import
+                if 'metadata' in import_result:
+                     if 'pipeline_metadata' not in locals():
+                        pipeline_metadata = {}
+                     pipeline_metadata['acquisition'] = import_result['metadata']
             else:
                 raise RuntimeError("Import failed to produce NIfTI file")
         else:
@@ -258,6 +264,12 @@ def cmd_run(args: argparse.Namespace) -> None:
             rd_path = Path(track_result['rd_path']) if 'rd_path' in track_result else None
             ad_path = Path(track_result['ad_path']) if 'ad_path' in track_result else None
             step_results['track'] = {'success': True, 'result': track_result}
+            
+            # Capture tracking parameters
+            if 'tracking_params' in track_result:
+                if 'pipeline_metadata' not in locals():
+                    pipeline_metadata = {}
+                pipeline_metadata['tracking'] = track_result['tracking_params']
         else:
             raise RuntimeError("Tracking failed")
             

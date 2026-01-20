@@ -22,6 +22,7 @@
             </div>
         </header>
 
+
         {# ===== Acquisition & Processing Parameters ===== #}
         <div class="params-row">
             <div class="param-box">
@@ -29,28 +30,53 @@
                 <div class="param-grid">
                     <span class="param-label">Protocol:</span>
                     <span class="param-value">{{ acquisition.protocol | default('Single-shell DTI') }}</span>
-                    <span class="param-label">b-value:</span>
-                    <span class="param-value">{{ acquisition.b_value | default('1000 s/mm²') }}</span>
+                    <span class="param-label">Field Strength:</span>
+                    <span class="param-value">{{ acquisition.MagneticFieldStrength | default('unknown') }} T</span>
+                    <span class="param-label">TE / TR:</span>
+                    <span class="param-value">{{ acquisition.EchoTime }}ms / {{ acquisition.RepetitionTime }}ms</span>
+                    <span class="param-label">Max b-value:</span>
+                    <span class="param-value">{{ acquisition.MaxBValue | default('0') }} s/mm²</span>
                     <span class="param-label">Directions:</span>
-                    <span class="param-value">{{ acquisition.directions | default('64') }}</span>
+                    <span class="param-value">{{ acquisition.NumDirections | default('0') }}</span>
                     <span class="param-label">Resolution:</span>
-                    <span class="param-value">{{ acquisition.resolution | default('2.0 × 2.0 × 2.0 mm³') }}</span>
+                    <span class="param-value">
+                        {% if acquisition.VoxelSize %}
+                            {{ "%.1f"|format(acquisition.VoxelSize[0]) }}×{{ "%.1f"|format(acquisition.VoxelSize[1]) }}×{{ "%.1f"|format(acquisition.VoxelSize[2]) }} mm
+                        {% else %}
+                            N/A
+                        {% endif %}
+                    </span>
+                    <span class="param-label">Scanner:</span>
+                    <span class="param-value">{{ acquisition.Manufacturer }} {{ acquisition.DeviceSerialNumber }}</span>
                 </div>
             </div>
             <div class="param-box">
                 <h3>Processing Parameters</h3>
                 <div class="param-grid">
                     <span class="param-label">Denoising:</span>
-                    <span class="param-value">{{ processing.denoising | default('nlmeans') }}</span>
+                    <span class="param-value">
+                        {% if processing.preprocessing_step %}
+                            {{ processing.preprocessing_step.method }} 
+                            {% if processing.preprocessing_step.unring %}(+unring){% endif %}
+                            {% if processing.preprocessing_step.motion_correction %}(+motion){% endif %}
+                        {% else %}
+                            {{ processing.denoising | default('External') }}
+                        {% endif %}
+                    </span>
                     <span class="param-label">Tracking:</span>
-                    <span class="param-value">{{ processing.tracking_method | default('Deterministic (DTI)') }}</span>
+                    <span class="param-value">Deterministic ({{ processing.tracking_params.sh_order if processing.tracking_params else 'CSA' }})</span>
+                    <span class="param-label">Calculated FA Thr:</span>
+                    <span class="param-value">{{ processing.tracking_params.fa_thresh if processing.tracking_params else 'N/A' }}</span>
+                    <span class="param-label">Seeds/Voxel:</span>
+                    <span class="param-value">{{ processing.tracking_params.seed_density if processing.tracking_params else 'N/A' }}</span>
+                    <span class="param-label">Step Size:</span>
+                    <span class="param-value">{{ processing.tracking_params.step_size if processing.tracking_params else 'N/A' }}</span>
                     <span class="param-label">ROI Approach:</span>
                     <span class="param-value">{{ processing.roi_approach | default('Atlas-to-Subject (HO)') }}</span>
-                    <span class="param-label">Whole-brain:</span>
-                    <span class="param-value">{{ processing.whole_brain | default('N/A') }}</span>
                 </div>
             </div>
         </div>
+
 
         {# ===== Metrics Table ===== #}
         <div class="metrics-section">

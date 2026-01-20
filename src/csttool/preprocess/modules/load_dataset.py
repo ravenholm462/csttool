@@ -57,6 +57,7 @@ def load_dataset(dir_path: str, fname: str):
         nii = nib.load(result["NII_FILE"])
         bval_path = result.get("BVAL_FILE")
         bvec_path = result.get("BVEC_FILE") 
+        nii_path = result["NII_FILE"] # Ensure path is available for sidecar lookup 
     else:
         print(f"NIfTI directory detected: {dir_path}")
         nifti_dir = dir_path
@@ -78,8 +79,47 @@ def load_dataset(dir_path: str, fname: str):
     gtab = gradient_table(bvals=bvals, bvecs=bvecs)
     num_of_gradients = len(gtab)
 
+    
+    # Try to load JSON sidecar
+    metadata = {}
+    json_path = nifti_dir / (fname + ".json")
+    if not json_path.exists():
+        # Try finding json with same name as nifti
+        json_path = Path(nii_path).with_suffix('').with_suffix('.json')
+        
+    if json_path.exists():
+        try:
+            import json
+            with open(json_path, 'r') as f:
+                sidecar = json.load(f)
+                
+            # Extract standard BIDS fields
+            metadata = {
+                'MagneticFieldStrength': sidecar.get('MagneticFieldStrength'),
+                'EchoTime': sidecar.get('EchoTime'),
+                'RepetitionTime': sidecar.get('RepetitionTime'),
+                'Manufacturer': sidecar.get('Manufacturer'),
+                'DeviceSerialNumber': sidecar.get('DeviceSerialNumber'),
+                'SoftwareVersions': sidecar.get('SoftwareVersions'),
+                'dcm2niix_version': sidecar.get('ConversionSoftwareVersion'),
+            }
+            # Clean up None values
+            metadata = {k: v for k, v in metadata.items() if v is not None}
+            print(f"Loaded metadata from sidecar: {json_path}")
+        except Exception as e:
+            print(f"Warning: Could not reading JSON sidecar: {e}")
+
+    # Add derived fields
+    metadata.update({
+        'VoxelSize': [float(x) for x in nii.header.get_zooms()[:3]],
+        'Dimensions': [int(x) for x in nii.shape],
+        'NumVolumes': nii.shape[3] if len(nii.shape) > 3 else 1,
+        'NumDirections': len(gtab.bvals) if hasattr(gtab, 'bvals') else 0,
+        'MaxBValue': float(gtab.bvals.max()) if hasattr(gtab, 'bvals') and len(gtab.bvals) > 0 else 0,
+    })
+
     print(gtab.info)
     print(f"Number of gradients: {num_of_gradients}")
     print("\n" + "=" * 70 + "\n")
   
-    return nii, gtab, nifti_dir
+    return nii, gtab, nifti_dir, metadata
