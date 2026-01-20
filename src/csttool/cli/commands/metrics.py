@@ -165,6 +165,13 @@ def cmd_metrics(args: argparse.Namespace) -> dict | None:
     # Remove None values from qc_thresholds
     metadata['qc_thresholds'] = {k: v for k, v in metadata['qc_thresholds'].items() if v is not None}
     
+    # Merge pipeline metadata if provided via hidden argument
+    pipeline_metadata = getattr(args, 'pipeline_metadata', {})
+    if pipeline_metadata:
+        # Deep merge or specific updates
+        if 'preprocessing' in pipeline_metadata:
+            metadata['processing']['preprocessing_step'] = pipeline_metadata['preprocessing']
+    
     json_path = None
     csv_path = None
     

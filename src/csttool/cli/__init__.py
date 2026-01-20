@@ -428,6 +428,11 @@ def main() -> None:
     
     # Preprocessing options
     p_run.add_argument(
+        "--preprocess",
+        action="store_true",
+        help="Enable preprocessing step (denoising, unringing, motion correction). Default: Skipped."
+    )
+    p_run.add_argument(
         "--coil-count",
         type=int,
         default=4,

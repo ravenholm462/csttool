@@ -22,7 +22,8 @@
   - [ ] Create unified reports of processed batch with statistics (Batch Report).
 
 ## Preprocessing
-- [ ] Pipeline should skip preprocessing by default, as it is inefficient, slow, and the available datasets are often preprocessed using superior software like FSL. If not skipped, the default pipeline should include skip Gibbs' correction and motion correctio, and keep everything else.
+- [x] Pipeline should skip preprocessing by default, as it is inefficient, slow, and the available datasets are often preprocessed using superior software like FSL. If not skipped, the default pipeline should include skip Gibbs' correction and motion correctio, and keep everything else.
+- [x] Update reports to reflect preprocessing status (Skipped vs Executed).
 
 ## Validation & Research
 - [ ] Find standard values for healthy controls, add to metrics.

@@ -147,47 +147,76 @@ def cmd_run(args: argparse.Namespace) -> None:
     # =========================================================================
     # STEP 3: PREPROCESS
     # =========================================================================
-    print("\n" + "▶"*3 + " STEP 3/6: PREPROCESSING " + "◀"*3)
-    t0 = time()
     
-    preproc_path = None
-    
-    try:
-        if nifti_path is None:
-            raise RuntimeError("No NIfTI available from import step")
+    if getattr(args, 'preprocess', False):
+        print("\n" + "▶"*3 + " STEP 3/6: PREPROCESSING " + "◀"*3)
+        t0 = time()
         
-        preproc_out = args.out / "preprocessing"
-        preproc_args = argparse.Namespace(
-            dicom=None,
-            nifti=nifti_path,
-            out=preproc_out,
-            coil_count=getattr(args, 'coil_count', 4),
-            denoise_method=getattr(args, 'denoise_method', 'patch2self'),
-            show_plots=getattr(args, 'show_plots', False),
-            save_visualizations=getattr(args, 'save_visualizations', False),
-            unring=getattr(args, 'unring', False),
-            perform_motion_correction=getattr(args, 'perform_motion_correction', False),
-            target_voxel_size=getattr(args, 'target_voxel_size', None),
-            verbose=verbose
-        )
+        preproc_path = None
         
-        preproc_result = cmd_preprocess(preproc_args)
-        
-        if preproc_result and preproc_result.get('preprocessed_path'):
-            preproc_path = Path(preproc_result['preprocessed_path'])
-            step_results['preprocess'] = {'success': True, 'result': preproc_result}
-        else:
-            raise RuntimeError("Preprocessing failed")
+        try:
+            if nifti_path is None:
+                raise RuntimeError("No NIfTI available from import step")
             
-    except Exception as e:
-        print(f"✗ Preprocessing failed: {e}")
-        failed_steps.append('preprocess')
-        step_results['preprocess'] = {'success': False, 'error': str(e)}
-        if not continue_on_error:
-            save_pipeline_report(args.out, subject_id, step_results, step_times, failed_steps, pipeline_start)
-            return
-    
-    step_times['preprocess'] = time() - t0
+            preproc_out = args.out / "preprocessing"
+            preproc_args = argparse.Namespace(
+                dicom=None,
+                nifti=nifti_path,
+                out=preproc_out,
+                coil_count=getattr(args, 'coil_count', 4),
+                denoise_method=getattr(args, 'denoise_method', 'patch2self'),
+                show_plots=getattr(args, 'show_plots', False),
+                save_visualizations=getattr(args, 'save_visualizations', False),
+                unring=getattr(args, 'unring', False),
+                perform_motion_correction=getattr(args, 'perform_motion_correction', False),
+                target_voxel_size=getattr(args, 'target_voxel_size', None),
+                verbose=verbose
+            )
+            
+            preproc_result = cmd_preprocess(preproc_args)
+            
+            if preproc_result and preproc_result.get('preprocessed_path'):
+                preproc_path = Path(preproc_result['preprocessed_path'])
+                step_results['preprocess'] = {'success': True, 'result': preproc_result}
+            else:
+                raise RuntimeError("Preprocessing failed")
+                
+        except Exception as e:
+            print(f"✗ Preprocessing failed: {e}")
+            failed_steps.append('preprocess')
+            step_results['preprocess'] = {'success': False, 'error': str(e)}
+            if not continue_on_error:
+                save_pipeline_report(args.out, subject_id, step_results, step_times, failed_steps, pipeline_start)
+                return
+        
+        step_times['preprocess'] = time() - t0
+        
+        # Record metadata for report
+        if 'pipeline_metadata' not in locals():
+            pipeline_metadata = {}
+        
+        pipeline_metadata['preprocessing'] = {
+            'status': 'Executed',
+            'method': getattr(args, 'denoise_method', 'patch2self'),
+            'unring': getattr(args, 'unring', False),
+            'motion_correction': getattr(args, 'perform_motion_correction', False)
+        }
+        
+    else:
+        print("\n" + "⏭ STEP 3/6: SKIPPING PREPROCESSING (Pass-through)")
+        t0 = time()
+        # Pass through the input NIfTI as the "preprocessed" data
+        preproc_path = nifti_path
+        step_results['preprocess'] = {'success': True, 'skipped': True, 'passthrough_path': str(preproc_path)}
+        step_times['preprocess'] = time() - t0
+        
+        # Record metadata for report
+        if 'pipeline_metadata' not in locals():
+            pipeline_metadata = {}
+            
+        pipeline_metadata['preprocessing'] = {
+            'status': 'Skipped (External Preprocessing Used)'
+        }
     
     # =========================================================================
     # STEP 4: TRACK
@@ -331,7 +360,9 @@ def cmd_run(args: argparse.Namespace) -> None:
             save_visualizations=getattr(args, 'save_visualizations', False),
             verbose=verbose,
             out=metrics_out,
-            space=getattr(args, 'space', "Native Space")
+            space=getattr(args, 'space', "Native Space"),
+            # internal: pass pipeline metadata
+            pipeline_metadata=pipeline_metadata if 'pipeline_metadata' in locals() else {}
         )
         
         metrics_result = cmd_metrics(metrics_args)
