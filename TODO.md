@@ -35,7 +35,8 @@
 - [ ] Add unit tests for metrics consistency.
 
 ## Tracking
-
+- [ ] Make angle threshold adjustible, keep 45 degrees default.
+  - [ ] Add CLI option.
 
 ## Extraction
 
@@ -46,6 +47,21 @@
 - [ ] Implement metrics space conversion (Native ↔ MNI152 Template Space)
 - [ ] Acquisiton and processing parameters are hardcoded, fix.
 - [ ] Decide which acquistion and processing parameters to report.
-  - [ ] Update the pipeline to report the selected parameters.
-
+  - [ ] Update the pipeline to report the selected parameters:
+    - [ ] Acquisition parameters (autopopulate during `import` from JSON sidecar or derive)
+      - [ ] Field strength
+      - [ ] Echo time (TE) / Repetition time (TR)
+      - [ ] b-value in s/mm^2
+      - [ ] Voxel resolution (e.g. 2.0 x 2.0 x 2.0 mm^3)
+      - [ ] Number of directions.
+      - [ ] Number of volumes.
+    - [ ] Processing parameters (get from csttool)
+      - [ ] Denoising method (either find in JSON sidecar, write "External" if not found or add applied csttool method if `--preprocess` used)
+      - [ ] Motion / Eddy current correction (+ method), if applied (either find in JSON sidecar, write "External" if not found or add applied csttool method if `--preprocess` used)
+      - [ ] Tracking thresholds (FA threshold, angle threshold, step size)
+      - [ ] ROI atlas & registration method
+      - [ ] Tractography algorithm
+      - [ ] Seeding (density, region)
+    
+ 
 
