@@ -3,117 +3,44 @@
 ## General
 
 - [ ] Write project documentation.
-  - For troubleshooting documentation: patch2self denoising may produce streamlines that are too short -> extraction fails. Switching to NLMeans may help.
-- [ ] Review and update documentation after module integration
+  - See `docs/DOCUMENTATION_CHECKLIST.md` for detailed status.
+- [ ] Trim down the codebase.
+  - [ ] Remove unused code
+  - [ ] Remove unused dependencies
+  - [ ] Remove unused files
+  - [ ] Remove unused directories
+  - [ ] Fix warning print statements
+  - [ ] Format all print statements throughout the codebase so they are unified and minimal.
 
 ## CLI
+- [ ] `cli.py` is an absolute monster of a script. Needs refactoring.
+  - [ ] Break down `cli.py` into submodules (e.g., `cli/commands/*.py`).
 
-- [x] Implement a `run` command that will run all the steps in the following order: `check`, `import`, `preprocess`, `track`, `extract`, `metrics`. 
-- [x] Add "--visualizations" flag to save the figs.
-
-## Import
-
-- [x] Input DICOMS of one subject are represented as multiple series. The tool does not account for this currently. Resolve proper data import.
+## Batch processing
+- [ ] **See:** `src/csttool/batch/IMPLEMENTATION_PLAN.md` for detailed tracking.
+- [ ] Implement batch processing workflow.
+  - [ ] Create unified reports of processed batch with statistics (Batch Report).
 
 ## Preprocessing
+- [ ] Pipeline should skip preprocessing by default, as it is inefficient, slow, and the available datasets are often preprocessed using superior software like FSL. If not skipped, the default pipeline should include skip Gibbs' correction and motion correctio, and keep everything else.
 
-### Architecture & Integration
-- [X] **Replace `funcs.py` with modular architecture** - Integrate all new modules in `preprocess/modules/`:
-  - `load_dataset.py` - Load NIfTI/DICOM and build gradient table
-  - `denoise.py` - NLMeans and Patch2Self denoising
-  - `gibbs_unringing.py` - Gibbs oscillation correction
-  - `background_segmentation.py` - Brain mask computation
-  - `perform_motion_correction.py` - Between-volume motion correction
-  - `save_preprocessed.py` - Save outputs with organized structure
-  - `visualizations.py` - QC visualizations (already implemented)
-- [X] Update `preprocess/__init__.py` to export all new module functions
-- [X] Update `cli.py` to use the new modular pipeline
-- [x] Deprecate/remove old functions in `funcs.py` after migration
-
-### Validation & Research
-- [x] Correction for Gibbs' oscillations missing. Implement.
-- [ ] Validate the Gibbs' correction. 
-- [X] Is NLMEANS denoising good enough? Resolved: Patch2Self is now default.
+## Validation & Research
+- [ ] Find standard values for healthy controls, add to metrics.
+- [ ] Use batch processing to process entire TractoInferno training set.
 
 ### Testing
-- [x] Add unit tests for all new preprocessing modules:
-  - **`denoise.py`**:
-    - [x] Test NLMeans denoising
-    - [x] Test Patch2Self denoising
-    - [x] Test brain mask handling (None vs provided)
-    - [x] Test invalid method validation
-  - **`load_dataset.py`**:
-    - [x] Test NIfTI loading
-    - [x] Test DICOM conversion
-    - [x] Test gradient file detection (.bval/.bvec vs .bvals/.bvecs)
-  - **`background_segmentation.py`**:
-    - [x] Test brain mask generation
-  - **`gibbs_unringing.py`**:
-    - [x] Test Gibbs correction
-  - **`perform_motion_correction.py`**:
-    - [x] Test motion correction
-  - **`save_preprocessed.py`**:
-    - [x] Test output structure and file naming
+- [ ] Update all unit tests if necessary.
+- [ ] Ensure edge case coverage.
+- [ ] Add unit tests for metrics consistency.
 
 ## Tracking
 
-- [x] Visualization of full brain tractogram is too messy. Fix.
 
 ## Extraction
 
-- [x] Output architecture too messy. Fix.
-- [x] Visualizations of LFS/RHS CST too messy, same as for full brain tractogram. Fix.
-- [x] Extraction fails for alternate datasets (e.g. OpenNeuro, Stanford-HARDI). Full-brain tractogram generated, but all CST streamlines are filtered out.
 
 ## Metrics
 
-- [x] Revise PDF report (single-page layout).
-  - [x] **Header Block** (2-3 lines):
-    - [x] Subject/Session ID, Date, csttool version
-    - [x] Bold line: "Metrics Extracted In: {space}" (explicit space declaration)
-      - [x] Current declaration hardcoded. Fix.
-  - [x] **Metrics Table** (compact):
-    - [x] Fix MD superscript formatting (×10⁻³)
-    - [x] Add radial diffusivity (RD) and axial diffusivity (AD) columns
-    - [x] Color-code Laterality Index values
-    - [x] Add color code legend.
-    - [x] Fix font and size mismatch in "Metrics" column
-    - [ ] Research standard values for healthy controls, add to metrics.
-  - [X] Volume: transform mm^3 to cm^3.
-  - [x] **Visualization Row** (side-by-side):
-    - [x] Left (60% width): Stacked FA/MD profile plots
-      - X-axis: "Pontine Level (0%)" → "PLIC (50%)" → "Precentral Gyrus (100%)"
-      - [ ] Add length scale to x axis.
-      - [ ] Make y axis scale dynamically.
-      - FA Y-axis: 0 to ~0.6
-      - MD Y-axis: ×10⁻³ mm²/s (e.g., 0.7 to 1.1)
-      - [X] Add RD profile (analog to FA and MD)
-      - [X] Add AD profile (analog to FA and MD)
-      - [X] Make x axis shared between the plots.
-    - [x] Right (40% width): 3D tractogram QC preview
-      - Left/Right CST in different colors
-      - Overlay on mid-sagittal or axial T1 slice at internal capsule level
-      - [X] Add sagittal view (analog to axial)
-      - [X] Add coronal view (analog to axial)
-  - [x] **Footer Note** (tiny font, optional):
-    - [x] Brief method note (e.g., "Deterministic tractography, DTI model")
-  - [x] Minimize margins for single-page fit
-
-- [x] Implement RD/AD pipeline integration:
-  - [x] Compute RD and AD maps in tracking module (AD=λ₁, RD=(λ₂+λ₃)/2)
-  - [x] Add --rd and --ad CLI arguments to `csttool metrics`
-  - [x] Pass rd_map and ad_map to `analyze_cst_hemisphere()` in `cmd_metrics()`
-
-- [ ] Figure out if metrics calculated in native or MNI space first.
+- [x] Figure out if metrics calculated in native or MNI space first. (Answer: Native)
 - [ ] Implement metrics space conversion (Native ↔ MNI152 Template Space)
-- [X] Update the .csv and .json report files to include the new metrics.
-
-## HTML Report System (NEW)
-
-- [x] **Replace reportlab PDF with HTML-first system**:
-  - [x] Extend JSON report schema with acquisition/processing metadata
-  - [X] Create `save_html_report()` based on `report_mockup.html`
-    - [x] Fix inconsistent QC visualization sizing.
-  - [x] Implement HTML→PDF conversion via weasyprint
-  - [x] Add weasyprint as core dependency (document system deps: Cairo, Pango, GDK-PixBuf)
 
