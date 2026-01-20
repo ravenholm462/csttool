@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-01-20
+
+### Changed
+- Refactored CLI into a modular package structure (`src/csttool/cli/`).
+- Moved CLI entry point commands to separate modules for better maintainability.
+
+### Fixed
+- Updated `dipy.core.gradients.gradient_table` call to use `bvecs` keyword argument, fixing future warnings/errors.
+- Enabled `copy_header=True` in `image.resample_to_img` to preserve header information during atlas resampling.
+
 ## [0.2.0] - 2026-01-20
 
 ### Changed
