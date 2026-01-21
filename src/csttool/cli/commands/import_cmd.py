@@ -36,7 +36,9 @@ def cmd_import(args: argparse.Namespace) -> dict | None:
             output_dir=args.out,
             series_index=args.series,
             subject_id=args.subject_id,
-            verbose=getattr(args, 'verbose', False)
+            verbose=getattr(args, 'verbose', False),
+            field_strength=getattr(args, 'field_strength', None),
+            echo_time=getattr(args, 'echo_time', None)
         )
         
         if result and result.get('nifti_path'):
@@ -59,7 +61,7 @@ def cmd_import_legacy(args: argparse.Namespace) -> dict | None:
         print(f"Error: {e}")
         return None
 
-    data, _affine, hdr, gtab, metadata = load_with_preproc(nii)
+    data, _affine, hdr, gtab, bids_json = load_with_preproc(nii)
 
     print(f"\nDataset Information:")
     print(f"  File: {nii}")
@@ -69,15 +71,26 @@ def cmd_import_legacy(args: argparse.Namespace) -> dict | None:
     print(f"  Voxel size (mm): {voxel_size}")
     print(f"  B-values: {sorted(set(gtab.bvals.astype(int)))}")
     
-    # Merge basic info into metadata if not present
-    if 'VoxelSize' not in metadata:
-        metadata['VoxelSize'] = voxel_size
-    if 'NumDirections' not in metadata:
-        metadata['NumDirections'] = len(gtab.bvals)
+    # Build CLI overrides for acquisition metadata
+    overrides = {}
+    if getattr(args, 'field_strength', None):
+        overrides['field_strength_T'] = args.field_strength
+    if getattr(args, 'echo_time', None):
+        overrides['echo_time_ms'] = args.echo_time
+    
+    # Extract full acquisition metadata
+    from csttool.ingest import extract_acquisition_metadata
+    acquisition = extract_acquisition_metadata(
+        bvecs=gtab.bvecs,
+        bvals=gtab.bvals,
+        voxel_size=voxel_size,
+        bids_json=bids_json,
+        overrides=overrides
+    )
     
     return {
         'nifti_path': nii,
         'data_shape': data.shape,
         'n_gradients': len(gtab.bvals),
-        'metadata': metadata
+        'metadata': acquisition
     }

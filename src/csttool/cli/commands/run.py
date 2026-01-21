@@ -49,6 +49,7 @@ def cmd_run(args: argparse.Namespace) -> None:
     step_times = {}
     step_results = {}
     failed_steps = []
+    pipeline_metadata = {}  # Initialize here to ensure it's available throughout
     
     print("\n" + "="*70)
     print("CSTTOOL - COMPLETE CST ANALYSIS PIPELINE")
@@ -112,6 +113,36 @@ def cmd_run(args: argparse.Namespace) -> None:
             nifti_path = args.nifti
             print(f"Using existing NIfTI: {nifti_path}")
             step_results['import'] = {'success': True, 'nifti_path': str(nifti_path)}
+            
+            # Extract acquisition metadata from NIfTI
+            try:
+                from ..utils import load_with_preproc
+                from csttool.ingest import extract_acquisition_metadata
+                
+                _, _, hdr, gtab, bids_json = load_with_preproc(nifti_path)
+                voxel_size = tuple(float(v) for v in hdr.get_zooms()[:3])
+                
+                # Build CLI overrides
+                overrides = {}
+                if getattr(args, 'field_strength', None):
+                    overrides['field_strength_T'] = args.field_strength
+                if getattr(args, 'echo_time', None):
+                    overrides['echo_time_ms'] = args.echo_time
+                
+                acquisition = extract_acquisition_metadata(
+                    bvecs=gtab.bvecs,
+                    bvals=gtab.bvals,
+                    voxel_size=voxel_size,
+                    bids_json=bids_json,
+                    overrides=overrides
+                )
+                
+                pipeline_metadata['acquisition'] = acquisition
+                
+            except Exception as e:
+                if verbose:
+                    print(f"Note: Could not extract acquisition metadata: {e}")
+                    
         elif args.dicom:
             # Run import from DICOM
             import_args = argparse.Namespace(
@@ -121,7 +152,9 @@ def cmd_run(args: argparse.Namespace) -> None:
                 subject_id=subject_id,
                 series=getattr(args, 'series', None),
                 scan_only=False,
-                verbose=verbose
+                verbose=verbose,
+                field_strength=getattr(args, 'field_strength', None),
+                echo_time=getattr(args, 'echo_time', None)
             )
             
             import_result = cmd_import(import_args)
@@ -132,8 +165,6 @@ def cmd_run(args: argparse.Namespace) -> None:
                 
                 # capture metadata from import
                 if 'metadata' in import_result:
-                     if 'pipeline_metadata' not in locals():
-                        pipeline_metadata = {}
                      pipeline_metadata['acquisition'] = import_result['metadata']
             else:
                 raise RuntimeError("Import failed to produce NIfTI file")
@@ -198,9 +229,6 @@ def cmd_run(args: argparse.Namespace) -> None:
         step_times['preprocess'] = time() - t0
         
         # Record metadata for report
-        if 'pipeline_metadata' not in locals():
-            pipeline_metadata = {}
-        
         pipeline_metadata['preprocessing'] = {
             'status': 'Executed',
             'method': getattr(args, 'denoise_method', 'patch2self'),
@@ -217,9 +245,6 @@ def cmd_run(args: argparse.Namespace) -> None:
         step_times['preprocess'] = time() - t0
         
         # Record metadata for report
-        if 'pipeline_metadata' not in locals():
-            pipeline_metadata = {}
-            
         pipeline_metadata['preprocessing'] = {
             'status': 'Skipped (External Preprocessing Used)'
         }
@@ -267,8 +292,6 @@ def cmd_run(args: argparse.Namespace) -> None:
             
             # Capture tracking parameters
             if 'tracking_params' in track_result:
-                if 'pipeline_metadata' not in locals():
-                    pipeline_metadata = {}
                 pipeline_metadata['tracking'] = track_result['tracking_params']
         else:
             raise RuntimeError("Tracking failed")

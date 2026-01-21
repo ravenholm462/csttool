@@ -45,23 +45,23 @@
 
 - [x] Figure out if metrics calculated in native or MNI space first. (Answer: Native)
 - [ ] Implement metrics space conversion (Native ↔ MNI152 Template Space)
-- [ ] Acquisiton and processing parameters are hardcoded, fix.
-- [ ] Decide which acquistion and processing parameters to report.
-  - [ ] Update the pipeline to report the selected parameters:
-    - [ ] Acquisition parameters (autopopulate during `import` from JSON sidecar or derive)
-      - [ ] Field strength
-      - [ ] Echo time (TE) / Repetition time (TR)
-      - [ ] b-value in s/mm^2
-      - [ ] Voxel resolution (e.g. 2.0 x 2.0 x 2.0 mm^3)
-      - [ ] Number of directions.
-      - [ ] Number of volumes.
-    - [ ] Processing parameters (get from csttool)
-      - [ ] Denoising method (either find in JSON sidecar, write "External" if not found or add applied csttool method if `--preprocess` used)
-      - [ ] Motion / Eddy current correction (+ method), if applied (either find in JSON sidecar, write "External" if not found or add applied csttool method if `--preprocess` used)
-      - [ ] Tracking thresholds (FA threshold, angle threshold, step size)
-      - [ ] ROI atlas & registration method
-      - [ ] Tractography algorithm
-      - [ ] Seeding (density, region)
+- [x] Acquisition and processing parameters are hardcoded, fix.
+- [x] Decide which acquisition and processing parameters to report.
+  - [x] Update the pipeline to report the selected parameters:
+    - [x] Acquisition parameters (autopopulate during `import` from JSON sidecar or derive)
+      - [x] Field strength (with `--field-strength` CLI override)
+      - [x] Echo time (TE) (with `--echo-time` CLI override)
+      - [x] b-value in s/mm^2 (auto-derived)
+      - [x] Voxel resolution (auto-derived)
+      - [x] Number of directions (auto-derived)
+      - [x] Number of volumes (auto-derived)
+    - [x] Processing parameters (get from csttool)
+      - [x] Denoising method
+      - [x] Motion / Eddy current correction
+      - [x] Tracking thresholds (FA threshold, angle threshold, step size)
+      - [x] ROI atlas & registration method
+      - [x] Tractography algorithm
+      - [x] Seeding (density)
     
  
 

@@ -133,7 +133,8 @@ def cmd_track(args: argparse.Namespace) -> dict | None:
         'sphere': 'symmetric362',
         'stopping_criterion': 'fa_threshold',
         'relative_peak_threshold': 0.8,
-        'min_separation_angle': 45,
+        'min_separation_angle': 45,  # Angle threshold for fiber direction changes
+        'angle_threshold': 45,  # Reported as angle_threshold for clarity
     }
     
     try:

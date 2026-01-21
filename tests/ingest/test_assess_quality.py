@@ -82,3 +82,65 @@ def test_assess_quality_json():
     
     assert any("Long echo time" in w[1] for w in warnings)
     assert any("High multiband factor" in w[1] for w in warnings)
+
+
+# Tests for extract_acquisition_metadata
+from csttool.ingest.modules.assess_quality import extract_acquisition_metadata
+
+def test_extract_acquisition_metadata_basic():
+    """Test extraction of acquisition metadata from arrays."""
+    bvals = np.array([0, 0, 1000, 1000, 2000, 2000])
+    bvecs = np.array([
+        [0, 0, 0], [0, 0, 0],
+        [1, 0, 0], [0, 1, 0],
+        [0, 0, 1], [1, 1, 0]
+    ])
+    voxel_size = (2.0, 2.0, 2.0)
+    
+    acq = extract_acquisition_metadata(bvecs, bvals, voxel_size)
+    
+    assert acq['b_values'] == [0, 1000, 2000]
+    assert acq['n_volumes'] == 6
+    assert acq['resolution_mm'] == [2.0, 2.0, 2.0]
+    assert acq['field_strength_T'] is None  # No JSON provided
+    assert acq['echo_time_ms'] is None
+
+
+def test_extract_acquisition_metadata_with_json():
+    """Test extraction with BIDS JSON sidecar."""
+    bvals = np.array([0, 1000, 1000])
+    bvecs = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]])
+    voxel_size = (2.0, 2.0, 2.0)
+    
+    bids_json = {
+        'MagneticFieldStrength': 3.0,
+        'EchoTime': 0.089  # 89ms in seconds
+    }
+    
+    acq = extract_acquisition_metadata(bvecs, bvals, voxel_size, bids_json=bids_json)
+    
+    assert acq['field_strength_T'] == 3.0
+    assert acq['echo_time_ms'] == 89.0
+
+
+def test_extract_acquisition_metadata_cli_overrides():
+    """Test that CLI overrides take precedence over JSON."""
+    bvals = np.array([0, 1000])
+    bvecs = np.array([[0, 0, 0], [1, 0, 0]])
+    voxel_size = (2.0, 2.0, 2.0)
+    
+    bids_json = {
+        'MagneticFieldStrength': 3.0,
+        'EchoTime': 0.089
+    }
+    
+    overrides = {
+        'field_strength_T': 7.0,  # Override from CLI
+        'echo_time_ms': 75.0
+    }
+    
+    acq = extract_acquisition_metadata(bvecs, bvals, voxel_size, bids_json=bids_json, overrides=overrides)
+    
+    # CLI overrides should win
+    assert acq['field_strength_T'] == 7.0
+    assert acq['echo_time_ms'] == 75.0

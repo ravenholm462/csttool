@@ -28,26 +28,40 @@
             <div class="param-box">
                 <h3>Acquisition Parameters</h3>
                 <div class="param-grid">
-                    <span class="param-label">Protocol:</span>
-                    <span class="param-value">{{ acquisition.protocol | default('Single-shell DTI') }}</span>
                     <span class="param-label">Field Strength:</span>
-                    <span class="param-value">{{ acquisition.MagneticFieldStrength | default('unknown') }} T</span>
-                    <span class="param-label">TE / TR:</span>
-                    <span class="param-value">{{ acquisition.EchoTime }}ms / {{ acquisition.RepetitionTime }}ms</span>
-                    <span class="param-label">Max b-value:</span>
-                    <span class="param-value">{{ acquisition.MaxBValue | default('0') }} s/mm²</span>
-                    <span class="param-label">Directions:</span>
-                    <span class="param-value">{{ acquisition.NumDirections | default('0') }}</span>
-                    <span class="param-label">Resolution:</span>
                     <span class="param-value">
-                        {% if acquisition.VoxelSize %}
-                            {{ "%.1f"|format(acquisition.VoxelSize[0]) }}×{{ "%.1f"|format(acquisition.VoxelSize[1]) }}×{{ "%.1f"|format(acquisition.VoxelSize[2]) }} mm
+                        {% if acquisition.field_strength_T %}
+                            {{ "%.1f"|format(acquisition.field_strength_T) }} T
                         {% else %}
                             N/A
                         {% endif %}
                     </span>
-                    <span class="param-label">Scanner:</span>
-                    <span class="param-value">{{ acquisition.Manufacturer }} {{ acquisition.DeviceSerialNumber }}</span>
+                    <span class="param-label">Echo Time:</span>
+                    <span class="param-value">
+                        {% if acquisition.echo_time_ms %}
+                            {{ "%.1f"|format(acquisition.echo_time_ms) }} ms
+                        {% else %}
+                            N/A
+                        {% endif %}
+                    </span>
+                    <span class="param-label">Max b-value:</span>
+                    <span class="param-value">
+                        {% if acquisition.b_values %}
+                            {{ acquisition.b_values[-1] }} s/mm²
+                        {% else %}
+                            N/A
+                        {% endif %}
+                    </span>
+                    <span class="param-label">Directions:</span>
+                    <span class="param-value">{{ acquisition.n_directions | default('N/A') }}</span>
+                    <span class="param-label">Resolution:</span>
+                    <span class="param-value">
+                        {% if acquisition.resolution_mm %}
+                            {{ "%.1f"|format(acquisition.resolution_mm[0]) }}×{{ "%.1f"|format(acquisition.resolution_mm[1]) }}×{{ "%.1f"|format(acquisition.resolution_mm[2]) }} mm
+                        {% else %}
+                            N/A
+                        {% endif %}
+                    </span>
                 </div>
             </div>
             <div class="param-box">
@@ -55,24 +69,40 @@
                 <div class="param-grid">
                     <span class="param-label">Denoising:</span>
                     <span class="param-value">
-                        {% if processing.preprocessing_step %}
-                            {{ processing.preprocessing_step.method }} 
-                            {% if processing.preprocessing_step.unring %}(+unring){% endif %}
-                            {% if processing.preprocessing_step.motion_correction %}(+motion){% endif %}
+                        {% if processing.preprocessing %}
+                            {{ processing.preprocessing.method | default('External') }}
                         {% else %}
-                            {{ processing.denoising | default('External') }}
+                            External
                         {% endif %}
                     </span>
-                    <span class="param-label">Tracking:</span>
-                    <span class="param-value">Deterministic ({{ processing.tracking_params.sh_order if processing.tracking_params else 'CSA' }})</span>
-                    <span class="param-label">Calculated FA Thr:</span>
+                    <span class="param-label">Motion Correction:</span>
+                    <span class="param-value">
+                        {% if processing.preprocessing and processing.preprocessing.motion_correction %}
+                            Yes
+                        {% else %}
+                            No
+                        {% endif %}
+                    </span>
+                    <span class="param-label">Tracking Method:</span>
+                    <span class="param-value">{{ processing.tracking_method | default('Deterministic (CSA)') }}</span>
+                    <span class="param-label">FA Threshold:</span>
                     <span class="param-value">{{ processing.tracking_params.fa_thresh if processing.tracking_params else 'N/A' }}</span>
-                    <span class="param-label">Seeds/Voxel:</span>
-                    <span class="param-value">{{ processing.tracking_params.seed_density if processing.tracking_params else 'N/A' }}</span>
+                    <span class="param-label">Angle Threshold:</span>
+                    <span class="param-value">
+                        {% if processing.tracking_params and processing.tracking_params.angle_threshold %}
+                            {{ processing.tracking_params.angle_threshold }}°
+                        {% else %}
+                            N/A
+                        {% endif %}
+                    </span>
                     <span class="param-label">Step Size:</span>
-                    <span class="param-value">{{ processing.tracking_params.step_size if processing.tracking_params else 'N/A' }}</span>
-                    <span class="param-label">ROI Approach:</span>
-                    <span class="param-value">{{ processing.roi_approach | default('Atlas-to-Subject (HO)') }}</span>
+                    <span class="param-value">
+                        {% if processing.tracking_params and processing.tracking_params.step_size %}
+                            {{ processing.tracking_params.step_size }} mm
+                        {% else %}
+                            N/A
+                        {% endif %}
+                    </span>
                 </div>
             </div>
         </div>

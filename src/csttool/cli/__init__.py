@@ -116,6 +116,18 @@ def main() -> None:
         action="store_true",
         help="Print detailed processing information"
     )
+    p_import.add_argument(
+        "--field-strength",
+        type=float,
+        default=None,
+        help="MRI field strength in Tesla (e.g. 3.0). Overrides BIDS JSON if provided."
+    )
+    p_import.add_argument(
+        "--echo-time",
+        type=float,
+        default=None,
+        help="Echo time in milliseconds (e.g. 89.0). Overrides BIDS JSON if provided."
+    )
     p_import.set_defaults(func=cmd_import)
 
     # -------------------------------------------------------------------------
@@ -424,6 +436,18 @@ def main() -> None:
         type=int,
         default=None,
         help="DICOM series number to convert (1-indexed)"
+    )
+    p_run.add_argument(
+        "--field-strength",
+        type=float,
+        default=None,
+        help="MRI field strength in Tesla (e.g. 3.0). Overrides BIDS JSON if provided."
+    )
+    p_run.add_argument(
+        "--echo-time",
+        type=float,
+        default=None,
+        help="Echo time in milliseconds (e.g. 89.0). Overrides BIDS JSON if provided."
     )
     
     # Preprocessing options

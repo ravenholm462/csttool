@@ -2,6 +2,91 @@ from typing import List, Tuple, Dict, Any, Optional
 import numpy as np
 from csttool.tracking.modules.estimate_directions import get_max_sh_order
 
+
+def count_unique_directions(bvecs: np.ndarray, bvals: np.ndarray, b0_threshold: int = 50) -> int:
+    """Count unique gradient directions (excluding b=0 volumes).
+    
+    Args:
+        bvecs: (N, 3) or (3, N) array of gradient directions
+        bvals: (N,) array of b-values
+        b0_threshold: b-value threshold for b=0 volumes
+        
+    Returns:
+        Number of unique gradient directions
+    """
+    if bvals.ndim == 2:
+        bvals = bvals.flatten()
+    if bvecs.shape[0] == 3 and bvecs.shape[1] != 3:
+        bvecs = bvecs.T
+        
+    dwi_mask = bvals > b0_threshold
+    if not np.any(dwi_mask):
+        return 0
+        
+    dwi_bvecs = bvecs[dwi_mask]
+    norms = np.linalg.norm(dwi_bvecs, axis=1, keepdims=True)
+    norms[norms == 0] = 1
+    normalized_bvecs = dwi_bvecs / norms
+    
+    unique_dirs = np.unique(np.round(normalized_bvecs, decimals=4), axis=0)
+    return len(unique_dirs)
+
+
+def extract_acquisition_metadata(
+    bvecs: np.ndarray,
+    bvals: np.ndarray,
+    voxel_size: Tuple[float, float, float],
+    bids_json: Optional[Dict[str, Any]] = None,
+    overrides: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    """Extract acquisition parameters for reporting.
+    
+    Args:
+        bvecs: (N, 3) or (3, N) array of gradient directions
+        bvals: (N,) array of b-values
+        voxel_size: (x, y, z) voxel dimensions in mm
+        bids_json: Optional BIDS JSON metadata dict
+        overrides: Optional dict of CLI-provided values (take precedence)
+        
+    Returns:
+        Dict with acquisition metadata for reports
+    """
+    overrides = overrides or {}
+    bids_json = bids_json or {}
+    
+    if bvals.ndim == 2:
+        bvals = bvals.flatten()
+    
+    # Extract from BIDS JSON (convert units where needed)
+    field_strength = None
+    if 'MagneticFieldStrength' in bids_json:
+        try:
+            field_strength = float(bids_json['MagneticFieldStrength'])
+        except (ValueError, TypeError):
+            pass
+    
+    echo_time_ms = None
+    if 'EchoTime' in bids_json:
+        try:
+            # BIDS stores in seconds, convert to ms
+            echo_time_ms = float(bids_json['EchoTime']) * 1000
+        except (ValueError, TypeError):
+            pass
+    
+    acq = {
+        'field_strength_T': field_strength,
+        'echo_time_ms': echo_time_ms,
+        'b_values': sorted(set(bvals.astype(int).tolist())),
+        'n_directions': count_unique_directions(bvecs, bvals),
+        'n_volumes': len(bvals),
+        'resolution_mm': list(voxel_size),
+    }
+    
+    # CLI overrides take precedence
+    acq.update(overrides)
+    
+    return acq
+
 def assess_acquisition_quality(
     bvecs: np.ndarray,
     bvals: np.ndarray,

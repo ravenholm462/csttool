@@ -148,13 +148,13 @@ def cmd_metrics(args: argparse.Namespace) -> dict | None:
     print("Generating reports")
     print("="*60)
     
-    # Build metadata for reports
+    # Get pipeline metadata passed from run.py (or empty if standalone)
+    pipeline_metadata = getattr(args, 'pipeline_metadata', {})
+    
+    # Build metadata for reports from pipeline data
     metadata = {
-        'acquisition': {},  # Populated by cmd_run when full pipeline is used
-        'processing': {
-            'tracking_method': 'Deterministic (DTI)',
-            'roi_approach': 'Atlas-to-Subject (HO)',
-        },
+        'acquisition': pipeline_metadata.get('acquisition', {}),
+        'processing': {},
         'qc_thresholds': {
             'fa_threshold': getattr(args, 'fa_threshold', None),
             'min_length': getattr(args, 'min_length', None),
@@ -162,18 +162,24 @@ def cmd_metrics(args: argparse.Namespace) -> dict | None:
         }
     }
     
+    # Build processing metadata from tracking params if available
+    tracking_params = pipeline_metadata.get('tracking', {})
+    if tracking_params:
+        metadata['processing']['tracking_params'] = tracking_params
+        # Derive tracking method from params
+        sh_order = tracking_params.get('sh_order', 'N/A')
+        metadata['processing']['tracking_method'] = f"Deterministic (CSA, SH order {sh_order})"
+    
+    # Add preprocessing info if available
+    if 'preprocessing' in pipeline_metadata:
+        metadata['processing']['preprocessing'] = pipeline_metadata['preprocessing']
+    
+    # Add ROI approach (static for now - atlas-based)
+    metadata['processing']['roi_approach'] = 'Atlas-to-Subject (Harvard-Oxford)'
+    
     # Remove None values from qc_thresholds
     metadata['qc_thresholds'] = {k: v for k, v in metadata['qc_thresholds'].items() if v is not None}
-    
-    pipeline_metadata = getattr(args, 'pipeline_metadata', {})
-    if pipeline_metadata:
-        # Deep merge or specific updates
-        if 'preprocessing' in pipeline_metadata:
-            metadata['processing']['preprocessing_step'] = pipeline_metadata['preprocessing']
-        if 'acquisition' in pipeline_metadata:
-            metadata['acquisition'] = pipeline_metadata['acquisition']
-        if 'tracking' in pipeline_metadata:
-            metadata['processing']['tracking_params'] = pipeline_metadata['tracking']
+
     
     json_path = None
     csv_path = None

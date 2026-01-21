@@ -59,7 +59,7 @@ from .modules.save_ingest_outputs import (
     get_nifti_stem
 )
 
-from .modules.assess_quality import assess_acquisition_quality
+from .modules.assess_quality import assess_acquisition_quality, extract_acquisition_metadata
 
 
 def run_ingest_pipeline(
@@ -68,7 +68,9 @@ def run_ingest_pipeline(
     subject_id=None,
     series_index=None,
     auto_select=True,
-    verbose=True
+    verbose=True,
+    field_strength=None,
+    echo_time=None
 ):
     """
     Run the complete ingest pipeline.
@@ -233,6 +235,56 @@ def run_ingest_pipeline(
     outputs['series_analysis'] = selected
     outputs['validation'] = validation
     
+    # Extract acquisition metadata for pipeline
+    try:
+        from dipy.io.gradients import read_bvals_bvecs
+        from nibabel import load as nib_load
+        from .modules.assess_quality import extract_acquisition_metadata
+        
+        # Load bvals/bvecs
+        bvals, bvecs = read_bvals_bvecs(
+            str(outputs['bval_path']),
+            str(outputs['bvec_path'])
+        )
+        
+        # Load NIfTI header for voxel size
+        nii_img = nib_load(str(outputs['nifti_path']))
+        voxel_size = tuple(float(v) for v in nii_img.header.get_zooms()[:3])
+        
+        # Check for BIDS JSON sidecar
+        bids_json = None
+        json_path = outputs['nifti_path'].with_suffix('.json')
+        if json_path.exists():
+            import json
+            with open(json_path) as f:
+                bids_json = json.load(f)
+        
+        # Build CLI overrides
+        overrides = {}
+        if field_strength is not None:
+            overrides['field_strength_T'] = field_strength
+        if echo_time is not None:
+            overrides['echo_time_ms'] = echo_time
+        
+        # Extract metadata
+        acquisition = extract_acquisition_metadata(
+            bvecs=bvecs,
+            bvals=bvals,
+            voxel_size=voxel_size,
+            bids_json=bids_json,
+            overrides=overrides
+        )
+        
+        outputs['metadata'] = acquisition
+        
+        if verbose:
+            print(f"  ✓ Extracted acquisition metadata")
+            
+    except Exception as e:
+        if verbose:
+            print(f"  Note: Could not extract acquisition metadata: {e}")
+        outputs['metadata'] = {}
+    
     # Print summary
     if verbose:
         print_import_summary(outputs, selected)
@@ -272,4 +324,5 @@ __all__ = [
     
     # Quality Assessment
     'assess_acquisition_quality',
+    'extract_acquisition_metadata',
 ]
