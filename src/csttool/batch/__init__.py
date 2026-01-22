@@ -5,12 +5,19 @@ Provides multi-subject batch processing capabilities with BIDS-compliant
 input discovery and output organization.
 """
 
-# Exports will be added as modules are implemented:
-# from .batch import run_batch
-# from .modules.discover import discover_subjects
-# from .modules.manifest import load_manifest
-# from .modules.report import generate_batch_report
+from .batch import run_batch, BatchConfig, SubjectSpec, SubjectResult
+from .modules.discover import discover_subjects, detect_input_type
+from .modules.manifest import load_manifest, save_manifest_template
+from .modules.report import generate_batch_reports
 
 __all__ = [
-    # Placeholder - will be populated during implementation
+    "run_batch",
+    "BatchConfig",
+    "SubjectSpec",
+    "SubjectResult",
+    "discover_subjects",
+    "detect_input_type",
+    "load_manifest",
+    "save_manifest_template",
+    "generate_batch_reports",
 ]
