@@ -14,6 +14,7 @@ from .commands.track import cmd_track
 from .commands.extract import cmd_extract
 from .commands.metrics import cmd_metrics
 from .commands.run import cmd_run
+from .commands.batch import cmd_batch
 
 def main() -> None:
     """Entrypoint for the csttool CLI."""
@@ -588,6 +589,111 @@ def main() -> None:
     )
     
     p_run.set_defaults(func=cmd_run)
+
+    # -------------------------------------------------------------------------
+    # batch subtool (BIDS / Manifest oriented)
+    # -------------------------------------------------------------------------
+    p_batch = subparsers.add_parser(
+        "batch",
+        help="Process multiple subjects/sessions in batch mode"
+    )
+    
+    # Input options
+    batch_input = p_batch.add_mutually_exclusive_group(required=True)
+    batch_input.add_argument(
+        "--manifest",
+        type=Path,
+        help="Path to JSON manifest file"
+    )
+    batch_input.add_argument(
+        "--bids-dir",
+        type=Path,
+        help="Path to BIDS directory for auto-discovery"
+    )
+    
+    p_batch.add_argument(
+        "--out",
+        type=Path,
+        required=True,
+        help="Output root directory where results will be organized"
+    )
+    
+    # Batch control options
+    p_batch.add_argument(
+        "--force",
+        action="store_true",
+        help="Re-process all subjects, ignoring prior completions"
+    )
+    p_batch.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Validate inputs and show execution plan without processing"
+    )
+    p_batch.add_argument(
+        "--validate-only",
+        action="store_true",
+        help="Perform preflight validation only and exit"
+    )
+    p_batch.add_argument(
+        "--keep-work",
+        action="store_true",
+        help="Retain _work/ directories even on success"
+    )
+    p_batch.add_argument(
+        "--timeout-minutes",
+        type=int,
+        default=120,
+        help="Per-subject timeout in minutes (default: 120)"
+    )
+    
+    # Filters (only used with --bids-dir)
+    p_batch.add_argument(
+        "--include",
+        nargs="+",
+        help="Subject ID patterns to include (glob-style, e.g. sub-01*)"
+    )
+    p_batch.add_argument(
+        "--exclude",
+        nargs="+",
+        help="Subject ID patterns to exclude"
+    )
+
+    # Processing options (similar to 'run' command)
+    p_batch.add_argument(
+        "--denoise-method",
+        type=str,
+        default="patch2self",
+        choices=["patch2self", "nlmeans", "none"],
+        help="Denoising method (default: patch2self)"
+    )
+    
+    preproc_group = p_batch.add_mutually_exclusive_group()
+    preproc_group.add_argument(
+        "--preprocessing",
+        dest="preprocessing",
+        action="store_true",
+        default=True,
+        help="Run preprocessing steps (default)"
+    )
+    preproc_group.add_argument(
+        "--no-preprocessing",
+        dest="preprocessing",
+        action="store_false",
+        help="Skip preprocessing steps"
+    )
+    
+    p_batch.add_argument(
+        "--generate-pdf",
+        action="store_true",
+        help="Generate PDF clinical reports for each subject"
+    )
+    p_batch.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Print detailed processing information"
+    )
+    
+    p_batch.set_defaults(func=cmd_batch)
 
     # -------------------------------------------------------------------------
     # Parse and execute
