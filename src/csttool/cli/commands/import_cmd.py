@@ -34,7 +34,8 @@ def cmd_import(args: argparse.Namespace) -> dict | None:
         result = run_ingest_pipeline(
             study_dir=args.dicom,
             output_dir=args.out,
-            series_index=args.series,
+            series_index=getattr(args, 'series', None),
+            series_uid=getattr(args, 'series_uid', None),
             subject_id=args.subject_id,
             verbose=getattr(args, 'verbose', False),
             field_strength=getattr(args, 'field_strength', None),

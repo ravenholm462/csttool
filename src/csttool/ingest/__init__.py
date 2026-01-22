@@ -67,6 +67,7 @@ def run_ingest_pipeline(
     output_dir,
     subject_id=None,
     series_index=None,
+    series_uid=None,
     auto_select=True,
     verbose=True,
     field_strength=None,
@@ -162,7 +163,16 @@ def run_ingest_pipeline(
     
     selected = None
     
-    if series_index is not None:
+    if series_uid:
+        # Use specified UID
+        selected = next((s for s in analyses if s.uid == series_uid), None)
+        if selected:
+            if verbose:
+                print(f"  Using series with UID {series_uid}: {selected.name}")
+        else:
+             raise ValueError(f"Series with UID {series_uid} not found in {study_dir}")
+            
+    elif series_index is not None:
         # Use specified index
         if 1 <= series_index <= len(analyses):
             selected = analyses[series_index - 1]
@@ -179,7 +189,7 @@ def run_ingest_pipeline(
         if selected is None:
             raise ValueError(
                 "No suitable series found for tractography. "
-                "Use series_index to manually select a series."
+                "Use series_index or series_uid to manually select a series."
             )
     else:
         # Interactive selection would go here

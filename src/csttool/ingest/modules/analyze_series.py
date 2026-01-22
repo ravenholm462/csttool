@@ -39,6 +39,7 @@ class SeriesAnalysis:
     
     # DICOM metadata
     series_description: str = ""
+    uid: str = ""
     series_number: int = 0
     image_type: List[str] = field(default_factory=list)
     modality: str = ""
@@ -158,6 +159,7 @@ def _analyze_with_pydicom(analysis: SeriesAnalysis, series_path: Path, pydicom) 
     
     # Extract basic metadata
     analysis.series_description = str(getattr(ds, 'SeriesDescription', ''))
+    analysis.uid = str(getattr(ds, 'SeriesInstanceUID', ''))
     analysis.series_number = int(getattr(ds, 'SeriesNumber', 0))
     analysis.image_type = list(getattr(ds, 'ImageType', []))
     analysis.modality = str(getattr(ds, 'Modality', ''))
