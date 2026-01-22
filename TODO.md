@@ -17,9 +17,9 @@
   - [x] Break down `cli.py` into submodules (e.g., `cli/commands/*.py`).
 
 ## Batch processing
-- [ ] **See:** `src/csttool/batch/IMPLEMENTATION_PLAN.md` for detailed tracking.
-- [ ] Implement batch processing workflow.
-  - [ ] Create unified reports of processed batch with statistics (Batch Report).
+- [x] **See:** `src/csttool/batch/IMPLEMENTATION_PLAN.md` for detailed tracking.
+- [x] Implement batch processing workflow.
+  - [x] Create unified reports of processed batch with statistics (Batch Report).
 
 ## Preprocessing
 - [x] Pipeline should skip preprocessing by default, as it is inefficient, slow, and the available datasets are often preprocessed using superior software like FSL. If not skipped, the default pipeline should include skip Gibbs' correction and motion correctio, and keep everything else.
