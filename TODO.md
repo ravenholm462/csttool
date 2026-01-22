@@ -26,6 +26,9 @@
 - [x] Update reports to reflect preprocessing status (Skipped vs Executed).
 
 ## Validation & Research
+- [x] Add CST validation against reference bundles (TractoInferno PYT)
+  - [x] `csttool validate` command with Dice, overreach, MDF metrics
+  - [ ] Unit tests for validation module
 - [ ] Find standard values for healthy controls, add to metrics.
 - [ ] Use batch processing to process entire TractoInferno training set.
 

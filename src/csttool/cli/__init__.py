@@ -15,6 +15,7 @@ from .commands.extract import cmd_extract
 from .commands.metrics import cmd_metrics
 from .commands.run import cmd_run
 from .commands.batch import cmd_batch
+from .commands.validate import add_validate_parser, cmd_validate
 
 def main() -> None:
     """Entrypoint for the csttool CLI."""
@@ -694,6 +695,11 @@ def main() -> None:
     )
     
     p_batch.set_defaults(func=cmd_batch)
+
+    # -------------------------------------------------------------------------
+    # validate subtool
+    # -------------------------------------------------------------------------
+    add_validate_parser(subparsers)
 
     # -------------------------------------------------------------------------
     # Parse and execute
