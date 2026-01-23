@@ -47,3 +47,25 @@ The command produces:
 
 - **Unit Tests**: [tests/validation/test_bundle_comparison.py](file:///home/alemnalo/csttool/tests/validation/test_bundle_comparison.py) (Passing)
 - **Integration Tests**: [tests/validation/test_cli_validate.py](file:///home/alemnalo/csttool/tests/validation/test_cli_validate.py) (Passing)
+## Example Output
+
+```text
+Loading candidate: output/sub-001/cst_left.trk
+Loading reference: derivatives/sub-001/PYT_L.trk
+
+Validating Space... OK (Dimensions match: 96x96x60)
+
+Computing Metrics
+=================
+Dice Coefficient: 0.78 (Target: >0.7) [PASS]
+Density Correlation: 0.85
+Bundle Overlap: 82.5%
+Overreach: 5.2% (Target: <20%) [PASS]
+Streamline Count Ratio: 0.95 (Candidate/Ref)
+
+Visualizations generated:
+- validate/val_overlap_occ.nii.gz
+- validate/val_snapshot_axial.png
+
+Validation passed.
+```

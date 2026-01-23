@@ -98,13 +98,17 @@ nav:
       - Troubleshooting: how-to/troubleshooting.md
   - Reference:
       - CLI Commands:
+          - Overview: reference/cli/overview.md
           - check: reference/cli/check.md
+          - check-dataset: reference/cli/check_dataset.md
           - import: reference/cli/import.md
           - preprocess: reference/cli/preprocess.md
           - track: reference/cli/track.md
           - extract: reference/cli/extract.md
           - metrics: reference/cli/metrics.md
+          - validate: reference/cli/validate.md
           - run: reference/cli/run.md
+          - batch: reference/cli/batch.md
       - API:
           - Preprocessing: reference/api/preprocess.md
           - Tracking: reference/api/tracking.md
