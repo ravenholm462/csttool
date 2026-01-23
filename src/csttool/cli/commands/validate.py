@@ -5,14 +5,26 @@ Compare csttool-extracted CST tractograms against reference bundles.
 """
 
 import argparse
+import sys
 from pathlib import Path
 
 from csttool.validation import (
     compute_bundle_overlap,
     compute_overreach,
+    compute_coverage,
     mean_closest_distance,
+    streamline_count_ratio,
     generate_validation_report,
+    check_spatial_compatibility,
+    check_hemisphere_alignment,
+    SpatialMismatchError,
 )
+
+try:
+    from csttool.validation.visualization import save_overlap_maps, save_validation_snapshots
+    VISUALIZATION_AVAILABLE = True
+except ImportError:
+    VISUALIZATION_AVAILABLE = False
 
 
 def add_validate_parser(subparsers):
@@ -27,20 +39,38 @@ def add_validate_parser(subparsers):
         ),
     )
     
+    # Candidate Inputs
     parser.add_argument(
-        "--candidate",
-        nargs="+",
+        "--cand-left",
         required=True,
         type=Path,
-        help="Path(s) to candidate CST tractogram(s) (.trk)",
+        help="Path to candidate Left CST tractogram (.trk)",
+    )
+    parser.add_argument(
+        "--cand-right",
+        required=True,
+        type=Path,
+        help="Path to candidate Right CST tractogram (.trk)",
     )
     
+    # Reference Inputs
     parser.add_argument(
-        "--reference",
-        nargs="+",
+        "--ref-left",
         required=True,
         type=Path,
-        help="Path(s) to reference tractogram(s) (.trk)",
+        help="Path to reference Left CST tractogram (.trk)",
+    )
+    parser.add_argument(
+        "--ref-right",
+        required=True,
+        type=Path,
+        help="Path to reference Right CST tractogram (.trk)",
+    )
+    parser.add_argument(
+        "--ref-space",
+        required=True,
+        type=Path,
+        help="Reference NIfTI image defining the coordinate grid (e.g. FA map)",
     )
     
     parser.add_argument(
@@ -51,11 +81,15 @@ def add_validate_parser(subparsers):
     )
     
     parser.add_argument(
-        "--metrics",
-        nargs="+",
-        choices=["dice", "overreach", "mdf", "all"],
-        default=["all"],
-        help="Metrics to compute (default: all)",
+        "--visualize",
+        action="store_true",
+        help="Generate visual reports (overlays and snapshots)",
+    )
+    
+    parser.add_argument(
+        "--disable-hemisphere-check",
+        action="store_true",
+        help="Disable warning for bundle centroid hemisphere mismatch",
     )
     
     parser.set_defaults(func=cmd_validate)
@@ -67,89 +101,123 @@ def cmd_validate(args: argparse.Namespace) -> int:
     """Execute the validate command."""
     print("\n=== CST Validation ===\n")
     
-    candidate_paths = args.candidate
-    reference_paths = args.reference
     output_dir = args.output_dir
-    metrics_to_compute = args.metrics
+    ref_space = args.ref_space
+    visualize = args.visualize
     
-    # Validate inputs
-    for path in candidate_paths:
-        if not path.exists():
-            print(f"ERROR: Candidate tractogram not found: {path}")
+    # Pairs to process
+    pairs = [
+        ("Left", args.cand_left, args.ref_left),
+        ("Right", args.cand_right, args.ref_right),
+    ]
+    
+    # 1. Validation & Setup
+    if not ref_space.exists():
+        print(f"ERROR: Reference space image not found: {ref_space}")
+        return 1
+        
+    for side, cand, ref in pairs:
+        if not cand.exists():
+            print(f"ERROR: {side} candidate not found: {cand}")
             return 1
-    
-    for path in reference_paths:
-        if not path.exists():
-            print(f"ERROR: Reference tractogram not found: {path}")
+        if not ref.exists():
+            print(f"ERROR: {side} reference not found: {ref}")
             return 1
+            
+    if visualize and not VISUALIZATION_AVAILABLE:
+        print("WARNING: Visualization libraries (nilearn/matplotlib) not found. Skipping visualization.")
+        visualize = False
     
-    if len(candidate_paths) != len(reference_paths):
-        print(
-            f"WARNING: Number of candidate ({len(candidate_paths)}) and "
-            f"reference ({len(reference_paths)}) tractograms differ. "
-            "Pairing in order."
-        )
-    
-    # Create output directory
     output_dir.mkdir(parents=True, exist_ok=True)
-    
-    # Determine which metrics to compute
-    if "all" in metrics_to_compute:
-        compute_dice = True
-        compute_or = True
-        compute_mdf = True
-    else:
-        compute_dice = "dice" in metrics_to_compute
-        compute_or = "overreach" in metrics_to_compute
-        compute_mdf = "mdf" in metrics_to_compute
-    
-    # Process each pair
     all_metrics = {}
-    pairs = list(zip(candidate_paths, reference_paths))
     
-    for i, (cand_path, ref_path) in enumerate(pairs):
-        pair_name = f"pair_{i+1}"
-        print(f"Processing {pair_name}:")
+    # 2. Process Processing
+    for side, cand_path, ref_path in pairs:
+        print(f"Processing {side} Hemisphere:")
         print(f"  Candidate: {cand_path.name}")
         print(f"  Reference: {ref_path.name}")
         
-        pair_metrics = {}
+        # A. Check Spatial Compatibility
+        try:
+            print("  Verifying spatial compatibility...", end=" ")
+            check_spatial_compatibility(
+                cand_path, ref_path, ref_space, 
+                tol_trans=1.0, tol_rot=1e-3
+            )
+            print("OK")
+        except SpatialMismatchError as e:
+            print("\n  FAIL: Spatial mismatch detected!")
+            print(f"  {e}")
+            print("  Aborting validation for safety.")
+            return 1
+        except Exception as e:
+            print(f"\n  ERROR checking space: {e}")
+            return 1
+            
+        # A.5 Hemisphere Check
+        if not args.disable_hemisphere_check:
+            try:
+                hs_warn = check_hemisphere_alignment(cand_path, ref_path)
+                if hs_warn:
+                     print(f"  WARNING: {hs_warn}")
+            except Exception as e:
+                if visualize: 
+                    print(f"  (Hemisphere check failed: {e})")
+            
+        # B. Compute Metrics
+        side_metrics = {}
         
-        if compute_dice:
-            print("  Computing Dice overlap...", end=" ")
-            overlap = compute_bundle_overlap(cand_path, ref_path)
-            pair_metrics["overlap"] = overlap
-            print(f"Dice = {overlap['dice']:.4f}")
+        # Overlap (Dice)
+        d_res = compute_bundle_overlap(cand_path, ref_path, ref_space)
+        side_metrics.update(d_res)
+        print(f"  Dice: {d_res['dice']:.4f}")
         
-        if compute_or:
-            print("  Computing overreach...", end=" ")
-            overreach = compute_overreach(cand_path, ref_path)
-            pair_metrics["overreach"] = overreach
-            print(f"Overreach = {overreach['overreach']:.4f}")
+        # Coverage
+        cov_res = compute_coverage(cand_path, ref_path, ref_space)
+        side_metrics.update(cov_res)
+        print(f"  Coverage: {cov_res['coverage']:.4f}")
         
-        if compute_mdf:
-            print("  Computing MDF...", end=" ")
-            mdf = mean_closest_distance(cand_path, ref_path)
-            pair_metrics["mdf"] = mdf
-            print(f"MDF = {mdf['mdf_mean']:.2f} mm (±{mdf['mdf_std']:.2f})")
+        # Overreach
+        ov_res = compute_overreach(cand_path, ref_path, ref_space)
+        side_metrics.update(ov_res)
+        print(f"  Overreach: {ov_res['overreach']:.4f}")
         
-        all_metrics[pair_name] = {
-            "candidate": str(cand_path),
-            "reference": str(ref_path),
-            "metrics": pair_metrics,
-        }
-        print()
-    
-    # Generate report
+        # MDF
+        mdf_res = mean_closest_distance(cand_path, ref_path, step_size_mm=2.0)
+        side_metrics.update(mdf_res)
+        print(f"  MDF Symmetric: {mdf_res['mdf_symmetric']:.2f} mm")
+        
+        # Count Ratio
+        cnt_res = streamline_count_ratio(cand_path, ref_path)
+        side_metrics.update(cnt_res)
+        print(f"  Count Ratio: {cnt_res['streamline_count_ratio']:.2f}")
+        
+        all_metrics[side.lower()] = side_metrics
+        
+        # C. Visualization
+        if visualize:
+            print("  Generating visualizations...", end=" ")
+            try:
+                vis_dir = output_dir / "visualizations" / side.lower()
+                maps = save_overlap_maps(cand_path, ref_path, ref_space, vis_dir)
+                save_validation_snapshots(ref_space, maps, vis_dir)
+                print("Done")
+            except Exception as e:
+                print(f"Failed ({e})")
+        
+        print("-" * 40)
+
+    # 3. Generate Report
     report_path = output_dir / "validation_report.json"
     generate_validation_report(
-        all_metrics,
-        report_path,
-        candidate_paths=candidate_paths,
-        reference_paths=reference_paths,
+        metrics=all_metrics,
+        output_path=report_path,
+        candidate_paths=[p[1] for p in pairs],
+        reference_paths=[p[2] for p in pairs],
+        ref_anatomy_path=ref_space
     )
     
-    print(f"Validation report saved to: {report_path}")
-    print("\n=== Validation Complete ===\n")
+    print(f"\nReport saved to: {report_path}")
+    print("=== Validation Complete ===\n")
     
     return 0

@@ -1,18 +1,21 @@
-# CST Validation Feature Implementation
+# Task: Implement Validation Feature
 
-## Planning
-- [x] Explore TractoInferno dataset structure
-- [x] Identify ground truth bundles (PYT_L, PYT_R = CST)
-- [x] Explore csttool codebase structure
-- [/] Draft implementation plan
-- [ ] User review and approval
-
-## Execution
-- [ ] Implement validation module (`src/csttool/validation/`)
-- [ ] Add `validate` CLI command
-- [ ] Add preprocessed data input support
-- [ ] Write unit tests
-
-## Verification
-- [ ] Run unit tests
-- [ ] Manual validation test with TractoInferno data
+- [ ] **Core Safety & Architecture (High)** <!-- id: 0 -->
+    - [x] Implement `check_spatial_compatibility` with strict tolerances <!-- id: 1 -->
+    - [x] Update [compute_bundle_overlap](file:///home/alemnalo/csttool/src/csttool/validation/bundle_comparison.py#35-84) to align with `ref_space` grid <!-- id: 2 -->
+    - [x] Implement robust empty/sparse bundle handling (0 vs NaN) <!-- id: 3 -->
+    - [x] Add unit tests for spatial mismatch and empty bundles <!-- id: 4 -->
+- [x] **Visualization (High)** <!-- id: 5 -->
+    - [x] Implement NIfTI overlay generation (cand/ref/overlap) <!-- id: 6 -->
+    - [x] Implement PNG snapshot generation <!-- id: 7 -->
+- [x] **Metrics Implementation (High)** <!-- id: 8 -->
+    - [x] Implement `coverage` metric (High Priority) <!-- id: 9 -->
+    - [x] Implement symmetric [mean_closest_distance](file:///home/alemnalo/csttool/src/csttool/validation/bundle_comparison.py#133-207) with step-size resampling <!-- id: 10 -->
+    - [x] Implement `streamline_count_ratio` <!-- id: 11 -->
+    - [x] Implement non-dilated [overreach](file:///home/alemnalo/csttool/src/csttool/validation/bundle_comparison.py#86-131) <!-- id: 12 -->
+- [x] **CLI Updates (High)** <!-- id: 13 -->
+    - [x] Update [validate.py](file:///home/alemnalo/csttool/src/csttool/cli/commands/validate.py) to use `--cand-left`, `--ref-space`, etc. <!-- id: 14 -->
+    - [x] Add `--visualize` and `--disable-hemisphere-check` flags <!-- id: 15 -->
+- [x] **Refinements (Medium)** <!-- id: 16 -->
+    - [x] Implement hemisphere sanity warning <!-- id: 17 -->
+    - [x] Ensure full JSON metadata recording <!-- id: 18 -->
