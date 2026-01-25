@@ -107,17 +107,17 @@ body {
     font-family: 'Consolas', 'Courier New', monospace;
 }
 
-/* ===== Metrics Table ===== */
+/* ===== Metrics Table (6 columns) ===== */
 .metrics-section {
-    min-height: 35mm;
-    margin-bottom: 3mm;
+    min-height: 30mm;
+    margin-bottom: 2mm;
     flex-shrink: 0;
 }
 
 .metrics-table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 9pt;
+    font-size: 7.5pt;
 }
 
 .metrics-table thead {
@@ -126,9 +126,10 @@ body {
 }
 
 .metrics-table th {
-    padding: 2mm 3mm;
+    padding: 1.5mm 1.5mm;
     text-align: center;
     font-weight: 600;
+    font-size: 7pt;
 }
 
 .metrics-table th:first-child {
@@ -136,9 +137,10 @@ body {
 }
 
 .metrics-table td {
-    padding: 1.5mm 3mm;
+    padding: 1mm 1.5mm;
     border-bottom: 0.3mm solid #E0E0E0;
     text-align: center;
+    font-size: 7pt;
 }
 
 .metrics-table td:first-child {
@@ -162,9 +164,9 @@ body {
 
 .legend {
     text-align: center;
-    font-size: 8pt;
+    font-size: 7pt;
     color: #666;
-    margin-top: 2mm;
+    margin-top: 1mm;
 }
 
 .legend .left-gt {
@@ -173,6 +175,59 @@ body {
 
 .legend .right-gt {
     color: #1976D2;
+}
+
+/* ===== Localized Metrics Table ===== */
+.localized-metrics-section {
+    margin-bottom: 2mm;
+    flex-shrink: 0;
+}
+
+.localized-metrics-section h3 {
+    color: #1976D2;
+    font-size: 9pt;
+    font-weight: 600;
+    margin-bottom: 1mm;
+}
+
+.localized-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 7pt;
+}
+
+.localized-table thead {
+    background: linear-gradient(135deg, #4CAF50, #388E3C);
+    color: white;
+}
+
+.localized-table th {
+    padding: 1.5mm 2mm;
+    text-align: center;
+    font-weight: 600;
+    font-size: 7pt;
+}
+
+.localized-table th:first-child {
+    text-align: left;
+}
+
+.localized-table td {
+    padding: 1mm 2mm;
+    border-bottom: 0.3mm solid #E0E0E0;
+    text-align: center;
+    font-size: 6.5pt;
+    font-family: 'Consolas', 'Courier New', monospace;
+}
+
+.localized-table td:first-child {
+    text-align: left;
+    font-weight: 500;
+    font-family: inherit;
+}
+
+.localized-table tbody tr:nth-child(even) {
+    background: #F5FFF5;
 }
 
 /* ===== Visualizations (flex: 1, fills remaining ~145mm) ===== */
@@ -252,12 +307,11 @@ body {
     min-height: 0;
 }
 
-/* Right column: Tractograms (40%) */
+/* Right column: Tractogram (single coronal view) */
 .tractogram-column {
     flex: 2;
     display: flex;
     flex-direction: column;
-    gap: 2mm;
     overflow: hidden;
     min-height: 0;
 }
@@ -272,6 +326,11 @@ body {
     flex-direction: column;
     overflow: hidden;
     min-height: 0;
+}
+
+.tractogram-item.tractogram-single {
+    /* Single view takes full height */
+    flex: 1;
 }
 
 .tractogram-item h4 {

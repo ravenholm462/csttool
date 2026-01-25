@@ -192,7 +192,21 @@ def save_csv_summary(comparison, output_dir, subject_id):
             'right_ad_std': right['ad']['std'],
             'ad_laterality_index': asym['ad']['laterality_index'],
         })
-    
+
+    # Add localized metrics (pontine, plic, precentral) for each scalar
+    regions = ['pontine', 'plic', 'precentral']
+    scalars = ['fa', 'md', 'rd', 'ad']
+
+    for scalar in scalars:
+        if scalar in left and 'pontine' in left[scalar]:
+            for region in regions:
+                data[f'left_{scalar}_{region}'] = left[scalar].get(region, 0.0)
+                data[f'right_{scalar}_{region}'] = right[scalar].get(region, 0.0)
+                # Add LI for localized metric
+                li_key = f'{scalar}_{region}'
+                if li_key in asym:
+                    data[f'{scalar}_{region}_laterality_index'] = asym[li_key]['laterality_index']
+
     # Save CSV
     csv_path = output_dir / f"{subject_id}_metrics_summary.csv"
     with open(csv_path, 'w', newline='') as f:
@@ -251,71 +265,159 @@ def save_html_report(
     left = comparison['left']
     right = comparison['right']
     asym = comparison['asymmetry']
-    
-    # Build metrics list for template
+
+    # Helper functions for formatting
+    def fmt_mean_sd(mean, std, is_diffusivity=False):
+        """Format mean ± SD string."""
+        if is_diffusivity:
+            return f"{mean*1000:.2f} ± {std*1000:.2f}"
+        return f"{mean:.3f} ± {std:.3f}"
+
+    def fmt_med_range(median, min_val, max_val, is_diffusivity=False):
+        """Format median (min-max) string."""
+        if is_diffusivity:
+            return f"{median*1000:.2f} ({min_val*1000:.2f}-{max_val*1000:.2f})"
+        return f"{median:.3f} ({min_val:.3f}-{max_val:.3f})"
+
+    # Build metrics list for template (6-column format)
     metrics = []
-    
-    # Streamlines
+
+    # Streamlines (no SD/range available, use simple format)
     metrics.append({
         "label": "Streamlines",
-        "left": left['morphology']['n_streamlines'],
-        "right": right['morphology']['n_streamlines'],
+        "left_mean_sd": str(left['morphology']['n_streamlines']),
+        "left_med_range": "-",
+        "right_mean_sd": str(right['morphology']['n_streamlines']),
+        "right_med_range": "-",
         "li": asym['streamline_count']['laterality_index']
     })
-    
-    # Volume (convert mm³ to cm³)
+
+    # Volume (convert mm³ to cm³, no SD/range available)
     metrics.append({
         "label": "Volume (cm³)",
-        "left": f"{left['morphology']['tract_volume'] / 1000.0:.2f}",
-        "right": f"{right['morphology']['tract_volume'] / 1000.0:.2f}",
+        "left_mean_sd": f"{left['morphology']['tract_volume'] / 1000.0:.2f}",
+        "left_med_range": "-",
+        "right_mean_sd": f"{right['morphology']['tract_volume'] / 1000.0:.2f}",
+        "right_med_range": "-",
         "li": asym['volume']['laterality_index']
     })
-    
+
     # Length
+    lm = left['morphology']
+    rm = right['morphology']
     metrics.append({
         "label": "Length (mm)",
-        "left": f"{left['morphology']['mean_length']:.1f}",
-        "right": f"{right['morphology']['mean_length']:.1f}",
+        "left_mean_sd": f"{lm['mean_length']:.1f} ± {lm['std_length']:.1f}",
+        "left_med_range": f"({lm['min_length']:.1f}-{lm['max_length']:.1f})",
+        "right_mean_sd": f"{rm['mean_length']:.1f} ± {rm['std_length']:.1f}",
+        "right_med_range": f"({rm['min_length']:.1f}-{rm['max_length']:.1f})",
         "li": asym['mean_length']['laterality_index']
     })
-    
+
     # FA
     if 'fa' in left:
+        # Backward compatibility: use mean as fallback for median if not present
+        left_fa_median = left['fa'].get('median', left['fa']['mean'])
+        left_fa_min = left['fa'].get('min', max(0.0, left['fa']['mean'] - 3*left['fa']['std']))
+        left_fa_max = left['fa'].get('max', min(1.0, left['fa']['mean'] + 3*left['fa']['std']))
+        right_fa_median = right['fa'].get('median', right['fa']['mean'])
+        right_fa_min = right['fa'].get('min', max(0.0, right['fa']['mean'] - 3*right['fa']['std']))
+        right_fa_max = right['fa'].get('max', min(1.0, right['fa']['mean'] + 3*right['fa']['std']))
+
         metrics.append({
             "label": "FA",
-            "left": f"{left['fa']['mean']:.3f}",
-            "right": f"{right['fa']['mean']:.3f}",
+            "left_mean_sd": fmt_mean_sd(left['fa']['mean'], left['fa']['std']),
+            "left_med_range": fmt_med_range(left_fa_median, left_fa_min, left_fa_max),
+            "right_mean_sd": fmt_mean_sd(right['fa']['mean'], right['fa']['std']),
+            "right_med_range": fmt_med_range(right_fa_median, right_fa_min, right_fa_max),
             "li": asym['fa']['laterality_index']
         })
-    
+
     # MD (×10⁻³ mm²/s)
     if 'md' in left:
+        # Backward compatibility: use mean as fallback for median if not present
+        left_md_median = left['md'].get('median', left['md']['mean'])
+        left_md_min = left['md'].get('min', max(0.0, left['md']['mean'] - 3*left['md']['std']))
+        left_md_max = left['md'].get('max', left['md']['mean'] + 3*left['md']['std'])
+        right_md_median = right['md'].get('median', right['md']['mean'])
+        right_md_min = right['md'].get('min', max(0.0, right['md']['mean'] - 3*right['md']['std']))
+        right_md_max = right['md'].get('max', right['md']['mean'] + 3*right['md']['std'])
+
         metrics.append({
-            "label": "MD (×10⁻³ mm²/s)",
-            "left": f"{left['md']['mean']*1000:.2f}",
-            "right": f"{right['md']['mean']*1000:.2f}",
+            "label": "MD (×10⁻³)",
+            "left_mean_sd": fmt_mean_sd(left['md']['mean'], left['md']['std'], is_diffusivity=True),
+            "left_med_range": fmt_med_range(left_md_median, left_md_min, left_md_max, is_diffusivity=True),
+            "right_mean_sd": fmt_mean_sd(right['md']['mean'], right['md']['std'], is_diffusivity=True),
+            "right_med_range": fmt_med_range(right_md_median, right_md_min, right_md_max, is_diffusivity=True),
             "li": asym['md']['laterality_index']
         })
-    
+
     # RD (×10⁻³ mm²/s)
     if 'rd' in left:
+        # Backward compatibility: use mean as fallback for median if not present
+        left_rd_median = left['rd'].get('median', left['rd']['mean'])
+        left_rd_min = left['rd'].get('min', max(0.0, left['rd']['mean'] - 3*left['rd']['std']))
+        left_rd_max = left['rd'].get('max', left['rd']['mean'] + 3*left['rd']['std'])
+        right_rd_median = right['rd'].get('median', right['rd']['mean'])
+        right_rd_min = right['rd'].get('min', max(0.0, right['rd']['mean'] - 3*right['rd']['std']))
+        right_rd_max = right['rd'].get('max', right['rd']['mean'] + 3*right['rd']['std'])
+
         metrics.append({
-            "label": "RD (×10⁻³ mm²/s)",
-            "left": f"{left['rd']['mean']*1000:.2f}",
-            "right": f"{right['rd']['mean']*1000:.2f}",
+            "label": "RD (×10⁻³)",
+            "left_mean_sd": fmt_mean_sd(left['rd']['mean'], left['rd']['std'], is_diffusivity=True),
+            "left_med_range": fmt_med_range(left_rd_median, left_rd_min, left_rd_max, is_diffusivity=True),
+            "right_mean_sd": fmt_mean_sd(right['rd']['mean'], right['rd']['std'], is_diffusivity=True),
+            "right_med_range": fmt_med_range(right_rd_median, right_rd_min, right_rd_max, is_diffusivity=True),
             "li": asym['rd']['laterality_index']
         })
-    
+
     # AD (×10⁻³ mm²/s)
     if 'ad' in left:
+        # Backward compatibility: use mean as fallback for median if not present
+        left_ad_median = left['ad'].get('median', left['ad']['mean'])
+        left_ad_min = left['ad'].get('min', max(0.0, left['ad']['mean'] - 3*left['ad']['std']))
+        left_ad_max = left['ad'].get('max', left['ad']['mean'] + 3*left['ad']['std'])
+        right_ad_median = right['ad'].get('median', right['ad']['mean'])
+        right_ad_min = right['ad'].get('min', max(0.0, right['ad']['mean'] - 3*right['ad']['std']))
+        right_ad_max = right['ad'].get('max', right['ad']['mean'] + 3*right['ad']['std'])
+
         metrics.append({
-            "label": "AD (×10⁻³ mm²/s)",
-            "left": f"{left['ad']['mean']*1000:.2f}",
-            "right": f"{right['ad']['mean']*1000:.2f}",
+            "label": "AD (×10⁻³)",
+            "left_mean_sd": fmt_mean_sd(left['ad']['mean'], left['ad']['std'], is_diffusivity=True),
+            "left_med_range": fmt_med_range(left_ad_median, left_ad_min, left_ad_max, is_diffusivity=True),
+            "right_mean_sd": fmt_mean_sd(right['ad']['mean'], right['ad']['std'], is_diffusivity=True),
+            "right_med_range": fmt_med_range(right_ad_median, right_ad_min, right_ad_max, is_diffusivity=True),
             "li": asym['ad']['laterality_index']
         })
-    
-    # Build visualization data for template
+
+    # Build localized metrics for template
+    localized_metrics = []
+    regions = [('Pontine', 'pontine'), ('PLIC', 'plic'), ('Precentral', 'precentral')]
+
+    def fmt_localized(scalar, region):
+        """Format L / R / LI string for localized metric."""
+        if scalar not in left or region not in left[scalar]:
+            return "-"
+        l_val = left[scalar][region]
+        r_val = right[scalar][region]
+        li_key = f'{scalar}_{region}'
+        li_val = asym.get(li_key, {}).get('laterality_index', 0.0)
+        if scalar == 'fa':
+            return f"{l_val:.3f} / {r_val:.3f} / {li_val:+.3f}"
+        else:
+            # Diffusivity values (×10⁻³)
+            return f"{l_val*1000:.2f} / {r_val*1000:.2f} / {li_val:+.3f}"
+
+    for region_name, region_key in regions:
+        localized_metrics.append({
+            'name': region_name,
+            'fa': fmt_localized('fa', region_key),
+            'md': fmt_localized('md', region_key),
+            'rd': fmt_localized('rd', region_key),
+            'ad': fmt_localized('ad', region_key)
+        })
+
+    # Build visualization data for template (coronal only)
     viz = {
         "stacked_profiles": _embed_image(visualization_paths.get('stacked_profiles')),
         "profiles": [
@@ -324,11 +426,7 @@ def save_html_report(
             {"title": "Radial Diffusivity", "data": _embed_image(visualization_paths.get('profile_rd'))},
             {"title": "Axial Diffusivity", "data": _embed_image(visualization_paths.get('profile_ad'))},
         ],
-        "tractograms": [
-            {"title": "Axial", "data": _embed_image(visualization_paths.get('tractogram_qc_axial'))},
-            {"title": "Sagittal", "data": _embed_image(visualization_paths.get('tractogram_qc_sagittal'))},
-            {"title": "Coronal", "data": _embed_image(visualization_paths.get('tractogram_qc_coronal'))},
-        ]
+        "tractogram_coronal": _embed_image(visualization_paths.get('tractogram_qc_coronal'))
     }
     
     # Get acquisition/processing metadata with defaults
@@ -354,6 +452,7 @@ def save_html_report(
         space=space,
         css=css,
         metrics=metrics,
+        localized_metrics=localized_metrics,
         viz=viz,
         acquisition=acquisition,
         processing=processing,
@@ -495,7 +594,7 @@ def generate_complete_report(
     
     # Generate visualizations for PDF (new single-page layout)
     pdf_viz_paths = {}
-    
+
     # Stacked FA/MD profiles for PDF
     pdf_viz_paths['stacked_profiles'] = plot_stacked_profiles(
         comparison['left'],
@@ -503,19 +602,18 @@ def generate_complete_report(
         viz_dir,
         subject_id
     )
-    
-    # Tractogram QC preview for PDF (Axial, Sagittal, Coronal)
-    for view in ['axial', 'sagittal', 'coronal']:
-        pdf_viz_paths[f'tractogram_qc_{view}'] = plot_tractogram_qc_preview(
-            streamlines_left,
-            streamlines_right,
-            background_image,
-            affine,
-            viz_dir,
-            subject_id,
-            slice_type=view,
-            set_title=False
-        )
+
+    # Tractogram QC preview for PDF (Coronal only)
+    pdf_viz_paths['tractogram_qc_coronal'] = plot_tractogram_qc_preview(
+        streamlines_left,
+        streamlines_right,
+        background_image,
+        affine,
+        viz_dir,
+        subject_id,
+        slice_type='coronal',
+        set_title=False
+    )
     
     # Also generate individual plots for detailed analysis
     viz_paths = {}

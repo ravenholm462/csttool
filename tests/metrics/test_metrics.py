@@ -1,7 +1,10 @@
 import pytest
 import numpy as np
 import nibabel as nib
-from csttool.metrics.modules.unilateral_analysis import analyze_cst_hemisphere
+from csttool.metrics.modules.unilateral_analysis import (
+    analyze_cst_hemisphere,
+    compute_localized_metrics
+)
 
 def test_analyze_cst_hemisphere_basic(synthetic_tractogram, synthetic_nifti, synthetic_affine):
     """Test basic unilateral analysis with synthetic data."""
@@ -66,3 +69,58 @@ def test_analyze_cst_hemisphere_empty():
     except Exception as e:
         # If it raises, that's also an acceptable behavior for now, usually
         pytest.fail(f"Analysis failed on empty streamlines: {e}")
+
+
+def test_compute_localized_metrics():
+    """Test localized metrics computation from tract profile."""
+    # Create a 20-point profile with known values
+    # Points 0-6: pontine (mean = 0.4)
+    # Points 7-13: plic (mean = 0.5)
+    # Points 14-19: precentral (mean = 0.6)
+    profile = [0.4] * 7 + [0.5] * 7 + [0.6] * 6
+
+    localized = compute_localized_metrics(profile)
+
+    assert 'pontine' in localized
+    assert 'plic' in localized
+    assert 'precentral' in localized
+
+    assert np.isclose(localized['pontine'], 0.4)
+    assert np.isclose(localized['plic'], 0.5)
+    assert np.isclose(localized['precentral'], 0.6)
+
+
+def test_compute_localized_metrics_empty():
+    """Test localized metrics with empty/short profile."""
+    # Empty profile
+    localized = compute_localized_metrics([])
+    assert localized['pontine'] == 0.0
+    assert localized['plic'] == 0.0
+    assert localized['precentral'] == 0.0
+
+    # Short profile (less than 20 points)
+    localized = compute_localized_metrics([0.5] * 10)
+    assert localized['pontine'] == 0.0
+
+
+def test_analyze_cst_hemisphere_includes_localized_metrics(synthetic_tractogram, synthetic_nifti, synthetic_affine):
+    """Test that unilateral analysis includes localized metrics."""
+    streamlines = synthetic_tractogram.streamlines
+    fa_map = synthetic_nifti.get_fdata()
+
+    metrics = analyze_cst_hemisphere(
+        streamlines,
+        fa_map=fa_map,
+        affine=synthetic_affine
+    )
+
+    # Check localized metrics are present in FA
+    assert 'fa' in metrics
+    assert 'pontine' in metrics['fa']
+    assert 'plic' in metrics['fa']
+    assert 'precentral' in metrics['fa']
+
+    # Check values are in expected range
+    assert 0.0 <= metrics['fa']['pontine'] <= 1.0
+    assert 0.0 <= metrics['fa']['plic'] <= 1.0
+    assert 0.0 <= metrics['fa']['precentral'] <= 1.0

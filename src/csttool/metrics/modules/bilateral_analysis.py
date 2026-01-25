@@ -98,31 +98,45 @@ def compute_laterality_indices(left_metrics, right_metrics):
         right_morph['mean_length']
     )
     
-    # Microstructural asymmetry
+    # Microstructural asymmetry (global)
     if 'fa' in left_metrics and 'fa' in right_metrics:
         asymmetry['fa'] = compute_li(
             left_metrics['fa']['mean'],
             right_metrics['fa']['mean']
         )
-    
+
     if 'md' in left_metrics and 'md' in right_metrics:
         asymmetry['md'] = compute_li(
             left_metrics['md']['mean'],
             right_metrics['md']['mean']
         )
-    
+
     if 'rd' in left_metrics and 'rd' in right_metrics:
         asymmetry['rd'] = compute_li(
             left_metrics['rd']['mean'],
             right_metrics['rd']['mean']
         )
-    
+
     if 'ad' in left_metrics and 'ad' in right_metrics:
         asymmetry['ad'] = compute_li(
             left_metrics['ad']['mean'],
             right_metrics['ad']['mean']
         )
-    
+
+    # Localized microstructural asymmetry (per region)
+    regions = ['pontine', 'plic', 'precentral']
+    scalars = ['fa', 'md', 'rd', 'ad']
+
+    for scalar in scalars:
+        if scalar in left_metrics and scalar in right_metrics:
+            for region in regions:
+                if region in left_metrics[scalar] and region in right_metrics[scalar]:
+                    key = f'{scalar}_{region}'
+                    asymmetry[key] = compute_li(
+                        left_metrics[scalar][region],
+                        right_metrics[scalar][region]
+                    )
+
     return asymmetry
 
 

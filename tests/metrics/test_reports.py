@@ -161,3 +161,63 @@ class TestSaveJsonReport:
             assert 'subject_id' in report
             assert 'processing_date' in report
             assert 'metrics' in report
+
+
+def test_html_report_backward_compatibility_old_data():
+    """Test HTML report handles old data without median/min/max fields."""
+    from csttool.metrics.modules.reports import save_html_report
+    import tempfile
+
+    # Old data structure without median, min, max
+    comparison = {
+        'left': {
+            'morphology': {
+                'n_streamlines': 100,
+                'tract_volume': 1000.0,
+                'mean_length': 50.0,
+                'std_length': 5.0,
+                'min_length': 40.0,
+                'max_length': 60.0
+            },
+            'fa': {'mean': 0.45, 'std': 0.08}  # No median, min, max!
+        },
+        'right': {
+            'morphology': {
+                'n_streamlines': 95,
+                'tract_volume': 950.0,
+                'mean_length': 49.0,
+                'std_length': 4.5,
+                'min_length': 41.0,
+                'max_length': 58.0
+            },
+            'fa': {'mean': 0.44, 'std': 0.07}  # No median, min, max!
+        },
+        'asymmetry': {
+            'volume': {'laterality_index': 0.026},
+            'streamline_count': {'laterality_index': 0.026},
+            'mean_length': {'laterality_index': 0.010},
+            'fa': {'laterality_index': 0.011}
+        }
+    }
+
+    viz_paths = {}
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Should not crash with old data
+        html_path = save_html_report(
+            comparison,
+            viz_paths,
+            tmpdir,
+            "test_subject",
+            version="0.3.0",
+            space="Native"
+        )
+
+        assert html_path.exists()
+
+        # Verify HTML contains expected content
+        html_content = html_path.read_text()
+        assert 'test_subject' in html_content
+        assert 'FA' in html_content
+        # Should have fallback median values (using mean as fallback)
+        assert '0.45' in html_content  # mean value should be present

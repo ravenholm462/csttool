@@ -108,23 +108,27 @@
         </div>
 
 
-        {# ===== Metrics Table ===== #}
+        {# ===== Global Metrics Table (6 columns) ===== #}
         <div class="metrics-section">
             <table class="metrics-table">
                 <thead>
                     <tr>
-                        <th style="width: 40%;">Metric</th>
-                        <th style="width: 20%;">Left</th>
-                        <th style="width: 20%;">Right</th>
-                        <th style="width: 20%;">LI</th>
+                        <th style="width: 16%;">Metric</th>
+                        <th style="width: 18%;">Left Mean±SD</th>
+                        <th style="width: 18%;">Left Med (Range)</th>
+                        <th style="width: 18%;">Right Mean±SD</th>
+                        <th style="width: 18%;">Right Med (Range)</th>
+                        <th style="width: 12%;">LI</th>
                     </tr>
                 </thead>
                 <tbody>
                 {% for m in metrics %}
                     <tr>
                         <td>{{ m.label }}</td>
-                        <td>{{ m.left }}</td>
-                        <td>{{ m.right }}</td>
+                        <td>{{ m.left_mean_sd }}</td>
+                        <td>{{ m.left_med_range }}</td>
+                        <td>{{ m.right_mean_sd }}</td>
+                        <td>{{ m.right_med_range }}</td>
                         <td class="{{ 'li-positive' if m.li > 0 else 'li-negative' }}">
                             {%- if m.li > 0 %}+{% endif %}{{ "%.3f" | format(m.li) }}
                         </td>
@@ -137,6 +141,35 @@
                 Legend: <span class="left-gt">Left&gt;Right</span>, <span class="right-gt">Right&gt;Left</span>
             </div>
         </div>
+
+        {# ===== Localized Metrics Table ===== #}
+        {% if localized_metrics %}
+        <div class="localized-metrics-section">
+            <h3>Regional Metrics</h3>
+            <table class="localized-table">
+                <thead>
+                    <tr>
+                        <th>Region</th>
+                        <th>FA (L / R / LI)</th>
+                        <th>MD (L / R / LI)</th>
+                        <th>RD (L / R / LI)</th>
+                        <th>AD (L / R / LI)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for region in localized_metrics %}
+                    <tr>
+                        <td>{{ region.name }}</td>
+                        <td>{{ region.fa }}</td>
+                        <td>{{ region.md }}</td>
+                        <td>{{ region.rd }}</td>
+                        <td>{{ region.ad }}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
 
         {# ===== Visualizations ===== #}
         <div class="viz-section">
@@ -161,18 +194,16 @@
             {% endif %}
             </div>
 
-            {# Right column: Tractograms #}
+            {# Right column: Coronal Tractogram Only #}
             <div class="tractogram-column">
-            {% for tract in viz.tractograms %}
-                <div class="tractogram-item">
-                    <h4>{{ tract.title }}</h4>
-                    {% if tract.data %}
-                    <img src="{{ tract.data }}" alt="{{ tract.title }}">
+                <div class="tractogram-item tractogram-single">
+                    <h4>Coronal View</h4>
+                    {% if viz.tractogram_coronal %}
+                    <img src="{{ viz.tractogram_coronal }}" alt="Coronal View">
                     {% else %}
-                    <div class="tractogram-placeholder">[{{ tract.title }} View]</div>
+                    <div class="tractogram-placeholder">[Coronal View]</div>
                     {% endif %}
                 </div>
-            {% endfor %}
             </div>
         </div>
 

@@ -67,79 +67,103 @@ def analyze_cst_hemisphere(
     if fa_map is not None and affine is not None:
         fa_values = sample_scalar_along_tract(streamlines, fa_map, affine)
         if len(fa_values) > 0:
+            fa_profile = compute_tract_profile(streamlines, fa_map, affine, n_points=20)
+            fa_localized = compute_localized_metrics(fa_profile)
             metrics['fa'] = {
                 'mean': float(np.mean(fa_values)),
                 'std': float(np.std(fa_values)),
                 'median': float(np.median(fa_values)),
                 'min': float(np.min(fa_values)),
                 'max': float(np.max(fa_values)),
-                'profile': compute_tract_profile(streamlines, fa_map, affine, n_points=20),
-                'n_samples': len(fa_values)
+                'profile': fa_profile,
+                'n_samples': len(fa_values),
+                'pontine': fa_localized['pontine'],
+                'plic': fa_localized['plic'],
+                'precentral': fa_localized['precentral']
             }
             print(f"  FA: {metrics['fa']['mean']:.3f} ± {metrics['fa']['std']:.3f}")
         else:
             # Handle empty case
             metrics['fa'] = {
                 'mean': 0.0, 'std': 0.0, 'median': 0.0, 'min': 0.0, 'max': 0.0,
-                'profile': [], 'n_samples': 0
+                'profile': [], 'n_samples': 0,
+                'pontine': 0.0, 'plic': 0.0, 'precentral': 0.0
             }
     
     if md_map is not None and affine is not None:
         md_values = sample_scalar_along_tract(streamlines, md_map, affine)
         if len(md_values) > 0:
+            md_profile = compute_tract_profile(streamlines, md_map, affine, n_points=20)
+            md_localized = compute_localized_metrics(md_profile)
             metrics['md'] = {
                 'mean': float(np.mean(md_values)),
                 'std': float(np.std(md_values)),
                 'median': float(np.median(md_values)),
                 'min': float(np.min(md_values)),
                 'max': float(np.max(md_values)),
-                'profile': compute_tract_profile(streamlines, md_map, affine, n_points=20),
-                'n_samples': len(md_values)
+                'profile': md_profile,
+                'n_samples': len(md_values),
+                'pontine': md_localized['pontine'],
+                'plic': md_localized['plic'],
+                'precentral': md_localized['precentral']
             }
             print(f"  MD: {metrics['md']['mean']:.3e} ± {metrics['md']['std']:.3e}")
         else:
-             # Handle empty case
+            # Handle empty case
             metrics['md'] = {
                 'mean': 0.0, 'std': 0.0, 'median': 0.0, 'min': 0.0, 'max': 0.0,
-                'profile': [], 'n_samples': 0
+                'profile': [], 'n_samples': 0,
+                'pontine': 0.0, 'plic': 0.0, 'precentral': 0.0
             }
     
     if rd_map is not None and affine is not None:
         rd_values = sample_scalar_along_tract(streamlines, rd_map, affine)
         if len(rd_values) > 0:
+            rd_profile = compute_tract_profile(streamlines, rd_map, affine, n_points=20)
+            rd_localized = compute_localized_metrics(rd_profile)
             metrics['rd'] = {
                 'mean': float(np.mean(rd_values)),
                 'std': float(np.std(rd_values)),
                 'median': float(np.median(rd_values)),
                 'min': float(np.min(rd_values)),
                 'max': float(np.max(rd_values)),
-                'profile': compute_tract_profile(streamlines, rd_map, affine, n_points=20),
-                'n_samples': len(rd_values)
+                'profile': rd_profile,
+                'n_samples': len(rd_values),
+                'pontine': rd_localized['pontine'],
+                'plic': rd_localized['plic'],
+                'precentral': rd_localized['precentral']
             }
             print(f"  RD: {metrics['rd']['mean']:.3e} ± {metrics['rd']['std']:.3e}")
         else:
             metrics['rd'] = {
                 'mean': 0.0, 'std': 0.0, 'median': 0.0, 'min': 0.0, 'max': 0.0,
-                'profile': [], 'n_samples': 0
+                'profile': [], 'n_samples': 0,
+                'pontine': 0.0, 'plic': 0.0, 'precentral': 0.0
             }
     
     if ad_map is not None and affine is not None:
         ad_values = sample_scalar_along_tract(streamlines, ad_map, affine)
         if len(ad_values) > 0:
+            ad_profile = compute_tract_profile(streamlines, ad_map, affine, n_points=20)
+            ad_localized = compute_localized_metrics(ad_profile)
             metrics['ad'] = {
                 'mean': float(np.mean(ad_values)),
                 'std': float(np.std(ad_values)),
                 'median': float(np.median(ad_values)),
                 'min': float(np.min(ad_values)),
                 'max': float(np.max(ad_values)),
-                'profile': compute_tract_profile(streamlines, ad_map, affine, n_points=20),
-                'n_samples': len(ad_values)
+                'profile': ad_profile,
+                'n_samples': len(ad_values),
+                'pontine': ad_localized['pontine'],
+                'plic': ad_localized['plic'],
+                'precentral': ad_localized['precentral']
             }
             print(f"  AD: {metrics['ad']['mean']:.3e} ± {metrics['ad']['std']:.3e}")
         else:
             metrics['ad'] = {
                 'mean': 0.0, 'std': 0.0, 'median': 0.0, 'min': 0.0, 'max': 0.0,
-                'profile': [], 'n_samples': 0
+                'profile': [], 'n_samples': 0,
+                'pontine': 0.0, 'plic': 0.0, 'precentral': 0.0
             }
     
     return metrics
@@ -334,30 +358,66 @@ def compute_tract_profile(streamlines, scalar_map, affine, n_points=20):
 def world_to_voxel(world_point, affine):
     """
     Convert world coordinates (mm) to voxel coordinates.
-    
+
     Parameters
     ----------
     world_point : array-like
         3D point in world coordinates [x, y, z]
     affine : ndarray
         4x4 affine transformation matrix
-        
+
     Returns
     -------
     voxel_coord : ndarray
         3D voxel coordinates [i, j, k] as integers
     """
-    
+
     # Add homogeneous coordinate
     world_point_homogeneous = np.append(world_point, 1.0)
-    
+
     # Apply inverse affine transformation
     voxel_coord_homogeneous = np.linalg.inv(affine) @ world_point_homogeneous
-    
+
     # Convert to integer voxel coordinates
     voxel_coord = np.round(voxel_coord_homogeneous[:3]).astype(int)
-    
+
     return voxel_coord
+
+
+def compute_localized_metrics(profile):
+    """
+    Compute region-specific statistics from tract profile.
+
+    Divides the 20-point tract profile into 3 anatomical regions:
+    - Pontine: points 0-6 (~0-35% of tract)
+    - PLIC: points 7-13 (~35-70% of tract)
+    - Precentral: points 14-19 (~70-100% of tract)
+
+    Parameters
+    ----------
+    profile : list or ndarray
+        20-point tract profile (scalar values along tract)
+
+    Returns
+    -------
+    localized : dict
+        Dictionary with 'pontine', 'plic', 'precentral' keys,
+        each containing the mean value for that region
+    """
+    if profile is None or len(profile) < 20:
+        return {
+            'pontine': 0.0,
+            'plic': 0.0,
+            'precentral': 0.0
+        }
+
+    profile_arr = np.array(profile)
+
+    return {
+        'pontine': float(np.mean(profile_arr[0:7])),      # Points 0-6
+        'plic': float(np.mean(profile_arr[7:14])),        # Points 7-13
+        'precentral': float(np.mean(profile_arr[14:20]))  # Points 14-19
+    }
 
 
 def print_hemisphere_summary(metrics):
