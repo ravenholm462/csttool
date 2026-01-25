@@ -38,6 +38,7 @@ def cmd_batch(args: argparse.Namespace) -> None:
         
         for s in subj_configs:
             # Determine input type automatically if not specified (though manifest usually has it)
+            series_uid = None
             if s.get('nifti'):
                 input_path = Path(s['nifti'])
                 input_type = "nifti"

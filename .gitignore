@@ -24,3 +24,6 @@ htmlcov/
 
 #MkDocs
 site/
+
+# Claude
+.claude

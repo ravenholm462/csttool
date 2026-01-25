@@ -5,13 +5,35 @@ from pathlib import Path
 from typing import List, Dict, Any
 from datetime import datetime
 
-# Standard headers for batch_metrics.csv
+# Standard headers aligned with single-subject report
 METRICS_HEADERS = [
+    # Batch metadata
     "subject_id", "session_id", "status", "error_category", 
-    "duration_seconds", "cst_l_streamline_count", "cst_r_streamline_count",
-    "cst_l_volume_cm3", "cst_r_volume_cm3",
-    "cst_l_mean_fa", "cst_r_mean_fa", "laterality_index", "error"
+    "duration_seconds", "error",
+    
+    # Morphology
+    "left_n_streamlines", "right_n_streamlines",
+    "left_mean_length_mm", "right_mean_length_mm",
+    "left_tract_volume_mm3", "right_tract_volume_mm3",
+    "volume_laterality_index", "streamline_count_laterality_index"
 ]
+
+# Add headers for all scalars and regions dynamically to ensure consistency
+_SCALARS = ['fa', 'md', 'rd', 'ad']
+_REGIONS = ['pontine', 'plic', 'precentral']
+
+for scalar in _SCALARS:
+    METRICS_HEADERS.extend([
+        f"left_{scalar}_mean", f"left_{scalar}_std",
+        f"right_{scalar}_mean", f"right_{scalar}_std",
+        f"{scalar}_laterality_index"
+    ])
+    for region in _REGIONS:
+        METRICS_HEADERS.extend([
+            f"left_{scalar}_{region}",
+            f"right_{scalar}_{region}",
+            f"{scalar}_{region}_laterality_index"
+        ])
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +51,7 @@ def generate_batch_reports(results: List[Any], output_dir: Path):
 def write_batch_metrics_csv(results: List[Any], output_dir: Path):
     """
     Writes a CSV aggregate of all subject metrics.
-    Numeric cells are empty (NaN) for failed or skipped subjects.
+    Numeric cells are empty for failed or skipped subjects.
     """
     csv_path = output_dir / "batch_metrics.csv"
     
@@ -45,16 +67,14 @@ def write_batch_metrics_csv(results: List[Any], output_dir: Path):
             "error": res.error or ""
         }
         
-        # If success, attempt to extract numeric metrics from the per-subject JSON
+        # If success, attempt to extract metrics from the per-subject JSON
         if res.status == "success":
             try:
                 # Construct path to the subject's JSON report
-                # Final output structure: <out>/<sub_id>/<ses_id>/metrics/<sub_id>_<ses_id>_bilateral_metrics.json
                 subj_path = output_dir / res.subject_id
                 if res.session_id:
                     subj_path = subj_path / res.session_id
                 
-                # csttool metrics named the file {subject_id}_bilateral_metrics.json inside "metrics" subdirectory
                 metrics_file = subj_path / "metrics" / f"{res.subject_id}_bilateral_metrics.json"
                 
                 if metrics_file.exists():
@@ -62,22 +82,48 @@ def write_batch_metrics_csv(results: List[Any], output_dir: Path):
                         data = json.load(f)
                         m = data.get("metrics", {})
                         
-                        # Populate metrics with formatting
                         if 'left' in m and 'right' in m:
+                            left = m['left']
+                            right = m['right']
+                            asym = m['asymmetry']
+                            
+                            # Morphology
                             row.update({
-                                "cst_l_streamline_count": m['left']['morphology']['n_streamlines'],
-                                "cst_r_streamline_count": m['right']['morphology']['n_streamlines'],
-                                "cst_l_volume_cm3": round(m['left']['morphology']['tract_volume'] / 1000.0, 3),
-                                "cst_r_volume_cm3": round(m['right']['morphology']['tract_volume'] / 1000.0, 3),
+                                'left_n_streamlines': left['morphology']['n_streamlines'],
+                                'right_n_streamlines': right['morphology']['n_streamlines'],
+                                'left_mean_length_mm': left['morphology']['mean_length'],
+                                'right_mean_length_mm': right['morphology']['mean_length'],
+                                'left_tract_volume_mm3': left['morphology']['tract_volume'],
+                                'right_tract_volume_mm3': right['morphology']['tract_volume'],
+                                'volume_laterality_index': asym['volume']['laterality_index'],
+                                'streamline_count_laterality_index': asym['streamline_count']['laterality_index'],
                             })
                             
-                            # Functional metrics (FA)
-                            if 'fa' in m['left']:
-                                row.update({
-                                    "cst_l_mean_fa": round(m['left']['fa']['mean'], 3),
-                                    "cst_r_mean_fa": round(m['right']['fa']['mean'], 3),
-                                    "laterality_index": round(m['asymmetry'].get('fa', {}).get('laterality_index', 0), 3)
-                                })
+                            # Scalars (Global)
+                            for scalar in _SCALARS:
+                                if scalar in left:
+                                    row.update({
+                                        f'left_{scalar}_mean': left[scalar]['mean'],
+                                        f'left_{scalar}_std': left[scalar]['std'],
+                                        f'right_{scalar}_mean': right[scalar]['mean'],
+                                        f'right_{scalar}_std': right[scalar]['std'],
+                                        f'{scalar}_laterality_index': asym[scalar]['laterality_index'],
+                                    })
+                                    
+                                    # Localized Metrics
+                                    if 'pontine' in left[scalar]: # check if localized metrics exist
+                                        for region in _REGIONS:
+                                            # Values
+                                            l_val = left[scalar].get(region, 0.0)
+                                            r_val = right[scalar].get(region, 0.0)
+                                            row[f'left_{scalar}_{region}'] = l_val
+                                            row[f'right_{scalar}_{region}'] = r_val
+                                            
+                                            # LI for region
+                                            li_key = f'{scalar}_{region}'
+                                            if li_key in asym:
+                                                row[f'{scalar}_{region}_laterality_index'] = asym[li_key]['laterality_index']
+
             except Exception as e:
                 logger.warning(f"Could not extract metrics for {res.subject_id}: {e}")
                 
