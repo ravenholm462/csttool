@@ -1,6 +1,6 @@
 # csttool Documentation Checklist
 
-**Last Updated**: 2026-01-18
+**Last Updated**: 2026-01-26
 
 This checklist tracks documentation progress for all pages defined in `mkdocs.yml`.
 
@@ -13,8 +13,8 @@ This checklist tracks documentation progress for all pages defined in `mkdocs.ym
 | Getting Started | 3 | 3 | � Completed |
 | Tutorials | 0 | 2 | ⬜ Not Started |
 | How-To Guides | 0 | 3 | ⬜ Not Started |
-| CLI Reference | 0 | 7 | ⬜ Not Started |
-| API Reference | 0 | 4 | ⬜ Not Started |
+| CLI Reference | 0 | 11 | ⬜ Not Started |
+| API Reference | 0 | 7 | ⬜ Not Started |
 | Explanation | 0 | 5 | ⬜ Not Started |
 | Contributing | 0 | 3 | ⬜ Not Started |
 
@@ -73,28 +73,42 @@ Task-oriented recipes for specific goals.
 
 Complete command documentation. Can be auto-generated from `--help` + examples.
 
+- [ ] **overview.md** — CLI overview page
+  - [ ] List all commands with brief descriptions
+  - [ ] Common patterns and examples
 - [ ] **check.md** — `csttool check`
   - [ ] Purpose and usage
   - [ ] Expected output
+- [ ] **check_dataset.md** — `csttool check-dataset`
+  - [ ] Acquisition quality assessment
+  - [ ] Input options (--dwi, --bval, --bvec, --json)
 - [ ] **import.md** — `csttool import`
   - [ ] All flags (--dicom, --nifti, --out, etc.)
   - [ ] Examples for DICOM and NIfTI
 - [ ] **preprocess.md** — `csttool preprocess`
   - [ ] --denoise-method flag (nlmeans, patch2self)
-  - [ ] --skip-motion-correction flag
+  - [ ] --perform-motion-correction flag
   - [ ] --save-visualizations flag
 - [ ] **track.md** — `csttool track`
   - [ ] Tracking parameters
   - [ ] Output files
 - [ ] **extract.md** — `csttool extract`
-  - [ ] ROI-based filtering
+  - [ ] Extraction methods (endpoint, passthrough, roi-seeded)
+  - [ ] ROI dilation parameters
   - [ ] Atlas registration
 - [ ] **metrics.md** — `csttool metrics`
   - [ ] Report formats (CSV, JSON, HTML, PDF)
   - [ ] Metric definitions
+- [ ] **validate.md** — `csttool validate`
+  - [ ] Bundle comparison against reference tractograms
+  - [ ] Metrics: overlap, coverage, distance
 - [ ] **run.md** — `csttool run`
   - [ ] Full pipeline execution
   - [ ] All combined flags
+- [ ] **batch.md** — `csttool batch`
+  - [ ] Manifest JSON schema
+  - [ ] BIDS auto-discovery
+  - [ ] Parallel processing options
 
 ---
 
@@ -106,6 +120,9 @@ For developers using csttool as a library. Can be auto-generated with mkdocstrin
 - [ ] **tracking.md** — `csttool.tracking` module
 - [ ] **extract.md** — `csttool.extract` module
 - [ ] **metrics.md** — `csttool.metrics` module
+- [ ] **validation.md** — `csttool.validation` module (not in mkdocs.yml yet)
+- [ ] **batch.md** — `csttool.batch` module (not in mkdocs.yml yet)
+- [ ] **ingest.md** — `csttool.ingest` module (not in mkdocs.yml yet)
 
 ---
 
@@ -146,9 +163,9 @@ When writing documentation:
 ## 🎯 Recommended Order
 
 1. ✅ `installation.md` (DONE)
-2. `quickstart.md`
-3. `data-requirements.md`
-4. CLI Reference (all 7 pages)
+2. ✅ `quickstart.md` (DONE)
+3. ✅ `data-requirements.md` (DONE)
+4. CLI Reference (all 11 pages)
 5. `troubleshooting.md`
 6. `first-analysis.md`
 7. Everything else
