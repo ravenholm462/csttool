@@ -67,9 +67,15 @@ def main() -> None:
         help="Path to BIDS JSON sidecar (optional)"
     )
     p_check_dataset.add_argument(
+        "--b0-threshold",
+        type=float,
+        default=50.0,
+        help="B-value threshold for b=0 volumes (default: 50 s/mm²)"
+    )
+    p_check_dataset.add_argument(
         "--verbose",
         action="store_true",
-        help="Print detailed assessment info"
+        help="Print detailed assessment info and per-shell analysis"
     )
     p_check_dataset.set_defaults(func=cmd_check_dataset)
 
