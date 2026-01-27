@@ -3,6 +3,7 @@ import argparse
 import json
 from pathlib import Path
 
+import numpy as np
 from dipy.io.image import load_nifti
 from dipy.io import read_bvals_bvecs
 
@@ -85,63 +86,87 @@ def cmd_check_dataset(args: argparse.Namespace) -> int:
         else:
             print(f"Warning: JSON file not found: {args.json}")
             
-    # 3. Assess Quality
-    warnings_list = assess_acquisition_quality(
+    # 3. Assess Quality with metadata return
+    b0_threshold = getattr(args, 'b0_threshold', 50.0)
+    warnings_list, metadata = assess_acquisition_quality(
         bvecs=bvecs,
         bvals=bvals,
         voxel_size=voxel_size,
-        bids_json=json_data
+        bids_json=json_data,
+        b0_threshold=b0_threshold,
+        return_metadata=True
     )
-    
-    # 4. Generate Report
+
+    # 4. Generate Enhanced Report
     print("=" * 80)
     print("                        CST TOOL - ACQUISITION QUALITY REPORT")
     print("=" * 80)
-    
+
     print(f"\nSubject/File: {dwi_path.name}")
     print(f"Scan Date:    {json_data.get('AcquisitionDateTime', 'Unknown')}")
-    
+
+    # B=0 Volume Analysis Section
+    print("\nB=0 VOLUMES")
+    print("-" * 11)
+    b0_info = metadata['b0_distribution']
+    print(f"Count:                   {b0_info['n_volumes']}")
+    if b0_info['n_volumes'] > 1:
+        print(f"Maximum gap:             {b0_info['max_gap']} volumes")
+        if args.verbose:
+            print(f"Indices:                 {b0_info['indices']}")
+
+    # Enhanced Acquisition Parameters
     print("\nACQUISITION PARAMETERS")
     print("-" * 22)
-    
-    # Recalculate basic stats for display
-    b0_thr = 50
-    dwi_mask = bvals > b0_thr
-    n_directions = 0
-    if dwi_mask.any():
-        from numpy.linalg import norm
-        import numpy as np
-        vecs = bvecs[dwi_mask]
-        # Normalize
-        norms = norm(vecs, axis=1, keepdims=True)
-        norms[norms==0] = 1
-        vecs = vecs / norms
-        n_directions = len(np.unique(np.round(vecs, decimals=4), axis=0))
 
-    max_b = bvals.max()
-    
-    print(f"Gradient directions:     {n_directions}")
-    print(f"Maximum b-value:         {max_b:.0f} s/mm²")
+    # Shell-aware reporting
+    if len(metadata['shells']) == 0:
+        print("⚠️  No DWI shells detected")
+    elif len(metadata['shells']) == 1:
+        shell = metadata['shells'][0]
+        print(f"Acquisition type:        Single-shell")
+        print(f"B-value:                 {shell['bval']:.0f} s/mm²")
+        print(f"Gradient directions:     {shell['n_directions']}")
+        print(f"Total DWI volumes:       {shell['n_volumes']}")
+    else:
+        print(f"Acquisition type:        Multi-shell ({len(metadata['shells'])} shells)")
+        for i, shell in enumerate(metadata['shells'], 1):
+            print(f"  Shell {i}: b={shell['bval']:.0f} s/mm² "
+                  f"({shell['n_directions']} directions, {shell['n_volumes']} volumes)")
+
     print(f"Voxel size:              {voxel_size[0]:.2f} x {voxel_size[1]:.2f} x {voxel_size[2]:.2f} mm")
+
     if 'EchoTime' in json_data:
         try:
             et = float(json_data['EchoTime'])
-            # Heuristic: if < 1 it's likely seconds, if > 1 it's likely ms (Dicom often ms)
-            # BIDS spec says seconds.
-            if et < 1.0:
-                 et_ms = et * 1000
-            else:
-                 et_ms = et
+            et_ms = et * 1000 if et < 1.0 else et
             print(f"Echo time:               {et_ms:.1f} ms")
         except:
             pass
-            
+
     if 'MultibandAccelerationFactor' in json_data:
         print(f"Multiband factor:        {json_data['MultibandAccelerationFactor']}")
-        
+
+    # BIDS Fields Validation
+    print("\nBIDS METADATA")
+    print("-" * 13)
+    bids_fields = metadata.get('bids_fields_present', {})
+    critical_fields = ['PhaseEncodingDirection', 'TotalReadoutTime']
+
+    for field in critical_fields:
+        status = "✓" if bids_fields.get(field) else "✗"
+        print(f"{status} {field} (required for distortion correction)")
+
+    if args.verbose:
+        optional_fields = ['EchoTime', 'MultibandAccelerationFactor']
+        for field in optional_fields:
+            status = "✓" if bids_fields.get(field) else "○"
+            print(f"{status} {field}")
+
+    # Quality Assessment Section
     print("\nQUALITY ASSESSMENT")
     print("-" * 18)
-    
+
     if not warnings_list:
         print("✅ No quality issues detected.")
     else:
@@ -153,15 +178,40 @@ def cmd_check_dataset(args: argparse.Namespace) -> int:
             else:
                 icon = "ℹ️ "
             print(f"{icon} [{severity}] {msg}")
-            
+
+    # Enhanced Recommended Settings
     print("\nRECOMMENDED SETTINGS")
     print("-" * 20)
+
+    # Use total unique directions for SH order
+    n_directions = metadata['n_directions']
     rec_sh = get_max_sh_order(n_directions)
     print(f"Maximum SH order:        {rec_sh}")
-    
+
+    # Per-shell recommendations in verbose mode
+    if args.verbose and len(metadata['shells']) > 1:
+        print("\nPer-shell SH orders:")
+        for shell in metadata['shells']:
+            shell_sh = get_max_sh_order(shell['n_directions'])
+            print(f"  b={shell['bval']:.0f}: SH order {shell_sh}")
+
     suggested_step = min(voxel_size) * 0.5
     print(f"Suggested step size:     {suggested_step:.2f} mm")
-    
+
+    # Verbose mode detailed metrics
+    if args.verbose:
+        print("\nDETAILED METRICS")
+        print("-" * 16)
+        print(f"Total volumes:           {len(bvals)}")
+        print(f"B=0 volumes:             {b0_info['n_volumes']}")
+        print(f"DWI volumes:             {metadata['n_dwi']}")
+        print(f"Unique directions:       {n_directions}")
+        print(f"B0 threshold used:       {b0_threshold} s/mm²")
+        voxel_volume = np.prod(voxel_size)
+        print(f"Voxel volume:            {voxel_volume:.2f} mm³")
+        voxel_ratio = max(voxel_size) / min(voxel_size)
+        print(f"Voxel anisotropy:        {voxel_ratio:.2f}:1")
+
     print("\n" + "=" * 80)
-    
+
     return 0
