@@ -6,6 +6,10 @@ The `tracking` module performs deterministic whole-brain tractography to reconst
 
 This command generates a whole-brain tractogram from preprocessed diffusion data using the Constant Solid Angle (CSA) ODF model.
 
+### Gradient File Discovery
+
+The command automatically discovers `.bval` and `.bvec` files by stripping common preprocessing suffixes (e.g., `_preproc`, `_dwi_preproc`) from the input filename and searching for matching gradient files in the same directory. Both singular (`.bval`/`.bvec`) and plural (`.bvals`/`.bvecs`) extensions are supported.
+
 ### Usage
 
 ```bash
@@ -14,8 +18,21 @@ csttool track \
     --out tracking_results \
     --fa-thr 0.2 \
     --sh-order 6 \
-    --seed-density 2
+    --seed-density 1 \
+    --step-size 0.5
 ```
+
+### Optional Parameters
+
+- `--subject-id`: Subject identifier for output naming (default: extracted from filename)
+- `--step-size`: Tracking step size in millimetres (default: 0.5)
+- `--seed-density`: Seeds per voxel in the seed mask (default: 1)
+- `--fa-thr`: FA threshold for stopping and seeding (default: 0.2)
+- `--sh-order`: Maximum spherical harmonic order for CSA ODF model (default: 6)
+- `--rng-seed`: Random seed for reproducible tractography (default: None, non-deterministic)
+- `--use-brain-mask-stop`: Stop tracking at brain mask boundary in addition to FA threshold
+- `--show-plots`: Enable QC plots for segmentation and tractography
+- `--verbose`: Print detailed processing information
 
 ### Algorithm Steps
 
@@ -33,12 +50,15 @@ csttool track \
     -   Generates seeds in all voxels where `FA > fa_thr` (approx. White Matter).
     -   Seeds are placed randomly within voxels based on `seed_density`.
 5.  **Tracking**:
-    -   Uses **EuDX** (Euler Integration) for deterministic tracking.
-    -   **Stop Criteria**: Tracking stops if FA drops below threshold or angle exceeds limit (45°).
+    -   Uses **LocalTracking** with peaks-based direction getter (PeaksAndMetrics inherits from EuDXDirectionGetter, see [here](https://docs.dipy.org/dev/_modules/dipy/direction/peaks.html)).
+    -   **Stop Criteria**: Tracking stops if FA drops below threshold. Optionally, with `--use-brain-mask-stop`, also stops at brain boundary.
+    -   **Turning Constraint**: Controlled by the direction getter's internal parameters.
 6.  **Output**:
     -   `tractogram.trk`: The resulting whole-brain streamlines.
     -   `dti_FA.nii.gz`: FA map (reference for downstream registration).
     -   `dti_MD.nii.gz`: MD map.
+    -   `dti_RD.nii.gz`: RD (Radial Diffusivity) map.
+    -   `dti_AD.nii.gz`: AD (Axial Diffusivity) map.
 
 ## Example Output
 
@@ -56,17 +76,20 @@ Step 3: Direction field estimation (CSA ODF model)
 
 Step 4: Stopping criterion and seed generation
   - FA threshold: 0.2
-  - Seed density: 2
-  - Generated 1,240,500 seeds within white matter mask.
+  - Seed density: 1
+  - Generated 620,250 seeds within white matter mask.
 
 Step 5: Deterministic tracking
-  - Algorithm: EuDX
+  - Algorithm: LocalTracking
   - Step size: 0.5mm
-  - Angle threshold: 45°
+  - Turning constraint: direction getter controlled
 
 Step 6: Saving outputs
   - Tractogram: tracking/tractogram.trk
   - FA map: tracking/dti_FA.nii.gz
+  - MD map: tracking/dti_MD.nii.gz
+  - RD map: tracking/dti_RD.nii.gz
+  - AD map: tracking/dti_AD.nii.gz
 
 TRACKING COMPLETE
 Whole-brain streamlines: 452,180
