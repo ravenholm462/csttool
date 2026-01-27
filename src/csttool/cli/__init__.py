@@ -243,6 +243,17 @@ def main() -> None:
         help="Print detailed processing information."
     )
     p_track.add_argument(
+        "--rng-seed",
+        type=int,
+        default=None,
+        help="Random seed for reproducible tractography. If not set, results may vary between runs."
+    )
+    p_track.add_argument(
+        "--use-brain-mask-stop",
+        action="store_true",
+        help="Stop tracking at brain mask boundary in addition to FA threshold."
+    )
+    p_track.add_argument(
         "--out",
         type=Path,
         required=True,
