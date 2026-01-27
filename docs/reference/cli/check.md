@@ -1,4 +1,4 @@
-# Check Command
+# check Command
 
 The `check` command validates the system environment to ensure all dependencies are correctly installed and configured.
 
@@ -10,28 +10,58 @@ csttool check
 
 ## Checks Performed
 
--   **Python Dependencies**: Verifies all required Python packages are installed.
--   **External Tools**: Checks for the presence of:
-    -   `FSL` (FMRIB Software Library)
-    -   `MRtrix3`
--   **Environment Variables**: Ensures `$FSLDIR` and other necessary variables are set.
+The command automatically performs the following checks:
+
+- **Python Version**: Displays the installed Python version
+- **csttool Version**: Shows the installed csttool version
+- **Python Dependencies**: Verifies all required packages from `pyproject.toml` are installed and displays their versions
+- **csttool Modules**: Auto-discovers and tests that all csttool submodules can be imported:
+  - `csttool.batch`
+  - `csttool.extract`
+  - `csttool.ingest`
+  - `csttool.metrics`
+  - `csttool.preprocess`
+  - `csttool.validation`
 
 ## Example Output
 
 ```text
-CSTTool Environment Check
-=========================
-Python version: 3.10.12
-csttool version: 0.1.0
+csttool environment check
+Python: 3.13.11
+Version: 0.3.1
 
-Dependencies:
-  numpy: OK (1.24.3)
-  nibabel: OK (5.1.0)
-  dipy: OK (1.7.0)
+✓ numpy: 1.26.4
+✓ scipy: 1.16.3
+✓ cython: 3.1.6
+✓ dipy: 1.11.0
+✓ matplotlib: 3.10.7
+✓ nibabel: 5.3.2
+✓ dicom2nifti: unknown
+✓ nilearn: 0.12.1
+✓ weasyprint: 67.0
+✓ jinja2: 3.1.6
 
-External Tools:
-  FSL: OK (/usr/local/fsl)
-  MRtrix3: OK (/usr/bin/mrview)
+✓ csttool.batch: available
+✓ csttool.extract: available
+✓ csttool.ingest: available
+✓ csttool.metrics: available
+✓ csttool.preprocess: available
+✓ csttool.validation: available
 
-Status: OK
+✓ All required dependencies and modules available
 ```
+
+## Exit Status
+
+- **Exit code 0**: All checks passed
+- **Exit code 1**: One or more checks failed
+
+If any required dependency is missing, the command will display:
+```
+✗ Some dependencies or modules missing - install with: pip install -e .
+```
+
+## See Also
+
+- [Installation](../getting-started/installation.md) — How to install csttool and dependencies
+- [Troubleshooting](../how-to/troubleshooting.md) — Common issues and solutions
