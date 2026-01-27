@@ -21,6 +21,7 @@ dependencies = [
     "nilearn",
     "weasyprint",
     "jinja2",
+    "tomllib"
 ]
 
 [project.optional-dependencies]
