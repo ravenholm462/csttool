@@ -89,14 +89,17 @@ def cmd_track(args: argparse.Namespace) -> dict | None:
 
     # Step 4: Stopping criterion and seeds
     print("\nStep 4: Stopping criterion and seed generation")
+    use_brain_mask_stop = getattr(args, 'use_brain_mask_stop', False)
     try:
         seeds, stopping_criterion = seed_and_stop(
             fa,
             affine,
             white_matter=white_matter,
+            brain_mask=brain_mask,
             fa_thresh=args.fa_thr,
             density=args.seed_density,
             use_binary=False,
+            use_brain_mask_stop=use_brain_mask_stop,
             verbose=verbose
         )
     except Exception as e:
@@ -105,6 +108,7 @@ def cmd_track(args: argparse.Namespace) -> dict | None:
 
     # Step 5: Deterministic tracking
     print("\nStep 5: Deterministic tracking")
+    random_seed = getattr(args, 'rng_seed', None)
     try:
         streamlines = run_tractography(
             csapeaks,
@@ -112,6 +116,7 @@ def cmd_track(args: argparse.Namespace) -> dict | None:
             seeds,
             affine,
             step_size=args.step_size,
+            random_seed=random_seed,
             verbose=verbose,
             visualize=getattr(args, 'show_plots', False)
         )
@@ -131,10 +136,11 @@ def cmd_track(args: argparse.Namespace) -> dict | None:
         'seed_density': args.seed_density,
         'sh_order': validated_sh_order,
         'sphere': 'symmetric362',
-        'stopping_criterion': 'fa_threshold',
+        'stopping_criterion': 'fa_threshold' + ('+brain_mask' if use_brain_mask_stop else ''),
         'relative_peak_threshold': 0.8,
-        'min_separation_angle': 45,  # Angle threshold for fiber direction changes
-        'angle_threshold': 45,  # Reported as angle_threshold for clarity
+        'min_separation_angle': 45,  # Peak extraction: minimum angle between detected peaks
+        'random_seed': random_seed,
+        'use_brain_mask_stop': use_brain_mask_stop,
     }
     
     try:
