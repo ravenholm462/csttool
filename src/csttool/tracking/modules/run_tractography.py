@@ -1,15 +1,19 @@
-def run_tractography(csapeaks, stopping_criterion, seeds, affine, step_size=0.5, verbose=False, visualize=False):
+def run_tractography(csapeaks, stopping_criterion, seeds, affine, step_size=0.5, random_seed=None, verbose=False, visualize=False):
     """Run deterministic local tractography.
-    
+
     Args:
         csapeaks (PeaksAndMetrics): Direction field from estimate_directions().
+            Note: PeaksAndMetrics inherits from EuDXDirectionGetter, so it serves
+            as a valid direction getter for LocalTracking.
         stopping_criterion: Stopping criterion from seed_and_stop().
         seeds (ndarray): Seed points in world coordinates (N, 3).
         affine (ndarray): 4x4 affine transformation matrix.
         step_size (float): Tracking step size in mm (default 0.5).
+        random_seed (int, optional): Random seed for reproducible tracking.
+            If None, results may vary between runs.
         verbose (bool): Print processing details.
         visualize (bool): Show 2D projection plots of streamlines.
-        
+
     Returns:
         Streamlines: Generated streamlines in RASMM space.
     """
@@ -17,16 +21,19 @@ def run_tractography(csapeaks, stopping_criterion, seeds, affine, step_size=0.5,
     from dipy.tracking.streamline import Streamlines, length
     import numpy as np
     import matplotlib.pyplot as plt
-    
+
     if verbose:
         print(f"Running tractography (step={step_size}mm)...")
-    
+        if random_seed is not None:
+            print(f"  Random seed: {random_seed}")
+
     streamline_generator = LocalTracking(
-        csapeaks, 
-        stopping_criterion, 
-        seeds, 
-        affine=affine, 
-        step_size=step_size
+        csapeaks,
+        stopping_criterion,
+        seeds,
+        affine=affine,
+        step_size=step_size,
+        random_seed=random_seed
     )
     streamlines = Streamlines(streamline_generator)
     
