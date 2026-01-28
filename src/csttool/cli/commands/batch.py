@@ -23,7 +23,12 @@ def cmd_batch(args: argparse.Namespace) -> None:
     CLI handler for the 'batch' command.
     """
     verbose = getattr(args, 'verbose', False)
-    if verbose:
+    quiet = getattr(args, 'quiet', False)
+
+    # Configure logging based on verbosity
+    if quiet:
+        logging.getLogger("csttool").setLevel(logging.ERROR)
+    elif verbose:
         logging.getLogger("csttool").setLevel(logging.INFO)
     
     # 1. Prepare Subjects List

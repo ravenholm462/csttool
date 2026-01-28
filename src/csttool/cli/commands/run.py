@@ -29,8 +29,13 @@ def cmd_run(args: argparse.Namespace) -> None:
     """
     
     verbose = getattr(args, 'verbose', False)
+    quiet = getattr(args, 'quiet', False)
     continue_on_error = getattr(args, 'continue_on_error', False)
-    
+
+    # Quiet overrides verbose
+    if quiet:
+        verbose = False
+
     # Create output directory structure
     args.out.mkdir(parents=True, exist_ok=True)
     
@@ -51,19 +56,21 @@ def cmd_run(args: argparse.Namespace) -> None:
     failed_steps = []
     pipeline_metadata = {}  # Initialize here to ensure it's available throughout
     
-    print("\n" + "="*70)
-    print("CSTTOOL - COMPLETE CST ANALYSIS PIPELINE")
-    print("="*70)
-    print(f"Subject ID:     {subject_id}")
-    print(f"Output:         {args.out}")
-    print(f"Started:        {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print("="*70)
+    if not quiet:
+        print("\n" + "="*70)
+        print("CSTTOOL - COMPLETE CST ANALYSIS PIPELINE")
+        print("="*70)
+        print(f"Subject ID:     {subject_id}")
+        print(f"Output:         {args.out}")
+        print(f"Started:        {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print("="*70)
     
     # =========================================================================
     # STEP 1: CHECK
     # =========================================================================
     if not getattr(args, 'skip_check', False):
-        print("\n" + "▶"*3 + " STEP 1/6: ENVIRONMENT CHECK " + "◀"*3)
+        if not quiet:
+            print("\n" + "▶"*3 + " STEP 1/6: ENVIRONMENT CHECK " + "◀"*3)
         t0 = time()
         
         try:
@@ -85,13 +92,15 @@ def cmd_run(args: argparse.Namespace) -> None:
         
         step_times['check'] = time() - t0
     else:
-        print("\n" + "⏭ STEP 1/6: SKIPPING ENVIRONMENT CHECK")
+        if not quiet:
+            print("\n" + "⏭ STEP 1/6: SKIPPING ENVIRONMENT CHECK")
         step_results['check'] = {'success': True, 'skipped': True}
     
     # =========================================================================
     # STEP 2: IMPORT
     # =========================================================================
-    print("\n" + "▶"*3 + " STEP 2/6: IMPORT DATA " + "◀"*3)
+    if not quiet:
+        print("\n" + "▶"*3 + " STEP 2/6: IMPORT DATA " + "◀"*3)
     t0 = time()
     
     nifti_path = None
@@ -186,7 +195,8 @@ def cmd_run(args: argparse.Namespace) -> None:
     # =========================================================================
     
     if getattr(args, 'preprocess', False):
-        print("\n" + "▶"*3 + " STEP 3/6: PREPROCESSING " + "◀"*3)
+        if not quiet:
+            print("\n" + "▶"*3 + " STEP 3/6: PREPROCESSING " + "◀"*3)
         t0 = time()
         
         preproc_path = None
@@ -237,7 +247,8 @@ def cmd_run(args: argparse.Namespace) -> None:
         }
         
     else:
-        print("\n" + "⏭ STEP 3/6: SKIPPING PREPROCESSING (Pass-through)")
+        if not quiet:
+            print("\n" + "⏭ STEP 3/6: SKIPPING PREPROCESSING (Pass-through)")
         t0 = time()
         # Pass through the input NIfTI as the "preprocessed" data
         preproc_path = nifti_path
@@ -252,7 +263,8 @@ def cmd_run(args: argparse.Namespace) -> None:
     # =========================================================================
     # STEP 4: TRACK
     # =========================================================================
-    print("\n" + "▶"*3 + " STEP 4/6: TRACTOGRAPHY " + "◀"*3)
+    if not quiet:
+        print("\n" + "▶"*3 + " STEP 4/6: TRACTOGRAPHY " + "◀"*3)
     t0 = time()
     
     tractogram_path = None
@@ -309,7 +321,8 @@ def cmd_run(args: argparse.Namespace) -> None:
     # =========================================================================
     # STEP 5: EXTRACT
     # =========================================================================
-    print("\n" + "▶"*3 + " STEP 5/6: CST EXTRACTION " + "◀"*3)
+    if not quiet:
+        print("\n" + "▶"*3 + " STEP 5/6: CST EXTRACTION " + "◀"*3)
     t0 = time()
     
     cst_left_path = None
@@ -375,7 +388,8 @@ def cmd_run(args: argparse.Namespace) -> None:
     # =========================================================================
     # STEP 6: METRICS
     # =========================================================================
-    print("\n" + "▶"*3 + " STEP 6/6: METRICS & REPORTS " + "◀"*3)
+    if not quiet:
+        print("\n" + "▶"*3 + " STEP 6/6: METRICS & REPORTS " + "◀"*3)
     t0 = time()
     
     try:
@@ -429,26 +443,30 @@ def cmd_run(args: argparse.Namespace) -> None:
     # Save pipeline report
     report_path = save_pipeline_report(args.out, subject_id, step_results, step_times, failed_steps, pipeline_start)
     
-    print("\n" + "="*70)
-    print("PIPELINE COMPLETE")
-    print("="*70)
-    print(f"Subject ID:     {subject_id}")
-    print(f"Total time:     {total_time/60:.1f} minutes ({total_time:.0f} seconds)")
-    print(f"\nStep timing:")
-    for step, elapsed in step_times.items():
-        status = "✓" if step not in failed_steps else "✗"
-        print(f"  {status} {step:12s}: {elapsed:.1f}s")
-    
-    if failed_steps:
-        print(f"\n⚠️  Failed steps: {', '.join(failed_steps)}")
-    else:
-        print(f"\n✓ All steps completed successfully!")
-    
-    print(f"\nOutputs:")
-    print(f"  Pipeline report: {report_path}")
-    if step_results.get('metrics', {}).get('success'):
-        print(f"  Metrics:         {args.out / 'metrics'}")
-    if step_results.get('extract', {}).get('success'):
-        print(f"  CST tractograms: {args.out / 'extraction'}")
-    
-    print("="*70)
+    if not quiet:
+        print("\n" + "="*70)
+        print("PIPELINE COMPLETE")
+        print("="*70)
+        print(f"Subject ID:     {subject_id}")
+        print(f"Total time:     {total_time/60:.1f} minutes ({total_time:.0f} seconds)")
+        print(f"\nStep timing:")
+        for step, elapsed in step_times.items():
+            status = "✓" if step not in failed_steps else "✗"
+            print(f"  {status} {step:12s}: {elapsed:.1f}s")
+
+        if failed_steps:
+            print(f"\n  Failed steps: {', '.join(failed_steps)}")
+        else:
+            print(f"\n✓ All steps completed successfully!")
+
+        print(f"\nOutputs:")
+        print(f"  Pipeline report: {report_path}")
+        if step_results.get('metrics', {}).get('success'):
+            print(f"  Metrics:         {args.out / 'metrics'}")
+        if step_results.get('extract', {}).get('success'):
+            print(f"  CST tractograms: {args.out / 'extraction'}")
+
+        print("="*70)
+    elif failed_steps:
+        # Even in quiet mode, report failures
+        print(f"Pipeline completed with failures: {', '.join(failed_steps)}")

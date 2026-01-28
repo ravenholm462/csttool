@@ -106,6 +106,52 @@ For reliable CST extraction:
 
 ---
 
+## Coordinate Space Requirements
+
+### Critical: World Space (mm) Required
+
+Tractogram streamlines **must be in world coordinates (millimeters)**, not voxel indices. This is a common source of errors when using tractograms from external sources.
+
+| Property | Correct (mm) | Incorrect (voxels) |
+|----------|-------------|-------------------|
+| Coordinate range | -100 to +100 | 0 to 256 |
+| Typical values | -80.5, 45.2, 62.0 | 45, 120, 78 |
+| Negative coordinates | Common (RAS space) | Rare or absent |
+
+### Automatic Validation
+
+csttool automatically validates coordinate systems when running extraction. If your tractogram is in voxel space, you will see an error like:
+
+```
+Error: Coordinate validation failed. This can lead to incorrect results.
+Errors: Coordinate space mismatch detected: values suggest voxel indices, not mm
+```
+
+### Converting Voxel to World Coordinates
+
+If your tractogram is in voxel space, convert it before using csttool:
+
+```python
+import nibabel as nib
+from dipy.io.streamline import load_tractogram, save_tractogram
+from dipy.io.stateful_tractogram import Space
+
+# Load with reference image
+ref_img = nib.load("fa.nii.gz")
+sft = load_tractogram("tractogram.trk", ref_img, to_space=Space.VOX)
+
+# Convert to world coordinates
+sft.to_rasmm()
+
+# Save converted tractogram
+save_tractogram(sft, "tractogram_rasmm.trk")
+```
+
+!!! note "Skipping validation (not recommended)"
+    You can bypass coordinate validation with `--skip-coordinate-validation`, but this is strongly discouraged as it can produce anatomically plausible but incorrect results.
+
+---
+
 ## Validating Your Data
 
 Run `csttool check` to verify your environment, then:

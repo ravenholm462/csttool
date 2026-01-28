@@ -10,15 +10,21 @@ from dipy.core.gradients import gradient_table
 def cmd_extract(args: argparse.Namespace) -> dict | None:
     """
     Extract bilateral CST using atlas-based ROI filtering.
-    
+
     Supports two methods:
     - endpoint: Filter by streamline endpoints (original)
     - passthrough: Filter by streamlines passing through ROIs (more permissive)
-    
+
     Note: roi-seeded method requires raw DWI data and is only available via cmd_run.
     """
-    
+
     verbose = getattr(args, 'verbose', True)
+    quiet = getattr(args, 'quiet', False)
+    skip_coord_validation = getattr(args, 'skip_coordinate_validation', False)
+
+    # Quiet overrides verbose
+    if quiet:
+        verbose = False
     
     # Check extraction method
     extraction_method = getattr(args, 'extraction_method', 'passthrough')
@@ -59,16 +65,39 @@ def cmd_extract(args: argparse.Namespace) -> dict | None:
         return None
     
     # Load inputs
-    print(f"Loading tractogram: {args.tractogram}")
+    if not quiet:
+        print(f"Loading tractogram: {args.tractogram}")
+
+    # Coordinate validation (critical check for silent failure prevention)
+    if not skip_coord_validation:
+        try:
+            from csttool.extract.modules.coordinate_validation import validate_tractogram_coordinates
+            validation = validate_tractogram_coordinates(
+                tractogram_path=str(args.tractogram),
+                reference_path=str(args.fa),
+                strict=True,
+                verbose=verbose
+            )
+        except ValueError as e:
+            print(f"Error: {e}")
+            return None
+        except Exception as e:
+            print(f"Warning: Coordinate validation failed unexpectedly: {e}")
+            print("         Proceeding with extraction (use --skip-coordinate-validation to suppress)")
+    elif verbose:
+        print("  Skipping coordinate validation (--skip-coordinate-validation)")
+
     try:
         sft = load_tractogram(str(args.tractogram), 'same')
         streamlines = sft.streamlines
-        print(f"  Loaded {len(streamlines):,} streamlines")
+        if not quiet:
+            print(f"  Loaded {len(streamlines):,} streamlines")
     except Exception as e:
         print(f"Error loading tractogram: {e}")
         return None
     
-    print(f"Loading FA map: {args.fa}")
+    if not quiet:
+        print(f"Loading FA map: {args.fa}")
     try:
         fa_data, fa_affine = load_nifti(str(args.fa))
     except Exception as e:

@@ -489,7 +489,209 @@ def plot_cst_extraction(
     
     if verbose:
         print(f"✓ CST extraction: {fig_path}")
-    
+
+    return fig_path
+
+
+# =============================================================================
+# HEMISPHERE SEPARATION QC VISUALIZATION
+# =============================================================================
+
+def plot_hemisphere_separation(
+    cst_result,
+    fa,
+    affine,
+    output_dir,
+    subject_id=None,
+    max_streamlines=1500,
+    verbose=True
+):
+    """
+    Create hemisphere separation QC visualization.
+
+    Shows left and right CST bundles in separate panels with
+    anatomical midline reference for verifying correct hemisphere assignment.
+
+    This visualization is specifically designed to QC the hemisphere
+    splitting step and catch any cross-hemisphere contamination.
+
+    Parameters
+    ----------
+    cst_result : dict
+        Output from extract_bilateral_cst() with 'cst_left', 'cst_right', 'stats'
+    fa : ndarray
+        3D FA map for anatomical reference
+    affine : ndarray, shape (4, 4)
+        Affine matrix for coordinate transforms
+    output_dir : str or Path
+        Output directory
+    subject_id : str, optional
+        Subject identifier for filename
+    max_streamlines : int
+        Maximum streamlines to display per hemisphere
+    verbose : bool
+        Print progress information
+
+    Returns
+    -------
+    fig_path : Path
+        Path to saved visualization
+    """
+    output_dir = Path(output_dir)
+    viz_dir = output_dir / "visualizations"
+    viz_dir.mkdir(parents=True, exist_ok=True)
+
+    prefix = f"{subject_id}_" if subject_id else ""
+
+    cst_left = cst_result['cst_left']
+    cst_right = cst_result['cst_right']
+    stats = cst_result['stats']
+
+    # Subsample for visualization
+    def subsample(streamlines, max_n):
+        if len(streamlines) <= max_n:
+            return list(streamlines)
+        indices = np.random.choice(len(streamlines), max_n, replace=False)
+        return [streamlines[i] for i in indices]
+
+    left_vis = subsample(cst_left, max_streamlines)
+    right_vis = subsample(cst_right, max_streamlines)
+
+    # Compute anatomical midline in world coordinates
+    # X=0 in RAS space is the midsagittal plane
+    midline_x = 0.0
+
+    # Create figure: 2 rows x 3 columns
+    # Row 0: Coronal view (Left | Combined | Right)
+    # Row 1: Axial view (Left | Combined | Right)
+    fig, axes = plt.subplots(2, 3, figsize=(15, 10), constrained_layout=True)
+
+    # Calculate left-right ratio
+    left_count = stats['cst_left_count']
+    right_count = stats['cst_right_count']
+    lr_ratio = left_count / right_count if right_count > 0 else float('inf')
+
+    fig.suptitle(
+        f"Hemisphere Separation QC - {subject_id or 'Subject'}\n"
+        f"Left: {left_count:,} | Right: {right_count:,} | "
+        f"L/R Ratio: {lr_ratio:.2f}",
+        fontsize=14, fontweight='bold'
+    )
+
+    # View configurations
+    views = [
+        ('Coronal (X-Z)', 0, 2, 'X (mm) [Left <- | -> Right]', 'Z (mm)'),
+        ('Axial (X-Y)', 0, 1, 'X (mm) [Left <- | -> Right]', 'Y (mm)'),
+    ]
+
+    # Compute axis limits from all streamlines
+    volume_bounds = _volume_world_bounds(fa.shape, affine)
+
+    for row, (view_name, d1, d2, xlabel, ylabel) in enumerate(views):
+        fallback = (volume_bounds[d1], volume_bounds[d2])
+        (xlim, ylim) = _streamline_plane_limits(
+            left_vis + right_vis, d1, d2, fallback
+        )
+
+        # Column 0: Left CST only
+        ax_left = axes[row, 0]
+        ax_left.set_facecolor('#f5f5f5')
+        for sl in left_vis:
+            ax_left.plot(sl[:, d1], sl[:, d2], color='blue', alpha=0.4, linewidth=0.8)
+
+        # Add midline reference
+        ax_left.axvline(midline_x, color='gray', linestyle='--', linewidth=1.5,
+                        alpha=0.7)
+
+        ax_left.set_xlim(xlim)
+        ax_left.set_ylim(ylim)
+        ax_left.set_xlabel(xlabel)
+        ax_left.set_ylabel(ylabel)
+        ax_left.set_title(f'LEFT CST\n{view_name}' if row == 0 else '')
+        ax_left.set_aspect('equal', adjustable='box')
+        ax_left.grid(True, alpha=0.3, color='white')
+
+        # Column 1: Combined (both hemispheres)
+        ax_both = axes[row, 1]
+        ax_both.set_facecolor('#f5f5f5')
+        for sl in left_vis:
+            ax_both.plot(sl[:, d1], sl[:, d2], color='blue', alpha=0.3, linewidth=0.8)
+        for sl in right_vis:
+            ax_both.plot(sl[:, d1], sl[:, d2], color='red', alpha=0.3, linewidth=0.8)
+
+        ax_both.axvline(midline_x, color='black', linestyle='-', linewidth=2,
+                        alpha=0.8)
+
+        ax_both.set_xlim(xlim)
+        ax_both.set_ylim(ylim)
+        ax_both.set_xlabel(xlabel)
+        ax_both.set_ylabel(ylabel)
+        ax_both.set_title(f'BILATERAL\n{view_name}' if row == 0 else '')
+        ax_both.set_aspect('equal', adjustable='box')
+        ax_both.grid(True, alpha=0.3, color='white')
+
+        # Column 2: Right CST only
+        ax_right = axes[row, 2]
+        ax_right.set_facecolor('#f5f5f5')
+        for sl in right_vis:
+            ax_right.plot(sl[:, d1], sl[:, d2], color='red', alpha=0.4, linewidth=0.8)
+
+        ax_right.axvline(midline_x, color='gray', linestyle='--', linewidth=1.5,
+                         alpha=0.7)
+
+        ax_right.set_xlim(xlim)
+        ax_right.set_ylim(ylim)
+        ax_right.set_xlabel(xlabel)
+        ax_right.set_ylabel(ylabel)
+        ax_right.set_title(f'RIGHT CST\n{view_name}' if row == 0 else '')
+        ax_right.set_aspect('equal', adjustable='box')
+        ax_right.grid(True, alpha=0.3, color='white')
+
+    # Add legend to middle panel
+    from matplotlib.lines import Line2D
+    legend_elements = [
+        Line2D([0], [0], color='blue', linewidth=2, label=f'Left ({left_count:,})'),
+        Line2D([0], [0], color='red', linewidth=2, label=f'Right ({right_count:,})'),
+        Line2D([0], [0], color='black', linestyle='-', linewidth=2, label='Midsagittal plane'),
+    ]
+    axes[0, 1].legend(handles=legend_elements, loc='upper right', fontsize=9,
+                      frameon=True, fancybox=True, framealpha=0.9)
+
+    # Compute QC metrics: check for midline crossings
+    left_x_coords = np.concatenate([np.asarray(sl)[:, 0] for sl in left_vis]) if left_vis else np.array([])
+    right_x_coords = np.concatenate([np.asarray(sl)[:, 0] for sl in right_vis]) if right_vis else np.array([])
+
+    # Left CST should be predominantly X < 0 (left hemisphere in RAS)
+    # Right CST should be predominantly X > 0 (right hemisphere in RAS)
+    tolerance_mm = 5.0  # Allow 5mm tolerance for midline
+    left_wrong_side = np.sum(left_x_coords > tolerance_mm) / len(left_x_coords) * 100 if len(left_x_coords) > 0 else 0
+    right_wrong_side = np.sum(right_x_coords < -tolerance_mm) / len(right_x_coords) * 100 if len(right_x_coords) > 0 else 0
+
+    qc_text = (
+        f"QC Metrics:\n"
+        f"Left CST points in right hemisphere: {left_wrong_side:.1f}%\n"
+        f"Right CST points in left hemisphere: {right_wrong_side:.1f}%"
+    )
+
+    # Color-code QC status
+    if left_wrong_side > 10 or right_wrong_side > 10:
+        qc_color = '#ffcccc'  # Light red - Warning
+        qc_text += "\n[WARNING: High cross-hemisphere contamination]"
+    else:
+        qc_color = '#ccffcc'  # Light green - OK
+        qc_text += "\n[OK: Good hemisphere separation]"
+
+    fig.text(0.5, 0.02, qc_text, ha='center', fontsize=10,
+             bbox=dict(boxstyle='round', facecolor=qc_color, alpha=0.8))
+
+    # Save
+    fig_path = viz_dir / f"{prefix}hemisphere_separation.png"
+    plt.savefig(fig_path, dpi=150, bbox_inches='tight', facecolor='white')
+    plt.close()
+
+    if verbose:
+        print(f"✓ Hemisphere separation QC: {fig_path}")
+
     return fig_path
 
 
@@ -744,8 +946,13 @@ def save_all_extraction_visualizations(
     viz_paths['extraction_summary'] = create_extraction_summary(
         cst_result, fa, masks, affine, output_dir, subject_id, verbose=verbose
     )
-    
+
+    # Hemisphere separation QC
+    viz_paths['hemisphere_separation'] = plot_hemisphere_separation(
+        cst_result, fa, affine, output_dir, subject_id, verbose=verbose
+    )
+
     if verbose:
         print(f"✓ All extraction visualizations saved to: {Path(output_dir) / 'visualizations'}")
-    
+
     return viz_paths

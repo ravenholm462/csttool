@@ -51,6 +51,8 @@ csttool extract \
 - `--fast-registration`: Use faster registration (less accurate, useful for testing)
 - `--save-visualizations`: Generate QC visualizations of extracted tracts
 - `--verbose`: Print detailed progress output (default: enabled)
+- `--quiet`: Suppress progress messages (errors still shown)
+- `--skip-coordinate-validation`: Skip coordinate system validation (NOT RECOMMENDED - can cause silent failures)
 
 ### Extraction Methods
 
@@ -85,6 +87,16 @@ csttool run --dwi dwi.nii.gz --bval dwi.bval --bvec dwi.bvec --out results --ext
 - **Note**: This method is NOT available in `csttool extract` - use `csttool run` instead
 
 ### Algorithm Pipeline
+
+#### Step 0: Coordinate Validation (Automatic)
+**New in version 0.4.0**: Validates tractogram coordinates match FA space to prevent silent failures:
+- **Bounding box check**: Verifies streamlines fall within FA volume
+- **Unit detection**: Flags tractograms in voxel space (0-256 range) instead of world coordinates (mm)
+- **Orientation check**: Verifies RAS coordinate consistency
+
+If validation fails, extraction stops with an error. This critical check prevents anatomically plausible but incorrect results caused by coordinate mismatches.
+
+**Bypass (not recommended)**: Use `--skip-coordinate-validation` to skip this check, but be aware this can lead to silent failures.
 
 #### Step 1: Registration
 Registers the MNI152 template to the subject's FA map using:
@@ -138,7 +150,18 @@ extraction_results/
 └── mni_to_subject_warped.nii.gz       # Warped MNI template (QC)
 ```
 
-If `--save-visualizations` is used, additional files are generated for quality control.
+If `--save-visualizations` is used, additional QC visualization files are generated:
+
+```
+visualizations/
+├── {subject_id}_registration_qc.png         # MNI-to-subject alignment check
+├── {subject_id}_roi_masks.png               # ROI placement on FA background
+├── {subject_id}_cst_extraction.png          # Extracted streamlines
+├── {subject_id}_hemisphere_separation.png   # Left/Right separation QC (NEW in v0.4.0)
+└── {subject_id}_extraction_summary.png      # Combined overview
+```
+
+**New in v0.4.0**: The hemisphere separation visualization shows left and right CST bundles in separate panels with midline reference, making it easy to verify correct hemisphere assignment and detect cross-hemisphere contamination.
 
 ## Example Output
 
@@ -194,6 +217,22 @@ Extraction rate: 1.01%
 ```
 
 ## Troubleshooting
+
+### "Coordinate validation failed"
+**New in version 0.4.0**: This critical error prevents silent failures caused by coordinate system mismatches.
+
+**Error message example**:
+```
+Error: Coordinate validation failed. This can lead to incorrect results.
+Errors: Coordinate space mismatch detected: values suggest voxel indices, not mm
+```
+
+**Solution**:
+1. Verify your tractogram is in world coordinates (mm), not voxel space
+2. Convert if needed (see [Data Requirements - Coordinate Space](../../getting-started/data-requirements.md#coordinate-space-requirements))
+3. Ensure tractogram and FA map are from the same processing pipeline
+
+**Only if absolutely necessary**: Use `--skip-coordinate-validation` to bypass this check, but be aware this can produce anatomically plausible but incorrect results.
 
 ### "roi-seeded method requires raw DWI data"
 The ROI-seeded extraction method is not available in `csttool extract`. Use `csttool run` instead:

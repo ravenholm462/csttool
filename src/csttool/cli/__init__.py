@@ -335,6 +335,16 @@ def main() -> None:
         help="Print detailed processing information"
     )
     p_extract.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Suppress progress messages (errors still shown)"
+    )
+    p_extract.add_argument(
+        "--skip-coordinate-validation",
+        action="store_true",
+        help="Skip coordinate validation (NOT RECOMMENDED - can cause silent failures)"
+    )
+    p_extract.add_argument(
         "--out",
         type=Path,
         required=True,
@@ -605,7 +615,12 @@ def main() -> None:
         action="store_true",
         help="Print detailed processing information"
     )
-    
+    p_run.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Suppress progress messages (errors still shown)"
+    )
+
     p_run.set_defaults(func=cmd_run)
 
     # -------------------------------------------------------------------------
@@ -710,7 +725,12 @@ def main() -> None:
         action="store_true",
         help="Print detailed processing information"
     )
-    
+    p_batch.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Suppress progress messages (errors still shown)"
+    )
+
     p_batch.set_defaults(func=cmd_batch)
 
     # -------------------------------------------------------------------------
