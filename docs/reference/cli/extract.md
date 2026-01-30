@@ -61,7 +61,6 @@ csttool extract --tractogram whole_brain.trk --fa fa.nii.gz --out results --extr
 - **Input**: Whole-brain tractogram (.trk)
 - **Logic**: Keeps streamlines that pass through *both* the Brainstem and Primary Motor Cortex ROIs
 - **Use Case**: Standard post-hoc filtering; more permissive than endpoint method
-- **Typical yield**: 1-2% of whole-brain streamlines
 
 #### 2. Endpoint
 ```bash
@@ -70,7 +69,6 @@ csttool extract --tractogram whole_brain.trk --fa fa.nii.gz --out results --extr
 - **Input**: Whole-brain tractogram (.trk)
 - **Logic**: Keeps only streamlines where endpoints (first/last points) fall within the ROIs
 - **Use Case**: Stricter anatomical constraints; more selective filtering
-- **Typical yield**: Lower than passthrough method
 
 #### 3. ROI-Seeded
 ```bash
