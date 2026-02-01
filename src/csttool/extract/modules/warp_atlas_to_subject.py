@@ -413,13 +413,38 @@ def warp_atlas_to_subject(
     if verbose:
         warped_unique = np.unique(warped_atlas[warped_atlas > 0])
         print(f"    ✓ Warped labels: {len(warped_unique)}")
-        
+
         # Sanity check: labels should be preserved
         orig_labels = np.unique(atlas_img.get_fdata()[atlas_img.get_fdata() > 0])
         if len(warped_unique) != len(orig_labels):
             print(f"    ⚠️  Warning: Label count changed ({len(orig_labels)} → {len(warped_unique)})")
 
-    
+        # QC: Report motor ROI centroids and bounding boxes (if motor labels present)
+        if 7 in warped_unique and 107 in warped_unique:
+            left_coords = np.array(np.where(warped_atlas == 7)).T
+            right_coords = np.array(np.where(warped_atlas == 107)).T
+
+            left_centroid = left_coords.mean(axis=0)
+            right_centroid = right_coords.mean(axis=0)
+
+            # Convert to world coordinates
+            left_world = subject_affine @ np.append(left_centroid, 1)
+            right_world = subject_affine @ np.append(right_centroid, 1)
+
+            print(f"\n    Motor ROI Diagnostics:")
+            print(f"    Left centroid (world):  X={left_world[0]:.1f}, Y={left_world[1]:.1f}, Z={left_world[2]:.1f}")
+            print(f"    Right centroid (world): X={right_world[0]:.1f}, Y={right_world[1]:.1f}, Z={right_world[2]:.1f}")
+
+            # Check for obvious issues
+            if left_world[0] > 0:
+                print(f"    ⚠️  Warning: Left motor centroid has positive X (should be negative)")
+            if right_world[0] < 0:
+                print(f"    ⚠️  Warning: Right motor centroid has negative X (should be positive)")
+
+            z_diff = abs(left_world[2] - right_world[2])
+            if z_diff > 10:
+                print(f"    ⚠️  Warning: Motor centroids differ by {z_diff:.1f}mm in Z (should be similar)")
+
     return warped_atlas
 
 

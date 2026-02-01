@@ -8,6 +8,7 @@ from .registration import (
     load_mni_template,
     compute_affine_registration,
     compute_syn_registration,
+    compute_jacobian_hemisphere_stats,
     register_mni_to_subject,
     save_registration_report,
     plot_registration_comparison
@@ -16,6 +17,8 @@ from .registration import (
 from .visualizations import (
     plot_registration_comparison,
     plot_cst_extraction,
+    plot_hemisphere_separation,
+    plot_jacobian_map,
     create_extraction_summary,
     save_all_extraction_visualizations,
 )
@@ -23,11 +26,14 @@ from .visualizations import (
 __all__ = [
     'load_mni_template',
     'register_mni_to_subject',
-    'save_registration_report'
+    'save_registration_report',
     'compute_affine_registration',
     'compute_syn_registration',
+    'compute_jacobian_hemisphere_stats',
     'plot_registration_comparison',
     'plot_cst_extraction',
+    'plot_hemisphere_separation',
+    'plot_jacobian_map',
     'create_extraction_summary',
-    'save_all_extraction_visualizations'
+    'save_all_extraction_visualizations',
 ]

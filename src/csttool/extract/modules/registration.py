@@ -401,11 +401,100 @@ def compute_syn_registration(
         moving_grid2world=moving_affine,
         prealign=prealign
     )
-    
+
     if verbose:
         print("✓ SyN registration complete")
-    
+
     return mapping
+
+
+def compute_jacobian_hemisphere_stats(mapping, subject_affine, verbose=True):
+    """
+    Compute Jacobian determinant statistics per hemisphere.
+
+    The Jacobian determinant indicates local volume change:
+    - J > 1: local expansion (MNI region maps to larger subject region)
+    - J < 1: local compression (MNI region maps to smaller subject region)
+    - J = 1: no volume change
+
+    Asymmetric Jacobian statistics between hemispheres indicates
+    the registration is fitting one side better than the other.
+
+    Parameters
+    ----------
+    mapping : DiffeomorphicMap
+        The SyN registration mapping.
+    subject_affine : ndarray
+        4x4 affine matrix of the subject image.
+    verbose : bool
+        Print statistics.
+
+    Returns
+    -------
+    stats : dict
+        Dictionary with hemisphere-specific Jacobian statistics.
+    jacobian_det : ndarray
+        3D array of Jacobian determinant values.
+    """
+    # Get the forward deformation field
+    forward_field = mapping.get_forward_field()
+
+    # Compute Jacobian determinant at each voxel
+    # forward_field shape: (X, Y, Z, 3) - displacement in each direction
+    du_dx = np.gradient(forward_field[..., 0], axis=0)
+    du_dy = np.gradient(forward_field[..., 0], axis=1)
+    du_dz = np.gradient(forward_field[..., 0], axis=2)
+
+    dv_dx = np.gradient(forward_field[..., 1], axis=0)
+    dv_dy = np.gradient(forward_field[..., 1], axis=1)
+    dv_dz = np.gradient(forward_field[..., 1], axis=2)
+
+    dw_dx = np.gradient(forward_field[..., 2], axis=0)
+    dw_dy = np.gradient(forward_field[..., 2], axis=1)
+    dw_dz = np.gradient(forward_field[..., 2], axis=2)
+
+    # Jacobian matrix at each voxel (add identity for deformation -> transformation)
+    # J = I + grad(displacement)
+    jacobian_det = (
+        (1 + du_dx) * ((1 + dv_dy) * (1 + dw_dz) - dv_dz * dw_dy) -
+        du_dy * (dv_dx * (1 + dw_dz) - dv_dz * dw_dx) +
+        du_dz * (dv_dx * dw_dy - (1 + dv_dy) * dw_dx)
+    )
+
+    # Split by hemisphere using world X coordinate
+    shape = jacobian_det.shape
+    i, j, k = np.meshgrid(np.arange(shape[0]), np.arange(shape[1]),
+                          np.arange(shape[2]), indexing='ij')
+    x_world = subject_affine[0, 0] * i + subject_affine[0, 3]
+
+    left_mask = x_world < 0
+    right_mask = x_world >= 0
+
+    left_jacobian = jacobian_det[left_mask]
+    right_jacobian = jacobian_det[right_mask]
+
+    stats = {
+        'left_mean': float(np.mean(left_jacobian)),
+        'left_std': float(np.std(left_jacobian)),
+        'right_mean': float(np.mean(right_jacobian)),
+        'right_std': float(np.std(right_jacobian)),
+        'left_negative_pct': float(100 * np.sum(left_jacobian < 0) / len(left_jacobian)),
+        'right_negative_pct': float(100 * np.sum(right_jacobian < 0) / len(right_jacobian)),
+    }
+
+    if verbose:
+        print("\n    Jacobian Determinant Statistics (per hemisphere):")
+        print(f"    Left:  mean={stats['left_mean']:.3f}, std={stats['left_std']:.3f}, "
+              f"negative={stats['left_negative_pct']:.1f}%")
+        print(f"    Right: mean={stats['right_mean']:.3f}, std={stats['right_std']:.3f}, "
+              f"negative={stats['right_negative_pct']:.1f}%")
+
+        # Flag asymmetry
+        mean_diff = abs(stats['left_mean'] - stats['right_mean'])
+        if mean_diff > 0.1:
+            print(f"    ⚠️  Warning: Hemisphere Jacobian means differ by {mean_diff:.3f}")
+
+    return stats, jacobian_det
 
 
 def register_mni_to_subject(
@@ -619,7 +708,14 @@ def register_mni_to_subject(
         metric_radius=metric_radius_syn,
         verbose=verbose
     )
-    
+
+    # Compute hemisphere-specific registration quality metrics
+    if verbose:
+        print("\n    Computing registration quality metrics...")
+    jacobian_stats, jacobian_det = compute_jacobian_hemisphere_stats(
+        mapping, subject_affine, verbose=verbose
+    )
+
     # -------------------------------------------------------------------------
     # Step 5: Save outputs and generate QC
     # -------------------------------------------------------------------------
@@ -641,7 +737,10 @@ def register_mni_to_subject(
         'original_subject_shape': original_subject_shape,
         'was_reoriented': was_reoriented,
         'original_orientation': original_orientation,
-        'reorientation_transform': reorientation_transform  # Transform from orig -> RAS
+        'reorientation_transform': reorientation_transform,  # Transform from orig -> RAS
+        # Registration quality diagnostics
+        'jacobian_stats': jacobian_stats,
+        'jacobian_det': jacobian_det
     }
     
     # Save warped template

@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-01-28
+
+### Added
+- **Coordinate validation system** to prevent silent failures from tractogram/FA coordinate mismatches
+  - Automatic validation checks bounding box overlap, detects voxel vs world space, and verifies orientation
+  - New `--skip-coordinate-validation` flag to bypass validation (not recommended)
+- **Hemisphere separation QC visualization** showing left/right CST bundles separately with midline reference
+  - Displays cross-hemisphere contamination metrics
+  - Color-coded QC status (green for good separation, red for warnings)
+- **--quiet flag** for `extract`, `run`, and `batch` commands to suppress progress messages in batch pipelines
+- Comprehensive documentation updates:
+  - Expanded [limitations.md](docs/explanation/limitations.md) documenting coordinate validation as main technical risk
+  - Updated [data-requirements.md](docs/getting-started/data-requirements.md) with coordinate space requirements
+  - Added coordinate validation and new visualization info to CLI documentation
+
+### Changed
+- Extract command now validates tractogram coordinates against FA space before processing
+- All QC visualization outputs now include hemisphere separation view by default when using `--save-visualizations`
+
 ## [0.3.1] - 2026-01-25
 
 ### Changed
