@@ -1,0 +1,74 @@
+---
+title: "csttool Import Module"
+---
+flowchart TD
+    %% Input Decision
+    input_type{Input Type?}
+
+    %% DICOM Path
+    dicom_input["DICOM Input<br/>(--dicom)<br/>Raw DICOM directory"]
+
+    %% NIfTI Path
+    nifti_input["NIfTI Input<br/>(--nifti)<br/>Existing NIfTI file"]
+
+    %% DICOM Scan-Only Mode
+    scan_only{Scan Only<br/>Mode?}
+
+    scan_study["Scan DICOM Study<br/>scan_study<br/>List available series<br/>Return series metadata"]
+
+    scan_output["Scan Results<br/>Number of series found<br/>Series descriptions<br/>No conversion performed"]
+
+    %% DICOM Full Conversion
+    dicom_ingest["Run Ingest Pipeline<br/>run_ingest_pipeline<br/>Convert DICOM → NIfTI"]
+
+    dicom_options["Conversion Options<br/>--series: Select series index<br/>--series-uid: Select by UID<br/>--subject-id: Subject identifier<br/>--field-strength: Override T<br/>--echo-time: Override TE"]
+
+    dicom_output["DICOM Conversion Output<br/>NIfTI file (.nii.gz)<br/>Gradient files (.bval/.bvec)<br/>BIDS JSON sidecar"]
+
+    %% NIfTI Legacy Path
+    nifti_resolve["Resolve NIfTI Path<br/>resolve_nifti<br/>Validate file exists"]
+
+    nifti_load["Load with Preprocessing Utils<br/>load_with_preproc<br/>Load data & affine<br/>Load gradient table<br/>Load BIDS JSON"]
+
+    %% Metadata Extraction
+    extract_meta["Extract Acquisition Metadata<br/>extract_acquisition_metadata<br/>Voxel dimensions<br/>Gradient directions<br/>B-values & shells<br/>Scanner parameters"]
+
+    cli_overrides["Apply CLI Overrides<br/>--field-strength → field_strength_T<br/>--echo-time → echo_time_ms"]
+
+    %% Output
+    output_info["Dataset Information Output<br/>File path<br/>Data shape<br/>Gradient directions count<br/>Voxel size (mm)<br/>B-values list"]
+
+    output_result["Return Result Dictionary<br/>nifti_path<br/>data_shape<br/>n_gradients<br/>metadata (acquisition)"]
+
+    %% Flow
+    input_type -->|DICOM| dicom_input
+    input_type -->|NIfTI| nifti_input
+
+    dicom_input --> scan_only
+    scan_only -->|--scan-only| scan_study
+    scan_study --> scan_output
+
+    scan_only -->|Full conversion| dicom_options
+    dicom_options --> dicom_ingest
+    dicom_ingest --> dicom_output
+    dicom_output --> output_result
+
+    nifti_input --> nifti_resolve
+    nifti_resolve --> nifti_load
+    nifti_load --> extract_meta
+    extract_meta --> cli_overrides
+    cli_overrides --> output_info
+    output_info --> output_result
+
+    %% Styling
+    classDef inputNode fill:#e1f5ff,stroke:#0288d1,stroke-width:2px
+    classDef processNode fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    classDef decisionNode fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    classDef outputNode fill:#e8f5e9,stroke:#388e3c,stroke-width:2px
+    classDef optionNode fill:#fff9c4,stroke:#f57f17,stroke-width:2px
+
+    class dicom_input,nifti_input inputNode
+    class scan_study,dicom_ingest,nifti_resolve,nifti_load,extract_meta processNode
+    class input_type,scan_only decisionNode
+    class scan_output,dicom_output,output_info,output_result outputNode
+    class dicom_options,cli_overrides optionNode

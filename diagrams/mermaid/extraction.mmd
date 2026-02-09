@@ -1,0 +1,86 @@
+---
+title: "csttool Extraction Module"
+---
+flowchart TD
+    %% Input - Filter-based workflow
+    input_filter["Filter-Based Input<br/>(csttool extract)<br/>Load Tractogram + FA Map<br/>Requires prior whole-brain tracking"]
+
+    %% Input - ROI-seeded workflow
+    input_roi["ROI-Seeded Input<br/>(csttool run)<br/>Load Preprocessed DWI + Gradients<br/>Bypasses whole-brain tracking"]
+
+    %% Step 0: Coordinate validation
+    coord_val[Coordinate Validation<br/>Verify tractogram-FA alignment<br/>Hemisphere sanity checks<br/>Optional: --skip-coordinate-validation]
+
+    %% Step 1: Registration with details
+    registration[MNI Template Registration<br/>Affine + SyN deformable<br/>ANTs-based alignment<br/>Optional: --fast-registration]
+
+    %% Step 2: Warp atlases
+    warp[Warp Harvard-Oxford Atlases<br/>Cortical: Motor cortex L/R<br/>Subcortical: Brainstem<br/>Apply registration transforms]
+
+    %% Step 3: Create ROI masks
+    roi_masks[Create CST ROI Masks<br/>Motor cortex left/right<br/>Brainstem region<br/>Optional dilation:<br/>--dilate-motor default: 1<br/>--dilate-brainstem default: 2]
+
+    %% Decision: Extraction method
+    method{Extraction Method}
+
+    %% Method 1: Endpoint filtering (filter-based only)
+    endpoint[Endpoint Filtering<br/>Filter by streamline endpoints<br/>in motor cortex and brainstem<br/>Strictest approach<br/>--extraction-method endpoint]
+
+    %% Method 2: Passthrough filtering (filter-based only)
+    passthrough[Passthrough Filtering<br/>Filter by ROI traversal<br/>More permissive<br/>Default for csttool extract<br/>--extraction-method passthrough]
+
+    %% Method 3: ROI-seeded tracking (DWI-based only)
+    roi_seed_prep[Prepare for ROI-Seeded<br/>Load DWI data + gradients<br/>Create brain mask from FA<br/>Build gradient table<br/>Only available via csttool run]
+
+    roi_seed_track[ROI-Seeded Tracking<br/>Seed from motor cortex ROIs<br/>Track through brainstem<br/>Performs tractography directly<br/>Seed FA threshold: 0.15 default<br/>Seed density: 2 seeds/voxel default<br/>Step size: 0.5mm]
+
+    %% Length filtering
+    length_filter[Apply Length Constraints<br/>Min: --min-length default: 20mm<br/>Max: --max-length default: 200mm]
+
+    %% Step 4: Outputs with details
+    save_tracts[Save Bilateral CST Tractograms<br/>Left, Right, Combined .trk files<br/>RASMM space]
+
+    save_report[Save Extraction Report<br/>JSON: streamline counts<br/>extraction rate, parameters]
+
+    save_viz[Optional: QC Visualizations<br/>PNG: tract overlays on FA<br/>ROI mask visualizations<br/>--save-visualizations]
+
+    %% Flow for filtering methods (endpoint/passthrough) - uses existing tractogram
+    input_filter --> coord_val
+    coord_val --> registration
+
+    %% Flow for ROI-seeded method - generates new streamlines from DWI
+    input_roi --> roi_seed_prep
+    roi_seed_prep --> registration
+
+    %% Common path: All methods require atlas registration and ROI creation
+    registration --> warp
+    warp --> roi_masks
+    roi_masks --> method
+
+    %% Branch by method (mutually exclusive based on input type)
+    method -->|Filter existing<br/>tractogram| endpoint
+    method -->|Filter existing<br/>tractogram<br/>default| passthrough
+    method -->|Generate from<br/>DWI data| roi_seed_track
+
+    %% Convergence
+    endpoint --> length_filter
+    passthrough --> length_filter
+    roi_seed_track --> length_filter
+
+    %% Final outputs
+    length_filter --> save_tracts
+    length_filter --> save_report
+    length_filter --> save_viz
+
+    %% Styling
+    classDef inputNode fill:#e1f5ff,stroke:#0288d1,stroke-width:2px
+    classDef processNode fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    classDef decisionNode fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    classDef outputNode fill:#e8f5e9,stroke:#388e3c,stroke-width:2px
+    classDef validationNode fill:#fff9c4,stroke:#f57f17,stroke-width:2px
+
+    class input_filter,input_roi inputNode
+    class registration,warp,roi_masks,roi_seed_prep,roi_seed_track,length_filter processNode
+    class method decisionNode
+    class endpoint,passthrough,save_tracts,save_report,save_viz outputNode
+    class coord_val validationNode

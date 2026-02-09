@@ -1,0 +1,82 @@
+---
+title: "csttool Check Module"
+---
+flowchart TD
+    %% Header
+    header["Environment Check Start<br/>Display Python version<br/>Display csttool version"]
+
+    %% Step 1: Load Dependencies
+    load_deps["Load Project Dependencies<br/>Read pyproject.toml<br/>Extract dependency list"]
+
+    %% Step 2: Check Required Dependencies
+    check_deps["Check Required Dependencies<br/>For each package in dependencies:<br/>- Extract package name<br/>- Map to import name<br/>- Attempt import"]
+
+    %% Per-dependency check
+    dep_loop{For Each<br/>Dependency}
+
+    dep_import["Import Check<br/>Try __import__(package)<br/>Get __version__ attribute"]
+
+    dep_success["✓ Package: version<br/>Dependency available"]
+
+    dep_optional["○ Package: not found<br/>(optional)<br/>e.g., weasyprint"]
+
+    dep_fail["✗ Package: NOT FOUND<br/>Required dependency missing"]
+
+    %% Step 3: Check csttool Modules
+    discover_modules["Discover csttool Modules<br/>Scan csttool package directory<br/>Find all submodules<br/>(directories with __init__.py)"]
+
+    check_modules["Check Module Imports<br/>For each module:<br/>import csttool.{module}"]
+
+    module_loop{For Each<br/>Module}
+
+    module_success["✓ csttool.{module}: available"]
+
+    module_fail["✗ csttool.{module}: NOT FOUND<br/>Import error details"]
+
+    %% Final Result
+    result_check{All Checks<br/>Passed?}
+
+    result_pass["✓ All required dependencies<br/>and modules available<br/>Environment ready for use"]
+
+    result_fail["✗ Some dependencies or<br/>modules missing<br/>Install with: pip install -e ."]
+
+    %% Flow
+    header --> load_deps
+    load_deps --> check_deps
+    check_deps --> dep_loop
+
+    dep_loop --> dep_import
+    dep_import --> dep_success
+    dep_import --> dep_optional
+    dep_import --> dep_fail
+    dep_success --> dep_loop
+    dep_optional --> dep_loop
+    dep_fail --> dep_loop
+
+    dep_loop -->|Done| discover_modules
+    discover_modules --> check_modules
+    check_modules --> module_loop
+
+    module_loop --> module_success
+    module_loop --> module_fail
+    module_success --> module_loop
+    module_fail --> module_loop
+
+    module_loop -->|Done| result_check
+    result_check -->|Yes| result_pass
+    result_check -->|No| result_fail
+
+    %% Styling
+    classDef headerNode fill:#e1f5ff,stroke:#0288d1,stroke-width:2px
+    classDef processNode fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    classDef decisionNode fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    classDef successNode fill:#e8f5e9,stroke:#388e3c,stroke-width:2px
+    classDef optionalNode fill:#fff9c4,stroke:#f57f17,stroke-width:2px
+    classDef errorNode fill:#ffebee,stroke:#c62828,stroke-width:2px
+
+    class header,load_deps headerNode
+    class check_deps,dep_import,discover_modules,check_modules processNode
+    class dep_loop,module_loop,result_check decisionNode
+    class dep_success,module_success,result_pass successNode
+    class dep_optional optionalNode
+    class dep_fail,module_fail,result_fail errorNode

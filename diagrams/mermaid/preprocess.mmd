@@ -1,0 +1,98 @@
+---
+title: "csttool Preprocess Module"
+---
+flowchart TD
+    %% Input
+    input["Input Data<br/>NIfTI DWI file<br/>Gradient files (.bval/.bvec)<br/>resolve_nifti validation"]
+
+    %% Step 1: Load Dataset
+    load["Load Dataset<br/>load_dataset<br/>Load NIfTI data & affine<br/>Build gradient table<br/>Extract voxel size"]
+
+    %% Step 2: Reslice (Optional)
+    reslice_check{Target Voxel<br/>Size?}
+
+    reslice["Reslice Voxels<br/>reslice_voxels<br/>Interpolate to target size<br/>Update affine matrix"]
+
+    reslice_skip["Skip Reslicing<br/>Keep original resolution"]
+
+    %% Step 3: Denoise
+    denoise_method{Denoise<br/>Method}
+
+    denoise_patch2self["Patch2Self Denoising<br/>Self-supervised method<br/>No noise model needed<br/>Default method"]
+
+    denoise_nlmeans["NLMeans Denoising<br/>Non-local means<br/>Requires coil count (--coil-count)<br/>Noise estimation from background"]
+
+    %% Step 4: Brain Masking
+    brain_mask["Brain Masking<br/>background_segmentation<br/>Median Otsu threshold<br/>Applied to b0 volumes<br/>Generate binary mask"]
+
+    %% Step 5: Gibbs Correction (Optional)
+    gibbs_check{Apply Gibbs<br/>Correction?}
+
+    gibbs["Gibbs Unringing<br/>gibbs_unringing<br/>Remove Gibbs artifacts<br/>Edge enhancement"]
+
+    gibbs_skip["Skip Gibbs Correction"]
+
+    %% Step 6: Motion Correction (Optional)
+    motion_check{Apply Motion<br/>Correction?}
+
+    motion["Motion Correction<br/>perform_motion_correction<br/>Volume-to-volume registration<br/>Affine transforms<br/>Generate motion parameters"]
+
+    motion_skip["Skip Motion Correction"]
+
+    %% Step 7: Save Outputs
+    save["Save Preprocessed Data<br/>save_preprocessed<br/>Output: *_dwi_preproc_[mc/nomc].nii.gz<br/>Copy gradient files<br/>Save brain mask<br/>Save processing report (JSON)"]
+
+    %% Step 8: Visualizations (Optional)
+    viz_check{Save<br/>Visualizations?}
+
+    viz["Save QC Visualizations<br/>save_all_preprocessing_visualizations<br/>Before/after comparisons<br/>Brain mask overlay<br/>Motion traces"]
+
+    viz_skip["Skip Visualizations"]
+
+    %% Output Summary
+    output["═══════════════════════════════<br/>PREPROCESSING COMPLETE<br/>═══════════════════════════════<br/>Preprocessed NIfTI path<br/>Motion correction status<br/>Output directory"]
+
+    %% Flow
+    input --> load
+    load --> reslice_check
+
+    reslice_check -->|--target-voxel-size| reslice
+    reslice_check -->|No| reslice_skip
+    reslice --> denoise_method
+    reslice_skip --> denoise_method
+
+    denoise_method -->|patch2self<br/>default| denoise_patch2self
+    denoise_method -->|nlmeans| denoise_nlmeans
+
+    denoise_patch2self --> brain_mask
+    denoise_nlmeans --> brain_mask
+
+    brain_mask --> gibbs_check
+    gibbs_check -->|--unring| gibbs
+    gibbs_check -->|No| gibbs_skip
+    gibbs --> motion_check
+    gibbs_skip --> motion_check
+
+    motion_check -->|--perform-motion-correction| motion
+    motion_check -->|No| motion_skip
+    motion --> save
+    motion_skip --> save
+
+    save --> viz_check
+    viz_check -->|--save-visualizations| viz
+    viz_check -->|No| viz_skip
+    viz --> output
+    viz_skip --> output
+
+    %% Styling
+    classDef inputNode fill:#e1f5ff,stroke:#0288d1,stroke-width:2px
+    classDef processNode fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    classDef decisionNode fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    classDef outputNode fill:#e8f5e9,stroke:#388e3c,stroke-width:2px
+    classDef skipNode fill:#eceff1,stroke:#607d8b,stroke-width:1px
+
+    class input inputNode
+    class load,reslice,denoise_patch2self,denoise_nlmeans,brain_mask,gibbs,motion,save,viz processNode
+    class reslice_check,denoise_method,gibbs_check,motion_check,viz_check decisionNode
+    class output outputNode
+    class reslice_skip,gibbs_skip,motion_skip,viz_skip skipNode
