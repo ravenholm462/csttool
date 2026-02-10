@@ -117,7 +117,7 @@ def plot_denoising_comparison(
     plt.close(fig)
     
     if verbose:
-        print(f"✓ Denoising QC: {fig_path}")
+        print(f"  ✓ Denoising QC: {fig_path}")
     
     return fig_path
 
@@ -215,7 +215,7 @@ def plot_gibbs_unringing_comparison(
     plt.close(fig)
     
     if verbose:
-        print(f"✓ Gibbs unringing QC: {fig_path}")
+        print(f"  ✓ Gibbs unringing QC: {fig_path}")
     
     return fig_path
 
@@ -311,7 +311,7 @@ def plot_brain_mask_overlay(
     plt.close()
     
     if verbose:
-        print(f"✓ Brain mask QC: {fig_path}")
+        print(f"  ✓ Brain mask QC: {fig_path}")
     
     return fig_path
 
@@ -435,7 +435,7 @@ def plot_motion_correction_summary(
     plt.close()
     
     if verbose:
-        print(f"✓ Motion correction QC: {fig_path}")
+        print(f"  ✓ Motion correction QC: {fig_path}")
     
     return fig_path
 
@@ -622,7 +622,7 @@ def create_preprocessing_summary(
     plt.close()
     
     if verbose:
-        print(f"✓ Preprocessing summary: {fig_path}")
+        print(f"  ✓ Preprocessing summary: {fig_path}")
     
     return fig_path
 
@@ -720,6 +720,6 @@ def save_all_preprocessing_visualizations(
     )
     
     if verbose:
-        print(f"✓ All preprocessing visualizations saved to: {Path(output_dir) / 'visualizations'}")
+        print(f"  ✓ All preprocessing visualizations saved to: {Path(output_dir) / 'visualizations'}")
     
     return viz_paths

@@ -89,7 +89,7 @@ def save_preprocessed(
     data_path = output_dir / f"{filename_stem}.nii.gz"
     nib.save(nib.Nifti1Image(data, affine), data_path)
     output_paths['data'] = data_path
-    print(f"✓ Saved preprocessed data: {data_path}")
+    print(f"  ✓ Saved preprocessed data: {data_path}")
     
     # Copy gradient files
     if gradient_files is not None:
@@ -100,16 +100,16 @@ def save_preprocessed(
                     dest = output_dir / f"{filename_stem}.{grad_type}"
                     shutil.copy2(src, dest)
                     output_paths[grad_type] = dest
-                    print(f"✓ Copied {grad_type}: {dest}")
+                    print(f"  ✓ Copied {grad_type}: {dest}")
                 else:
-                    print(f"⚠️  Warning: {grad_type} file not found: {src}")
+                    print(f"  ⚠️ {grad_type} file not found: {src}")
     
     # Save brain mask
     if brain_mask is not None:
         mask_path = output_dir / f"{filename_stem}_mask.nii.gz"
         nib.save(nib.Nifti1Image(brain_mask.astype(np.uint8), affine), mask_path)
         output_paths['mask'] = mask_path
-        print(f"✓ Saved brain mask: {mask_path}")
+        print(f"  ✓ Saved brain mask: {mask_path}")
     
     # Create processing report
     if create_report:
@@ -131,6 +131,6 @@ def save_preprocessed(
         with open(report_path, 'w') as f:
             json.dump(report, f, indent=2)
         output_paths['report'] = report_path
-        print(f"✓ Saved processing report: {report_path}")
+        print(f"  ✓ Saved processing report: {report_path}")
     
     return output_paths

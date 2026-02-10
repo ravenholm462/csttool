@@ -10,7 +10,7 @@ def cmd_preprocess(args: argparse.Namespace) -> dict | None:
     try:
         nii = resolve_nifti(args)
     except FileNotFoundError as e:
-        print(f"Error: {e}")
+        print(f"  ✗ {e}")
         return None
 
     args.out.mkdir(parents=True, exist_ok=True)

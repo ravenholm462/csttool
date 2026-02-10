@@ -22,7 +22,7 @@ def cmd_track(args: argparse.Namespace) -> dict | None:
     verbose = getattr(args, 'verbose', False)
     
     if not preproc_nii.exists():
-        print(f"Error: preprocessed NIfTI not found: {preproc_nii}")
+        print(f"  ✗ Preprocessed NIfTI not found: {preproc_nii}")
         return None
 
     args.out.mkdir(parents=True, exist_ok=True)
@@ -32,25 +32,27 @@ def cmd_track(args: argparse.Namespace) -> dict | None:
         stem = args.subject_id
     else:
         stem = extract_stem_from_filename(str(preproc_nii))
-    
-    print(f"Subject ID: {stem}")
-    print(f"Loading preprocessed data from {preproc_nii}")
+
+    print("=" * 60)
+    print("WHOLE-BRAIN TRACTOGRAPHY")
+    print("=" * 60)
+    print(f"  → Loading preprocessed data: {preproc_nii}")
     
     try:
         data, affine, img = load_nifti(str(preproc_nii), return_img=True)
     except Exception as e:
-        print(f"Error loading NIfTI: {e}")
+        print(f"  ✗ Error loading NIfTI: {e}")
         return None
 
-    print("Building gradient table for preprocessed data")
+    print(f"  → Building gradient table...")
     try:
         gtab = get_gtab_for_preproc(preproc_nii)
     except FileNotFoundError as e:
-        print(f"Error: {e}")
+        print(f"  ✗ {e}")
         return None
 
     # Step 1: Brain masking
-    print("\nStep 1: Brain masking with median Otsu")
+    print(f"\n[Step 1/6] Brain masking with median Otsu...")
 
     from csttool.preprocess.modules.background_segmentation import background_segmentation
     masked_data, brain_mask = background_segmentation(
@@ -59,22 +61,22 @@ def cmd_track(args: argparse.Namespace) -> dict | None:
     )
 
     # Step 2: Tensor fitting
-    print("\nStep 2: Tensor fit and scalar measures (FA, MD, RD, AD)")
+    print(f"\n[Step 2/6] Tensor fit and scalar measures (FA, MD, RD, AD)...")
     try:
         tenfit, fa, md, rd, ad, white_matter = fit_tensors(
-            masked_data, 
-            gtab, 
+            masked_data,
+            gtab,
             brain_mask,
             fa_thresh=args.fa_thr,
             visualize=getattr(args, 'show_plots', False),
             verbose=verbose
         )
     except Exception as e:
-        print(f"Error during tensor fitting: {e}")
+        print(f"  ✗ Tensor fitting failed: {e}")
         return None
 
     # Step 3: Direction field estimation
-    print("\nStep 3: Direction field estimation (CSA ODF model)")
+    print(f"\n[Step 3/6] Direction field estimation (CSA ODF model)...")
     try:
         csapeaks = estimate_directions(
             masked_data,
@@ -84,11 +86,11 @@ def cmd_track(args: argparse.Namespace) -> dict | None:
             verbose=verbose
         )
     except Exception as e:
-        print(f"Error during direction estimation: {e}")
+        print(f"  ✗ Direction estimation failed: {e}")
         return None
 
     # Step 4: Stopping criterion and seeds
-    print("\nStep 4: Stopping criterion and seed generation")
+    print(f"\n[Step 4/6] Stopping criterion and seed generation...")
     use_brain_mask_stop = getattr(args, 'use_brain_mask_stop', False)
     try:
         seeds, stopping_criterion = seed_and_stop(
@@ -103,11 +105,11 @@ def cmd_track(args: argparse.Namespace) -> dict | None:
             verbose=verbose
         )
     except Exception as e:
-        print(f"Error during seed generation: {e}")
+        print(f"  ✗ Seed generation failed: {e}")
         return None
 
     # Step 5: Deterministic tracking
-    print("\nStep 5: Deterministic tracking")
+    print(f"\n[Step 5/6] Deterministic tracking...")
     random_seed = getattr(args, 'rng_seed', None)
     try:
         streamlines = run_tractography(
@@ -121,11 +123,11 @@ def cmd_track(args: argparse.Namespace) -> dict | None:
             visualize=getattr(args, 'show_plots', False)
         )
     except Exception as e:
-        print(f"Error during tractography: {e}")
+        print(f"  ✗ Tractography failed: {e}")
         return None
 
     # Step 6: Save outputs
-    print("\nStep 6: Saving tractogram, scalar maps, and report")
+    print(f"\n[Step 6/6] Saving tractogram, scalar maps, and report...")
     
     # Get the validated SH order (may have been reduced due to insufficient directions)
     validated_sh_order = validate_sh_order(gtab, args.sh_order, verbose=False)
@@ -158,7 +160,7 @@ def cmd_track(args: argparse.Namespace) -> dict | None:
             verbose=verbose
         )
     except Exception as e:
-        print(f"Error saving outputs: {e}")
+        print(f"  ✗ Saving outputs failed: {e}")
         return None
     
     # After save_tracking_outputs() and before the summary print
@@ -181,14 +183,10 @@ def cmd_track(args: argparse.Namespace) -> dict | None:
         )
 
     # Summary
-    print(f"\n{'='*60}")
-    print(f"TRACKING COMPLETE - {stem}")
-    print(f"{'='*60}")
-    print(f"Whole-brain streamlines: {len(streamlines):,}")
-    print(f"\nOutputs:")
+    print(f"\n✓ Tracking complete - {stem}")
+    print(f"  Whole-brain streamlines: {len(streamlines):,}")
     for key, path in outputs.items():
         print(f"  {key}: {path}")
-    print(f"{'='*60}")
     
     return {
         'tractogram_path': outputs['tractogram'],

@@ -105,9 +105,9 @@ def load_dataset(dir_path: str, fname: str):
             }
             # Clean up None values
             metadata = {k: v for k, v in metadata.items() if v is not None}
-            print(f"Loaded metadata from sidecar: {json_path}")
+            print(f"  → Loaded metadata from sidecar: {json_path}")
         except Exception as e:
-            print(f"Warning: Could not reading JSON sidecar: {e}")
+            print(f"  ⚠️ Could not read JSON sidecar: {e}")
 
     # Add derived fields
     metadata.update({
@@ -120,6 +120,6 @@ def load_dataset(dir_path: str, fname: str):
 
     print(gtab.info)
     print(f"Number of gradients: {num_of_gradients}")
-    print("\n" + "=" * 70 + "\n")
+    print("\n" + "=" * 60)
   
     return nii, gtab, nifti_dir, metadata

@@ -369,21 +369,21 @@ def _assess_suitability(analysis: SeriesAnalysis) -> None:
     
     # Generate recommendation
     if score >= 70:
-        analysis.recommendation = "✅ Highly recommended for tractography"
+        analysis.recommendation = "✓ Highly recommended for tractography"
     elif score >= 40:
-        analysis.recommendation = "✅ Suitable for tractography"
+        analysis.recommendation = "✓ Suitable for tractography"
     elif score > 0:
-        analysis.recommendation = "⚠️  May be suitable - review warnings"
+        analysis.recommendation = "⚠️ May be suitable - review warnings"
     else:
-        analysis.recommendation = "❌ Not recommended for tractography"
+        analysis.recommendation = "✗ Not recommended for tractography"
 
 
 def _print_analysis(analysis: SeriesAnalysis) -> None:
     """Print formatted analysis results."""
     
-    print(f"\n{'─' * 60}")
+    print(f"\n{'=' * 60}")
     print(f"Series: {analysis.name}")
-    print(f"{'─' * 60}")
+    print(f"{'=' * 60}")
     
     print(f"  Description:     {analysis.series_description or 'N/A'}")
     print(f"  Series Number:   {analysis.series_number}")
@@ -405,7 +405,7 @@ def _print_analysis(analysis: SeriesAnalysis) -> None:
     if analysis.warnings:
         print(f"\n  Warnings:")
         for w in analysis.warnings:
-            print(f"    ⚠️  {w}")
+            print(f"    ⚠️ {w}")
 
 
 def analyze_all_series(
@@ -460,8 +460,8 @@ def recommend_series(
     
     if not suitable:
         if verbose:
-            print("\n❌ No suitable series found for tractography!")
-            print("   All series appear to be derived images or non-diffusion data.")
+            print("\n  ✗ No suitable series found for tractography")
+            print("  All series appear to be derived images or non-diffusion data")
         return None
     
     # Sort by score (descending)
@@ -486,7 +486,7 @@ def recommend_series(
         pa_series = [a for a in analyses if 'PA' in a.name.upper()]
         
         if ap_series and pa_series:
-            print(f"\n  📋 Note: AP/PA pair detected")
+            print(f"\n  → AP/PA pair detected")
             print(f"     For distortion correction, use both with FSL topup/eddy")
             print(f"     (not yet implemented in csttool)")
     

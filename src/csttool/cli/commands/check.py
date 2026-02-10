@@ -92,9 +92,11 @@ def _check_csttool_modules() -> bool:
 
 def cmd_check(args: argparse.Namespace) -> bool:
     """Runs environment checks. Returns True if all checks pass."""
-    print("csttool environment check")
-    print(f"Python: {sys.version.split()[0]}")
-    print(f"Version: {__version__}")
+    print("=" * 60)
+    print("ENVIRONMENT CHECK")
+    print("=" * 60)
+    print(f"  Python:  {sys.version.split()[0]}")
+    print(f"  csttool: {__version__}")
     print()
 
     required = _get_project_dependencies()
@@ -121,8 +123,8 @@ def cmd_check(args: argparse.Namespace) -> bool:
     print()
 
     if all_ok:
-        print("✓ All required dependencies and modules available")
+        print("  ✓ All required dependencies and modules available")
     else:
-        print("✗ Some dependencies or modules missing - install with: pip install -e .")
+        print("  ✗ Some dependencies or modules missing - install with: pip install -e .")
 
     return all_ok

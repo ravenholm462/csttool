@@ -237,14 +237,14 @@ def _print_validation_summary(result: dict, tractogram_path: str, reference_path
               f"Z[{bounds['z'][0]:.1f}, {bounds['z'][1]:.1f}]")
 
     if result['valid']:
-        print("\n[OK] Coordinate validation passed")
+        print("\n✓ Coordinate validation passed")
     else:
-        print("\n[FAIL] Coordinate validation failed:")
+        print("\n✗ Coordinate validation failed:")
         for err in result['errors']:
-            print(f"  - {err}")
+            print(f"  ✗ {err}")
 
     for warn in result['warnings']:
         if warn not in [e for e in result['errors']]:
-            print(f"  WARNING: {warn}")
+            print(f"  ⚠️ {warn}")
 
     print("=" * 60)

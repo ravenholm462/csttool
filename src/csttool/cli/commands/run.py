@@ -57,20 +57,19 @@ def cmd_run(args: argparse.Namespace) -> None:
     pipeline_metadata = {}  # Initialize here to ensure it's available throughout
     
     if not quiet:
-        print("\n" + "="*70)
-        print("CSTTOOL - COMPLETE CST ANALYSIS PIPELINE")
-        print("="*70)
-        print(f"Subject ID:     {subject_id}")
-        print(f"Output:         {args.out}")
-        print(f"Started:        {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        print("="*70)
+        print("\n" + "=" * 60)
+        print("CST ANALYSIS PIPELINE")
+        print("=" * 60)
+        print(f"  Subject ID:  {subject_id}")
+        print(f"  Output:      {args.out}")
+        print(f"  Started:     {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     
     # =========================================================================
     # STEP 1: CHECK
     # =========================================================================
     if not getattr(args, 'skip_check', False):
         if not quiet:
-            print("\n" + "▶"*3 + " STEP 1/6: ENVIRONMENT CHECK " + "◀"*3)
+            print(f"\n[Step 1/6] Environment check...")
         t0 = time()
         
         try:
@@ -80,11 +79,11 @@ def cmd_run(args: argparse.Namespace) -> None:
             step_results['check'] = {'success': check_ok}
             
             if not check_ok and not continue_on_error:
-                print("\n✗ Environment check failed. Fix dependencies and retry.")
+                print(f"\n  ✗ Environment check failed. Fix dependencies and retry.")
                 return
                 
         except Exception as e:
-            print(f"✗ Check failed: {e}")
+            print(f"  ✗ Check failed: {e}")
             failed_steps.append('check')
             step_results['check'] = {'success': False, 'error': str(e)}
             if not continue_on_error:
@@ -93,14 +92,14 @@ def cmd_run(args: argparse.Namespace) -> None:
         step_times['check'] = time() - t0
     else:
         if not quiet:
-            print("\n" + "⏭ STEP 1/6: SKIPPING ENVIRONMENT CHECK")
+            print(f"\n[Step 1/6] Environment check... ⚠️ skipped")
         step_results['check'] = {'success': True, 'skipped': True}
     
     # =========================================================================
     # STEP 2: IMPORT
     # =========================================================================
     if not quiet:
-        print("\n" + "▶"*3 + " STEP 2/6: IMPORT DATA " + "◀"*3)
+        print(f"\n[Step 2/6] Importing data...")
     t0 = time()
     
     nifti_path = None
@@ -120,7 +119,7 @@ def cmd_run(args: argparse.Namespace) -> None:
             
             # Use provided NIfTI directly
             nifti_path = args.nifti
-            print(f"Using existing NIfTI: {nifti_path}")
+            print(f"  → Using existing NIfTI: {nifti_path}")
             step_results['import'] = {'success': True, 'nifti_path': str(nifti_path)}
             
             # Extract acquisition metadata from NIfTI
@@ -150,7 +149,7 @@ def cmd_run(args: argparse.Namespace) -> None:
                 
             except Exception as e:
                 if verbose:
-                    print(f"Note: Could not extract acquisition metadata: {e}")
+                    print(f"    • Could not extract acquisition metadata: {e}")
                     
         elif args.dicom:
             # Run import from DICOM
@@ -181,7 +180,7 @@ def cmd_run(args: argparse.Namespace) -> None:
             raise ValueError("Must provide --dicom or --nifti")
             
     except Exception as e:
-        print(f"✗ Import failed: {e}")
+        print(f"  ✗ Import failed: {e}")
         failed_steps.append('import')
         step_results['import'] = {'success': False, 'error': str(e)}
         if not continue_on_error:
@@ -196,7 +195,7 @@ def cmd_run(args: argparse.Namespace) -> None:
     
     if getattr(args, 'preprocess', False):
         if not quiet:
-            print("\n" + "▶"*3 + " STEP 3/6: PREPROCESSING " + "◀"*3)
+            print(f"\n[Step 3/6] Preprocessing...")
         t0 = time()
         
         preproc_path = None
@@ -229,7 +228,7 @@ def cmd_run(args: argparse.Namespace) -> None:
                 raise RuntimeError("Preprocessing failed")
                 
         except Exception as e:
-            print(f"✗ Preprocessing failed: {e}")
+            print(f"  ✗ Preprocessing failed: {e}")
             failed_steps.append('preprocess')
             step_results['preprocess'] = {'success': False, 'error': str(e)}
             if not continue_on_error:
@@ -248,7 +247,7 @@ def cmd_run(args: argparse.Namespace) -> None:
         
     else:
         if not quiet:
-            print("\n" + "⏭ STEP 3/6: SKIPPING PREPROCESSING (Pass-through)")
+            print(f"\n[Step 3/6] Preprocessing... ⚠️ skipped (pass-through)")
         t0 = time()
         # Pass through the input NIfTI as the "preprocessed" data
         preproc_path = nifti_path
@@ -264,7 +263,7 @@ def cmd_run(args: argparse.Namespace) -> None:
     # STEP 4: TRACK
     # =========================================================================
     if not quiet:
-        print("\n" + "▶"*3 + " STEP 4/6: TRACTOGRAPHY " + "◀"*3)
+        print(f"\n[Step 4/6] Tractography...")
     t0 = time()
     
     tractogram_path = None
@@ -309,7 +308,7 @@ def cmd_run(args: argparse.Namespace) -> None:
             raise RuntimeError("Tracking failed")
             
     except Exception as e:
-        print(f"✗ Tracking failed: {e}")
+        print(f"  ✗ Tracking failed: {e}")
         failed_steps.append('track')
         step_results['track'] = {'success': False, 'error': str(e)}
         if not continue_on_error:
@@ -322,7 +321,7 @@ def cmd_run(args: argparse.Namespace) -> None:
     # STEP 5: EXTRACT
     # =========================================================================
     if not quiet:
-        print("\n" + "▶"*3 + " STEP 5/6: CST EXTRACTION " + "◀"*3)
+        print(f"\n[Step 5/6] CST extraction...")
     t0 = time()
     
     cst_left_path = None
@@ -371,12 +370,12 @@ def cmd_run(args: argparse.Namespace) -> None:
             step_results['extract'] = {'success': True, 'result': extract_result}
             
             if extract_result['stats']['cst_total_count'] == 0:
-                print("⚠ Warning: No CST streamlines extracted")
+                print(f"  ⚠️ No CST streamlines extracted")
         else:
             raise RuntimeError("CST extraction failed or produced no streamlines")
             
     except Exception as e:
-        print(f"✗ CST extraction failed: {e}")
+        print(f"  ✗ CST extraction failed: {e}")
         failed_steps.append('extract')
         step_results['extract'] = {'success': False, 'error': str(e)}
         if not continue_on_error:
@@ -389,7 +388,7 @@ def cmd_run(args: argparse.Namespace) -> None:
     # STEP 6: METRICS
     # =========================================================================
     if not quiet:
-        print("\n" + "▶"*3 + " STEP 6/6: METRICS & REPORTS " + "◀"*3)
+        print(f"\n[Step 6/6] Computing metrics & reports...")
     t0 = time()
     
     try:
@@ -422,7 +421,7 @@ def cmd_run(args: argparse.Namespace) -> None:
             raise RuntimeError("Metrics computation failed")
             
     except Exception as e:
-        print(f"✗ Metrics failed: {e}")
+        print(f"  ✗ Metrics failed: {e}")
         failed_steps.append('metrics')
         step_results['metrics'] = {'success': False, 'error': str(e)}
     
@@ -433,7 +432,7 @@ def cmd_run(args: argparse.Namespace) -> None:
     if intermediate_dir.exists() and not any(intermediate_dir.iterdir()):
         intermediate_dir.rmdir()
         if verbose:
-            print("✓ Cleaned up empty intermediate directory")
+            print(f"    • Cleaned up empty intermediate directory")
     
     # =========================================================================
     # FINAL SUMMARY
@@ -444,29 +443,28 @@ def cmd_run(args: argparse.Namespace) -> None:
     report_path = save_pipeline_report(args.out, subject_id, step_results, step_times, failed_steps, pipeline_start)
     
     if not quiet:
-        print("\n" + "="*70)
+        print("\n" + "=" * 60)
         print("PIPELINE COMPLETE")
-        print("="*70)
-        print(f"Subject ID:     {subject_id}")
-        print(f"Total time:     {total_time/60:.1f} minutes ({total_time:.0f} seconds)")
-        print(f"\nStep timing:")
-        for step, elapsed in step_times.items():
-            status = "✓" if step not in failed_steps else "✗"
-            print(f"  {status} {step:12s}: {elapsed:.1f}s")
+        print("=" * 60)
 
         if failed_steps:
-            print(f"\n  Failed steps: {', '.join(failed_steps)}")
+            print(f"\n  ✗ Pipeline finished with failures: {', '.join(failed_steps)}")
         else:
-            print(f"\n✓ All steps completed successfully!")
+            print(f"\n✓ Processing complete")
 
-        print(f"\nOutputs:")
-        print(f"  Pipeline report: {report_path}")
+        print(f"  Subject ID:      {subject_id}")
+        print(f"  Total time:      {total_time/60:.1f} minutes ({total_time:.0f} seconds)")
+        print(f"  Step timing:")
+        for step, elapsed in step_times.items():
+            status = "✓" if step not in failed_steps else "✗"
+            print(f"    {status} {step:12s}: {elapsed:.1f}s")
+
+        print(f"  Outputs:")
+        print(f"    Pipeline report: {report_path}")
         if step_results.get('metrics', {}).get('success'):
-            print(f"  Metrics:         {args.out / 'metrics'}")
+            print(f"    Metrics:         {args.out / 'metrics'}")
         if step_results.get('extract', {}).get('success'):
-            print(f"  CST tractograms: {args.out / 'extraction'}")
-
-        print("="*70)
+            print(f"    CST tractograms: {args.out / 'extraction'}")
     elif failed_steps:
         # Even in quiet mode, report failures
         print(f"Pipeline completed with failures: {', '.join(failed_steps)}")

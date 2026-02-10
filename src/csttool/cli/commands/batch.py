@@ -117,11 +117,11 @@ def cmd_batch(args: argparse.Namespace) -> None:
             except Exception as e:
                 logger.warning(f"Skipping {item['id']}: {e}")
     else:
-        print("Error: Must provide either --manifest or --bids-dir")
+        print("  ✗ Error: Must provide either --manifest or --bids-dir")
         sys.exit(1)
 
     if not subjects:
-        print("Error: No subjects found to process.")
+        print("  ✗ Error: No subjects found to process.")
         sys.exit(1)
 
     # 2. Setup Batch Configuration
@@ -142,42 +142,44 @@ def cmd_batch(args: argparse.Namespace) -> None:
     errors = validate_batch_preflight(subjects, config)
     
     if errors:
-        print("\nBatch Preflight Validation Failed:")
-        print("="*40)
+        print("=" * 60)
+        print("PREFLIGHT VALIDATION FAILED")
+        print("=" * 60)
         for err in errors:
             sub_id = f"[{err.subject_id}] " if err.subject_id else ""
-            print(f"- {err.category}: {sub_id}{err.message}")
-        print("="*40)
+            print(f"  ✗ {err.category}: {sub_id}{err.message}")
+        print("=" * 60)
         
         if not getattr(args, 'dry_run', False):
             sys.exit(1)
 
     if getattr(args, 'validate_only', False):
-        print("\nValidation successful.")
+        print("\n✓ Validation successful")
         return
 
     # 4. Dry Run Logic
     if getattr(args, 'dry_run', False):
-        print("\nBatch Execution Plan:")
-        print("="*40)
-        print(f"Total subjects: {len(subjects)}")
-        print(f"Output root:    {config.out}")
-        print(f"Config hash:    (will be computed at runtime)")
-        print("\nSubjects to process:")
+        print("=" * 60)
+        print("BATCH EXECUTION PLAN")
+        print("=" * 60)
+        print(f"  Total subjects: {len(subjects):,}")
+        print(f"  Output root:    {config.out}")
+        print(f"  Config hash:    (will be computed at runtime)")
+        print("\n  Subjects to process:")
         for i, s in enumerate(subjects[:10], 1):
             ses = f", session {s.session_id}" if s.session_id else ""
-            print(f"  {i}. {s.subject_id}{ses} ({s.input_type})")
+            print(f"    {i}. {s.subject_id}{ses} ({s.input_type})")
         if len(subjects) > 10:
-            print(f"  ... and {len(subjects)-10} more")
-        print("="*40)
+            print(f"    ... and {len(subjects)-10:,} more")
+        print("=" * 60)
         return
 
     # 5. Execute Batch
-    print(f"\nStarting batch processing for {len(subjects)} subjects...")
+    print(f"\n  → Starting batch processing for {len(subjects):,} subjects...")
     results = run_batch(subjects, config, verbose=verbose)
 
     # 6. Generate Reports
-    print("\nGenerating final batch reports...")
+    print(f"\n  → Generating batch reports...")
     generate_batch_reports(results, config.out)
     
     # 7. Summary
@@ -185,12 +187,13 @@ def cmd_batch(args: argparse.Namespace) -> None:
     failed = sum(1 for r in results if r.status == "failed")
     skipped = sum(1 for r in results if r.status == "skipped")
     
-    print("\n" + "="*40)
-    print("BATCH PROCESSING COMPLETE")
-    print("="*40)
-    print(f"Total:      {len(results)}")
-    print(f"Success:    {success}")
-    print(f"Failed:     {failed}")
-    print(f"Skipped:    {skipped}")
-    print(f"\nMain metrics: {config.out / 'batch_metrics.csv'}")
-    print("="*40)
+    print(f"\n✓ Processing complete")
+    print("=" * 60)
+    print("BATCH PROCESSING SUMMARY")
+    print("=" * 60)
+    print(f"  Total:      {len(results):,}")
+    print(f"  ✓ Success:  {success:,}")
+    print(f"  ✗ Failed:   {failed:,}")
+    print(f"  ⚠️ Skipped:  {skipped:,}")
+    print(f"\n  Main metrics: {config.out / 'batch_metrics.csv'}")
+    print("=" * 60)

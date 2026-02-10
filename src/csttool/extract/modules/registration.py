@@ -86,15 +86,15 @@ def load_fmrib58_fa_template(target_shape, target_affine):
         found_local = False
         for fsl_path in potential_fsl_paths:
             if fsl_path.exists():
-                print(f"Found local FSL template at: {fsl_path}")
+                print(f"  → Found local FSL template: {fsl_path}")
                 shutil.copy(fsl_path, template_path)
                 found_local = True
-                print(f"✓ Copied to cache: {template_path}")
+                print(f"  ✓ Copied to cache: {template_path}")
                 break
         
         if not found_local:
-            print("    ! FMRIB58 FA template not found in project or cache.")
-            print("    Falling back to standard MNI T1 template.")
+            print("  ⚠️ FMRIB58 FA template not found in project or cache")
+            print("  → Falling back to standard MNI T1 template")
             return None, None
 
     print(f"Loading FMRIB58_FA template from: {template_path}")
@@ -305,7 +305,7 @@ def compute_affine_registration(
     )
 
     if verbose:
-        print("✓ Affine registration complete")
+        print("  ✓ Affine registration complete")
 
     return affine
 
@@ -403,7 +403,7 @@ def compute_syn_registration(
     )
 
     if verbose:
-        print("✓ SyN registration complete")
+        print("  ✓ SyN registration complete")
 
     return mapping
 
@@ -492,7 +492,7 @@ def compute_jacobian_hemisphere_stats(mapping, subject_affine, verbose=True):
         # Flag asymmetry
         mean_diff = abs(stats['left_mean'] - stats['right_mean'])
         if mean_diff > 0.1:
-            print(f"    ⚠️  Warning: Hemisphere Jacobian means differ by {mean_diff:.3f}")
+            print(f"    ⚠️ Hemisphere Jacobian means differ by {mean_diff:.3f}")
 
     return stats, jacobian_det
 
@@ -637,8 +637,8 @@ def register_mni_to_subject(
         
         if fmrib58_data is not None:
             if verbose:
-                print("    ✓ Successfully loaded and resampled FMRIB58 FA template")
-                print("    Using FA-to-FA registration (mono-modal)")
+                print("    • Successfully loaded and resampled FMRIB58 FA template")
+                print("    • Using FA-to-FA registration (mono-modal)")
             
             # Replace the moving image data with the resampled FMRIB58 FA
             # CRITICAL: We DO NOT change the mni_affine because the resampled data
@@ -857,7 +857,7 @@ def register_mni_to_subject(
     if verbose:
         print(f"    ✓ Report: {report_path}")
         print("\n" + "=" * 60)
-        print("Registration complete!")
+        print("  ✓ Registration complete")
         print("=" * 60)
     
     return result
@@ -903,7 +903,7 @@ def save_registration_report(result, output_dir, subject_id):
     with open(report_path, 'w') as f:
         json.dump(report, f, indent=2)
     
-    print(f"✓ Registration report saved: {report_path}")
+    print(f"  ✓ Registration report saved: {report_path}")
     
     return report_path
 
@@ -987,7 +987,7 @@ def plot_registration_comparison(
         figs[view_name] = fig
         
         if fname:
-            print(f"✓ Saved: {fname}")
+            print(f"  ✓ Saved: {fname}")
     
     return figs
 

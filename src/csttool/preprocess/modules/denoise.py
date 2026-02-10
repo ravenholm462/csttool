@@ -49,7 +49,7 @@ def denoise(
         noise, noise_mask = piesno(data, N=N, return_mask=True)
         sigma = float(np.mean(noise))  # Calculate the noise standard deviation
         if brain_mask is None:
-            print("Warning: brain mask is None, using noise mask as rudimentary brain mask.")
+            print("  ⚠️ Brain mask is None, using noise mask as rudimentary brain mask")
             brain_mask = ~noise_mask  # Invert the noise mask as rudimentary brain mask
         denoised_data = nlmeans(
             data.astype(np.float32),

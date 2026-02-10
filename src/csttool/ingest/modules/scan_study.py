@@ -267,16 +267,16 @@ def print_series_summary(series_list: List[Dict]) -> None:
         List of series from scan_study()
     """
     if not series_list:
-        print("No DICOM series found.")
+        print("  ⚠️ No DICOM series found")
         return
     
-    print("\n" + "=" * 70)
+    print("\n" + "=" * 60)
     print("DISCOVERED DICOM SERIES")
-    print("=" * 70)
+    print("=" * 60)
     print(f"{'#':<4} {'Series Name':<45} {'Files':<10}")
-    print("-" * 70)
-    
+    print("-" * 60)
+
     for i, series in enumerate(series_list, 1):
         print(f"{i:<4} {series['name']:<45} {series['n_files']:<10}")
-    
-    print("=" * 70)
+
+    print("=" * 60)

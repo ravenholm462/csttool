@@ -43,19 +43,19 @@ def resolve_nifti(args: argparse.Namespace) -> Path:
             is_dicom = True
 
     if is_dicom:
-        print("Valid DICOM directory. Converting and/or loading...")
+        print(f"  → Converting DICOM to NIfTI...")
         stem = args.dicom.name
-        
+
         if not args.out:
             pass
 
         import dicom2nifti
-        
+
         nifti_dir = args.out / "nifti"
         nifti_dir.mkdir(parents=True, exist_ok=True)
         output_nii = nifti_dir / (stem + ".nii.gz")
-        
-        print(f"Converting DICOM to NIfTI: {output_nii}")
+
+        print(f"  → Output: {output_nii}")
         dicom2nifti.dicom_series_to_nifti(
             str(args.dicom),
             str(output_nii),
@@ -69,15 +69,14 @@ def resolve_nifti(args: argparse.Namespace) -> Path:
              # Check again if it was just empty or no dcm files
              pass
         elif args.dicom:
-             print(f"⚠️ {args.dicom} is not a valid DICOM directory. "
-                   "Falling back to existing NIfTI.")
+            print(f"  ⚠️ {args.dicom} is not a valid DICOM directory, falling back to NIfTI")
 
         # Use explicit NIfTI if given
         if args.nifti:
             nii = args.nifti
         else:
             # Try to find a NIfTI in the output directory
-            print(f"Attempting to find NIfTI in {args.out}...")
+            print(f"  → Searching for NIfTI in {args.out}...")
             # Use glob to find candidates
             if args.out and args.out.exists():
                 candidates = list(args.out.glob("*.nii.gz")) + list(args.out.glob("*.nii"))
@@ -167,8 +166,8 @@ def get_gtab_for_preproc(preproc_nii: Path):
                 f"Expected .bval/.bvec or .bvals/.bvecs next to the NIfTI file."
             )
 
-    print(f"Using .bval: {bval}")
-    print(f"Using .bvec: {bvec}")
+    print(f"  → bval: {bval}")
+    print(f"  → bvec: {bvec}")
 
     bvals, bvecs = read_bvals_bvecs(str(bval), str(bvec))
     gtab = gradient_table(bvals, bvecs=bvecs)

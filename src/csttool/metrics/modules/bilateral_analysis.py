@@ -211,9 +211,9 @@ def print_bilateral_summary(comparison):
         Output from compare_bilateral_cst()
     """
     
-    print("\n" + "="*70)
+    print("\n" + "=" * 60)
     print("BILATERAL CST COMPARISON")
-    print("="*70)
+    print("=" * 60)
     
     left = comparison['left']
     right = comparison['right']
@@ -260,7 +260,7 @@ def print_bilateral_summary(comparison):
         print(f"    Diff:  {asym['md']['absolute_difference']:.3e} "
               f"({asym['md']['percent_difference']:.1f}%)")
     
-    print("="*70 + "\n")
+    print("=" * 60)
 
 
 def assess_clinical_significance(asymmetry, thresholds=None):

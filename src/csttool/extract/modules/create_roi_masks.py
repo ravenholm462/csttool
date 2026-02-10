@@ -318,7 +318,7 @@ def create_cst_roi_masks(
     
     if verbose:
         print("\n" + "=" * 60)
-        print("ROI mask creation complete!")
+        print("  ✓ ROI mask creation complete")
         print("=" * 60)
         print(f"\nSummary:")
         print(f"    Brainstem:   {np.sum(masks['brainstem']):,} voxels")

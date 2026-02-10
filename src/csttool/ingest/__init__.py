@@ -225,7 +225,7 @@ def run_ingest_pipeline(
     
     if not validation['valid']:
         if verbose:
-            print("\n⚠️  Conversion validation warnings:")
+            print("\n  ⚠️ Conversion validation warnings:")
             for issue in validation['issues']:
                 print(f"    - {issue}")
     

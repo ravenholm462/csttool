@@ -433,6 +433,6 @@ def save_extraction_report(
     with open(report_path, 'w') as f:
         json.dump(report, f, indent=2)
     
-    print(f"✓ Report: {report_path}")
+    print(f"  ✓ Report: {report_path}")
     
     return report_path

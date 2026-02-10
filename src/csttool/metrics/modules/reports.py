@@ -101,7 +101,7 @@ def save_json_report(comparison, output_dir, subject_id, metadata=None):
     with open(json_path, 'w') as f:
         json.dump(report, f, indent=2)
     
-    print(f"✓ JSON report saved: {json_path}")
+    print(f"  ✓ JSON report saved: {json_path}")
     return json_path
 
 
@@ -214,7 +214,7 @@ def save_csv_summary(comparison, output_dir, subject_id):
         writer.writeheader()
         writer.writerow(data)
     
-    print(f"✓ CSV summary saved: {csv_path}")
+    print(f"  ✓ CSV summary saved: {csv_path}")
     return csv_path
 
 
@@ -461,7 +461,7 @@ def save_html_report(
     html_path = output_dir / f"{subject_id}_report.html"
     html_path.write_text(html_content, encoding="utf-8")
     
-    print(f"✓ HTML report saved: {html_path}")
+    print(f"  ✓ HTML report saved: {html_path}")
     return html_path
 
 def html_to_pdf(html_file, pdf_file):
@@ -493,7 +493,7 @@ def html_to_pdf(html_file, pdf_file):
             presentational_hints=True
         )
         
-        print(f"✓ PDF generated: {pdf_file}")
+        print(f"  ✓ PDF generated: {pdf_file}")
         return pdf_file
         
     except ImportError:
@@ -670,5 +670,5 @@ def generate_complete_report(
         'visualizations': viz_paths
     }
     
-    print("\n✅ Complete report package generated!")
+    print("\n  ✓ Complete report package generated")
     return report_paths

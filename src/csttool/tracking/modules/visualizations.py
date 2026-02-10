@@ -109,7 +109,7 @@ def plot_tensor_maps(
     plt.close()
     
     if verbose:
-        print(f"✓ Tensor maps: {fig_path}")
+        print(f"  ✓ Tensor maps: {fig_path}")
     
     return fig_path
 
@@ -187,7 +187,7 @@ def plot_white_matter_mask(
     plt.close()
     
     if verbose:
-        print(f"✓ White matter mask QC: {fig_path}")
+        print(f"  ✓ White matter mask QC: {fig_path}")
     
     return fig_path
 
@@ -420,7 +420,7 @@ def plot_streamlines_2d(
     plt.close()
     
     if verbose:
-        print(f"✓ Streamlines 2D: {fig_path}")
+        print(f"  ✓ Streamlines 2D: {fig_path}")
     
     return fig_path
 
@@ -563,7 +563,7 @@ def plot_streamline_statistics(
     plt.close()
     
     if verbose:
-        print(f"✓ Streamline statistics: {fig_path}")
+        print(f"  ✓ Streamline statistics: {fig_path}")
     
     return fig_path
 
@@ -721,7 +721,7 @@ def create_tracking_summary(
     plt.close()
     
     if verbose:
-        print(f"✓ Tracking summary: {fig_path}")
+        print(f"  ✓ Tracking summary: {fig_path}")
     
     return fig_path
 
@@ -775,6 +775,6 @@ def save_all_tracking_visualizations(
     )
     
     if verbose:
-        print(f"✓ All tracking visualizations saved to: {Path(output_dir) / 'visualizations'}")
+        print(f"  ✓ All tracking visualizations saved to: {Path(output_dir) / 'visualizations'}")
     
     return viz_paths

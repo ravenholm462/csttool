@@ -99,7 +99,9 @@ def add_validate_parser(subparsers):
 
 def cmd_validate(args: argparse.Namespace) -> int:
     """Execute the validate command."""
-    print("\n=== CST Validation ===\n")
+    print("=" * 60)
+    print("CST VALIDATION")
+    print("=" * 60)
     
     output_dir = args.output_dir
     ref_space = args.ref_space
@@ -113,99 +115,94 @@ def cmd_validate(args: argparse.Namespace) -> int:
     
     # 1. Validation & Setup
     if not ref_space.exists():
-        print(f"ERROR: Reference space image not found: {ref_space}")
+        print(f"  ✗ Reference space image not found: {ref_space}")
         return 1
-        
+
     for side, cand, ref in pairs:
         if not cand.exists():
-            print(f"ERROR: {side} candidate not found: {cand}")
+            print(f"  ✗ {side} candidate not found: {cand}")
             return 1
         if not ref.exists():
-            print(f"ERROR: {side} reference not found: {ref}")
+            print(f"  ✗ {side} reference not found: {ref}")
             return 1
-            
+
     if visualize and not VISUALIZATION_AVAILABLE:
-        print("WARNING: Visualization libraries (nilearn/matplotlib) not found. Skipping visualization.")
+        print("  ⚠️ Visualization libraries (nilearn/matplotlib) not found, skipping")
         visualize = False
     
     output_dir.mkdir(parents=True, exist_ok=True)
     all_metrics = {}
     
-    # 2. Process Processing
+    # 2. Process each hemisphere
     for side, cand_path, ref_path in pairs:
-        print(f"Processing {side} Hemisphere:")
+        print(f"\n  → Processing {side} hemisphere...")
         print(f"  Candidate: {cand_path.name}")
         print(f"  Reference: {ref_path.name}")
-        
+
         # A. Check Spatial Compatibility
         try:
-            print("  Verifying spatial compatibility...", end=" ")
             check_spatial_compatibility(
-                cand_path, ref_path, ref_space, 
+                cand_path, ref_path, ref_space,
                 tol_trans=1.0, tol_rot=1e-3
             )
-            print("OK")
+            print(f"  ✓ Spatial compatibility verified")
         except SpatialMismatchError as e:
-            print("\n  FAIL: Spatial mismatch detected!")
-            print(f"  {e}")
-            print("  Aborting validation for safety.")
+            print(f"  ✗ Spatial mismatch detected: {e}")
             return 1
         except Exception as e:
-            print(f"\n  ERROR checking space: {e}")
+            print(f"  ✗ Error checking space: {e}")
             return 1
-            
+
         # A.5 Hemisphere Check
         if not args.disable_hemisphere_check:
             try:
                 hs_warn = check_hemisphere_alignment(cand_path, ref_path)
                 if hs_warn:
-                     print(f"  WARNING: {hs_warn}")
+                    print(f"  ⚠️ {hs_warn}")
             except Exception as e:
-                if visualize: 
-                    print(f"  (Hemisphere check failed: {e})")
-            
+                if visualize:
+                    print(f"  ⚠️ Hemisphere check failed: {e}")
+
         # B. Compute Metrics
         side_metrics = {}
-        
+
         # Overlap (Dice)
         d_res = compute_bundle_overlap(cand_path, ref_path, ref_space)
         side_metrics.update(d_res)
-        print(f"  Dice: {d_res['dice']:.4f}")
-        
+
         # Coverage
         cov_res = compute_coverage(cand_path, ref_path, ref_space)
         side_metrics.update(cov_res)
-        print(f"  Coverage: {cov_res['coverage']:.4f}")
-        
+
         # Overreach
         ov_res = compute_overreach(cand_path, ref_path, ref_space)
         side_metrics.update(ov_res)
-        print(f"  Overreach: {ov_res['overreach']:.4f}")
-        
+
         # MDF
         mdf_res = mean_closest_distance(cand_path, ref_path, step_size_mm=2.0)
         side_metrics.update(mdf_res)
-        print(f"  MDF Symmetric: {mdf_res['mdf_symmetric']:.2f} mm")
-        
+
         # Count Ratio
         cnt_res = streamline_count_ratio(cand_path, ref_path)
         side_metrics.update(cnt_res)
-        print(f"  Count Ratio: {cnt_res['streamline_count_ratio']:.2f}")
-        
+
+        print(f"  Dice:          {d_res['dice']:.4f}")
+        print(f"  Coverage:      {cov_res['coverage']:.4f}")
+        print(f"  Overreach:     {ov_res['overreach']:.4f}")
+        print(f"  MDF symmetric: {mdf_res['mdf_symmetric']:.2f} mm")
+        print(f"  Count ratio:   {cnt_res['streamline_count_ratio']:.2f}")
+
         all_metrics[side.lower()] = side_metrics
-        
+
         # C. Visualization
         if visualize:
-            print("  Generating visualizations...", end=" ")
             try:
                 vis_dir = output_dir / "visualizations" / side.lower()
                 maps = save_overlap_maps(cand_path, ref_path, ref_space, vis_dir)
                 save_validation_snapshots(ref_space, maps, vis_dir)
-                print("Done")
+                print(f"  ✓ Visualizations saved")
             except Exception as e:
-                print(f"Failed ({e})")
-        
-        print("-" * 40)
+                print(f"  ⚠️ Visualization failed: {e}")
 
     # 3. Generate Report
     report_path = output_dir / "validation_report.json"
@@ -217,7 +214,7 @@ def cmd_validate(args: argparse.Namespace) -> int:
         ref_anatomy_path=ref_space
     )
     
-    print(f"\nReport saved to: {report_path}")
-    print("=== Validation Complete ===\n")
+    print(f"\n✓ Validation complete")
+    print(f"  Report: {report_path}")
     
     return 0

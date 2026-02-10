@@ -28,32 +28,36 @@ def cmd_metrics(args: argparse.Namespace) -> dict | None:
     
     # Validate inputs
     if not args.cst_left.exists():
-        print(f"Error: Left CST tractogram not found: {args.cst_left}")
+        print(f"  ✗ Left CST tractogram not found: {args.cst_left}")
         return None
     
     if not args.cst_right.exists():
-        print(f"Error: Right CST tractogram not found: {args.cst_right}")
+        print(f"  ✗ Right CST tractogram not found: {args.cst_right}")
         return None
     
     args.out.mkdir(parents=True, exist_ok=True)
-    
+
+    print("=" * 60)
+    print("BILATERAL CST METRICS")
+    print("=" * 60)
+
     # Load tractograms
-    print(f"Loading left CST: {args.cst_left}")
+    print(f"  → Loading left CST: {args.cst_left}")
     try:
         sft_left = load_tractogram(str(args.cst_left), 'same')
         streamlines_left = sft_left.streamlines
-        print(f"  Loaded {len(streamlines_left):,} streamlines")
+        print(f"  ✓ Loaded {len(streamlines_left):,} streamlines")
     except Exception as e:
-        print(f"Error loading left CST: {e}")
+        print(f"  ✗ Failed to load left CST: {e}")
         return None
-    
-    print(f"Loading right CST: {args.cst_right}")
+
+    print(f"  → Loading right CST: {args.cst_right}")
     try:
         sft_right = load_tractogram(str(args.cst_right), 'same')
         streamlines_right = sft_right.streamlines
-        print(f"  Loaded {len(streamlines_right):,} streamlines")
+        print(f"  ✓ Loaded {len(streamlines_right):,} streamlines")
     except Exception as e:
-        print(f"Error loading right CST: {e}")
+        print(f"  ✗ Failed to load right CST: {e}")
         return None
     
     # Load scalar maps
@@ -62,17 +66,17 @@ def cmd_metrics(args: argparse.Namespace) -> dict | None:
     
     if args.fa:
         if args.fa.exists():
-            print(f"Loading FA map: {args.fa}")
+            print(f"  → Loading FA map: {args.fa}")
             fa_map, fa_affine = load_nifti(str(args.fa))
         else:
-            print(f"Warning: FA map not found: {args.fa}")
+            print(f"  ⚠️ FA map not found: {args.fa}")
     
     if args.md:
         if args.md.exists():
-            print(f"Loading MD map: {args.md}")
+            print(f"  → Loading MD map: {args.md}")
             md_map, _ = load_nifti(str(args.md))
         else:
-            print(f"Warning: MD map not found: {args.md}")
+            print(f"  ⚠️ MD map not found: {args.md}")
     
     # Load RD and AD maps if provided
     rd_map = None
@@ -80,24 +84,22 @@ def cmd_metrics(args: argparse.Namespace) -> dict | None:
     
     if getattr(args, 'rd', None):
         if args.rd.exists():
-            print(f"Loading RD map: {args.rd}")
+            print(f"  → Loading RD map: {args.rd}")
             rd_map, _ = load_nifti(str(args.rd))
         else:
-            print(f"Warning: RD map not found: {args.rd}")
+            print(f"  ⚠️ RD map not found: {args.rd}")
     
     if getattr(args, 'ad', None):
         if args.ad.exists():
-            print(f"Loading AD map: {args.ad}")
+            print(f"  → Loading AD map: {args.ad}")
             ad_map, _ = load_nifti(str(args.ad))
         else:
-            print(f"Warning: AD map not found: {args.ad}")
+            print(f"  ⚠️ AD map not found: {args.ad}")
     
     affine = fa_affine if fa_affine is not None else sft_left.affine
     
     # Analyze hemispheres
-    print("\n" + "="*60)
-    print("Analyzing LEFT CST")
-    print("="*60)
+    print("\n[Step 1/4] Analyzing left CST...")
     try:
         left_metrics = analyze_cst_hemisphere(
             streamlines=streamlines_left,
@@ -111,12 +113,10 @@ def cmd_metrics(args: argparse.Namespace) -> dict | None:
         if verbose:
             print_hemisphere_summary(left_metrics)
     except Exception as e:
-        print(f"Error analyzing left CST: {e}")
+        print(f"  ✗ Failed to analyze left CST: {e}")
         return None
     
-    print("\n" + "="*60)
-    print("Analyzing RIGHT CST")
-    print("="*60)
+    print("\n[Step 2/4] Analyzing right CST...")
     try:
         right_metrics = analyze_cst_hemisphere(
             streamlines=streamlines_right,
@@ -130,23 +130,19 @@ def cmd_metrics(args: argparse.Namespace) -> dict | None:
         if verbose:
             print_hemisphere_summary(right_metrics)
     except Exception as e:
-        print(f"Error analyzing right CST: {e}")
+        print(f"  ✗ Failed to analyze right CST: {e}")
         return None
     
     # Bilateral comparison
-    print("\n" + "="*60)
-    print("Computing bilateral comparison")
-    print("="*60)
+    print("\n[Step 3/4] Computing bilateral comparison...")
     try:
         comparison = compare_bilateral_cst(left_metrics, right_metrics)
     except Exception as e:
-        print(f"Error during bilateral comparison: {e}")
+        print(f"  ✗ Failed during bilateral comparison: {e}")
         return None
     
     # Save reports
-    print("\n" + "="*60)
-    print("Generating reports")
-    print("="*60)
+    print("\n[Step 4/4] Generating reports...")
     
     # Get pipeline metadata passed from run.py (or empty if standalone)
     pipeline_metadata = getattr(args, 'pipeline_metadata', {})
@@ -186,15 +182,15 @@ def cmd_metrics(args: argparse.Namespace) -> dict | None:
     
     try:
         json_path = save_json_report(comparison, args.out, args.subject_id, metadata=metadata)
-        print(f"✓ JSON report: {json_path}")
+        print(f"  ✓ Saved: {json_path}")
     except Exception as e:
-        print(f"Error saving JSON report: {e}")
+        print(f"  ✗ Failed to save JSON report: {e}")
     
     try:
         csv_path = save_csv_summary(comparison, args.out, args.subject_id)
-        print(f"✓ CSV summary: {csv_path}")
+        print(f"  ✓ Saved: {csv_path}")
     except Exception as e:
-        print(f"Error saving CSV summary: {e}")
+        print(f"  ✗ Failed to save CSV summary: {e}")
     
     # Generate visualizations
     viz_dir = args.out / "visualizations"
@@ -207,17 +203,17 @@ def cmd_metrics(args: argparse.Namespace) -> dict | None:
             viz_paths['tract_profiles'] = plot_tract_profiles(
                 left_metrics, right_metrics, viz_dir, args.subject_id, scalar='fa'
             )
-            print(f"✓ Tract profiles: {viz_paths['tract_profiles']}")
+            print(f"  ✓ Saved: {viz_paths['tract_profiles']}")
     except Exception as e:
-        print(f"Warning: Could not generate tract profiles: {e}")
+        print(f"  ⚠️ Could not generate tract profiles: {e}")
     
     try:
         viz_paths['bilateral_comparison'] = plot_bilateral_comparison(
             comparison, viz_dir, args.subject_id
         )
-        print(f"✓ Bilateral comparison: {viz_paths['bilateral_comparison']}")
+        print(f"  ✓ Saved: {viz_paths['bilateral_comparison']}")
     except Exception as e:
-        print(f"Warning: Could not generate bilateral comparison: {e}")
+        print(f"  ⚠️ Could not generate bilateral comparison: {e}")
 
     # Generate additional visualizations for PDF if requested
     if getattr(args, 'generate_pdf', False) or getattr(args, 'save_visualizations', False):
@@ -225,9 +221,9 @@ def cmd_metrics(args: argparse.Namespace) -> dict | None:
             viz_paths['stacked_profiles'] = plot_stacked_profiles(
                 left_metrics, right_metrics, viz_dir, args.subject_id
             )
-            print(f"✓ Stacked profiles: {viz_paths['stacked_profiles']}")
+            print(f"  ✓ Saved: {viz_paths['stacked_profiles']}")
         except Exception as e:
-            print(f"Warning: Could not generate stacked profiles: {e}")
+            print(f"  ⚠️ Could not generate stacked profiles: {e}")
             
         try:
             # For QC preview, we need background image (FA) and affine
@@ -253,9 +249,9 @@ def cmd_metrics(args: argparse.Namespace) -> dict | None:
                         slice_type=view,
                         set_title=False  # HTML template adds titles
                     )
-                    print(f"✓ Tractogram QC ({view}): {viz_paths[f'tractogram_qc_{view}']}")
+                    print(f"  ✓ Saved: {viz_paths[f'tractogram_qc_{view}']}")
         except Exception as e:
-            print(f"Warning: Could not generate tractogram QC: {e}")
+            print(f"  ⚠️ Could not generate tractogram QC: {e}")
     
     # Generate PDF if requested
     pdf_path = None
@@ -274,7 +270,7 @@ def cmd_metrics(args: argparse.Namespace) -> dict | None:
                 space=space,
                 metadata=metadata
             )
-            print(f"✓ HTML report: {html_path}")
+            print(f"  ✓ Saved: {html_path}")
             
             # Then convert to PDF
             pdf_path = save_pdf_report(
@@ -286,31 +282,25 @@ def cmd_metrics(args: argparse.Namespace) -> dict | None:
                 html_path=html_path
             )
             if pdf_path:
-                print(f"✓ PDF report: {pdf_path}")
+                print(f"  ✓ Saved: {pdf_path}")
         except Exception as e:
-            print(f"Warning: Could not generate report: {e}")
+            print(f"  ⚠️ Could not generate report: {e}")
             import traceback
             traceback.print_exc()
     
     # Summary
-    print(f"\n{'='*60}")
-    print("METRICS COMPLETE")
-    print(f"{'='*60}")
-    print(f"Subject: {args.subject_id}")
-    print(f"\nMorphology:")
+    print(f"\n✓ Processing complete")
+    print(f"  Subject: {args.subject_id}")
     print(f"  Left CST:  {left_metrics['morphology']['n_streamlines']:,} streamlines, "
           f"volume = {left_metrics['morphology']['tract_volume']/1000:.2f} cm³")
     print(f"  Right CST: {right_metrics['morphology']['n_streamlines']:,} streamlines, "
           f"volume = {right_metrics['morphology']['tract_volume']/1000:.2f} cm³")
-    
+
     if 'fa' in left_metrics:
-        print(f"\nFA:")
-        print(f"  Left:  {left_metrics['fa']['mean']:.3f} ± {left_metrics['fa']['std']:.3f}")
-        print(f"  Right: {right_metrics['fa']['mean']:.3f} ± {right_metrics['fa']['std']:.3f}")
+        print(f"  FA left:  {left_metrics['fa']['mean']:.3f} +/- {left_metrics['fa']['std']:.3f}")
+        print(f"  FA right: {right_metrics['fa']['mean']:.3f} +/- {right_metrics['fa']['std']:.3f}")
         if 'fa' in comparison['asymmetry']:
-            print(f"  LI:    {comparison['asymmetry']['fa']['laterality_index']:.3f}")
-    
-    print(f"{'='*60}")
+            print(f"  FA LI:    {comparison['asymmetry']['fa']['laterality_index']:.3f}")
     
     return {
         'json_path': json_path,

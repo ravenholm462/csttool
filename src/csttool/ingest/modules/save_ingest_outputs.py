@@ -292,9 +292,9 @@ def print_import_summary(outputs: Dict, series_analysis) -> None:
     print(f"\n{series_analysis.recommendation}")
     
     if series_analysis.warnings:
-        print(f"\nWarnings:")
+        print(f"\n  Warnings:")
         for w in series_analysis.warnings:
-            print(f"  ⚠️  {w}")
+            print(f"  ⚠️ {w}")
     
     print("=" * 60)
 

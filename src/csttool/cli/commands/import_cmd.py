@@ -12,7 +12,7 @@ def cmd_import(args: argparse.Namespace) -> dict | None:
         USE_INGEST = True
     except ImportError:
         USE_INGEST = False
-        print("Note: Ingest module not available, using legacy import")
+        print("  ⚠️ Ingest module not available, using legacy import")
     
     if USE_INGEST and args.dicom:
         # Use new ingest pipeline
@@ -20,14 +20,14 @@ def cmd_import(args: argparse.Namespace) -> dict | None:
         
         # Scan-only mode
         if getattr(args, 'scan_only', False):
-            print(f"Scanning DICOM directory: {args.dicom}")
+            print(f"  → Scanning DICOM directory: {args.dicom}")
             series_list = scan_study(args.dicom)
-            
+
             if not series_list:
-                print("No valid DICOM series found.")
+                print("  ⚠️ No valid DICOM series found")
                 return None
-            
-            print(f"\nFound {len(series_list)} series.")
+
+            print(f"  ✓ Found {len(series_list)} series")
             return {'series': series_list, 'scan_only': True}
         
         # Full conversion
@@ -43,10 +43,11 @@ def cmd_import(args: argparse.Namespace) -> dict | None:
         )
         
         if result and result.get('nifti_path'):
-            print(f"\n✓ Import complete: {result['nifti_path']}")
+            print(f"\n✓ Import complete")
+            print(f"  {result['nifti_path']}")
             return result
         else:
-            print("Import failed.")
+            print("  ✗ Import failed")
             return None
     
     else:
@@ -59,18 +60,18 @@ def cmd_import_legacy(args: argparse.Namespace) -> dict | None:
     try:
         nii = resolve_nifti(args)
     except FileNotFoundError as e:
-        print(f"Error: {e}")
+        print(f"  ✗ {e}")
         return None
 
     data, _affine, hdr, gtab, bids_json = load_with_preproc(nii)
 
-    print(f"\nDataset Information:")
-    print(f"  File: {nii}")
-    print(f"  Data shape: {data.shape}")
-    print(f"  Gradient directions: {len(gtab.bvals)}")
+    print(f"\n✓ Dataset loaded")
+    print(f"  File:       {nii}")
+    print(f"  Shape:      {data.shape}")
+    print(f"  Directions: {len(gtab.bvals)}")
     voxel_size = tuple(float(v) for v in hdr.get_zooms()[:3])
-    print(f"  Voxel size (mm): {voxel_size}")
-    print(f"  B-values: {sorted(set(gtab.bvals.astype(int)))}")
+    print(f"  Voxel size: {voxel_size[0]:.2f} x {voxel_size[1]:.2f} x {voxel_size[2]:.2f} mm")
+    print(f"  B-values:   {sorted(set(gtab.bvals.astype(int)))}")
     
     # Build CLI overrides for acquisition metadata
     overrides = {}

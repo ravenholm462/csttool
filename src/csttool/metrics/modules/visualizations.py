@@ -566,11 +566,11 @@ def plot_3d_streamlines(
         fig_path = output_dir / f"{subject_id}_3d_streamlines.png"
         window.record(renderer, out_path=str(fig_path), size=(800, 800))
         
-        print(f"✓ 3D streamlines saved: {fig_path}")
+        print(f"  ✓ 3D streamlines saved: {fig_path}")
         return fig_path
         
     except Exception as e:
-        print(f"⚠️  3D visualization failed: {e}")
+        print(f"  ⚠️ 3D visualization failed: {e}")
         return None
 
 

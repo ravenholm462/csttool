@@ -30,18 +30,18 @@ def cmd_extract(args: argparse.Namespace) -> dict | None:
     extraction_method = getattr(args, 'extraction_method', 'passthrough')
     
     if extraction_method == "roi-seeded":
-        print("Error: roi-seeded method requires raw DWI data.")
-        print("       Use 'csttool run' for roi-seeded extraction, or")
-        print("       use --extraction-method endpoint|passthrough with cmd_extract.")
+        print("  ✗ Error: roi-seeded method requires raw DWI data")
+        print("    Use 'csttool run' for roi-seeded extraction, or")
+        print("    use --extraction-method endpoint|passthrough with cmd_extract")
         return None
-    
+
     # Validate inputs
     if not args.tractogram.exists():
-        print(f"Error: Tractogram not found: {args.tractogram}")
+        print(f"  ✗ Tractogram not found: {args.tractogram}")
         return None
-    
+
     if not args.fa.exists():
-        print(f"Error: FA map not found: {args.fa}")
+        print(f"  ✗ FA map not found: {args.fa}")
         return None
     
     args.out.mkdir(parents=True, exist_ok=True)
@@ -61,12 +61,12 @@ def cmd_extract(args: argparse.Namespace) -> dict | None:
         )
         from csttool.extract.modules.passthrough_filtering import extract_cst_passthrough, sample_peduncle_fa
     except ImportError as e:
-        print(f"Error importing extraction modules: {e}")
+        print(f"  ✗ Error importing extraction modules: {e}")
         return None
-    
+
     # Load inputs
     if not quiet:
-        print(f"Loading tractogram: {args.tractogram}")
+        print(f"  → Loading tractogram: {args.tractogram}")
 
     # Coordinate validation (critical check for silent failure prevention)
     if not skip_coord_validation:
@@ -79,35 +79,38 @@ def cmd_extract(args: argparse.Namespace) -> dict | None:
                 verbose=verbose
             )
         except ValueError as e:
-            print(f"Error: {e}")
+            print(f"  ✗ {e}")
             return None
         except Exception as e:
-            print(f"Warning: Coordinate validation failed unexpectedly: {e}")
-            print("         Proceeding with extraction (use --skip-coordinate-validation to suppress)")
+            print(f"  ⚠️ Coordinate validation failed unexpectedly: {e}")
+            print("    Proceeding with extraction (use --skip-coordinate-validation to suppress)")
     elif verbose:
-        print("  Skipping coordinate validation (--skip-coordinate-validation)")
+        print("    • Skipping coordinate validation (--skip-coordinate-validation)")
 
     try:
         sft = load_tractogram(str(args.tractogram), 'same')
         streamlines = sft.streamlines
         if not quiet:
-            print(f"  Loaded {len(streamlines):,} streamlines")
+            print(f"  ✓ Loaded: {len(streamlines):,} streamlines")
     except Exception as e:
-        print(f"Error loading tractogram: {e}")
+        print(f"  ✗ Error loading tractogram: {e}")
         return None
-    
+
     if not quiet:
-        print(f"Loading FA map: {args.fa}")
+        print(f"  → Loading FA map: {args.fa}")
     try:
         fa_data, fa_affine = load_nifti(str(args.fa))
     except Exception as e:
-        print(f"Error loading FA map: {e}")
+        print(f"  ✗ Error loading FA map: {e}")
         return None
     
+    # Section header
+    print("=" * 60)
+    print("CST EXTRACTION")
+    print("=" * 60)
+
     # Step 1: Registration
-    print("\n" + "="*60)
-    print("Step 1: Registering MNI template to subject space")
-    print("="*60)
+    print(f"\n[Step 1/5] Registering MNI template to subject space...")
     
     level_iters_affine = [1000, 100, 10] if args.fast_registration else [10000, 1000, 100]
     level_iters_syn = [5, 5, 3] if args.fast_registration else [10, 10, 5]
@@ -121,13 +124,11 @@ def cmd_extract(args: argparse.Namespace) -> dict | None:
             verbose=verbose
         )
     except Exception as e:
-        print(f"Error during registration: {e}")
+        print(f"  ✗ Registration failed: {e}")
         return None
-    
+
     # Step 2: Warp atlases
-    print("\n" + "="*60)
-    print("Step 2: Warping Harvard-Oxford atlases to subject space")
-    print("="*60)
+    print(f"\n[Step 2/5] Warping Harvard-Oxford atlases to subject space...")
     
     try:
         warped = warp_harvard_oxford_to_subject(
@@ -137,13 +138,11 @@ def cmd_extract(args: argparse.Namespace) -> dict | None:
             verbose=verbose
         )
     except Exception as e:
-        print(f"Error warping atlases: {e}")
+        print(f"  ✗ Warping atlases failed: {e}")
         return None
-    
+
     # Step 3: Create ROI masks
-    print("\n" + "="*60)
-    print("Step 3: Creating CST ROI masks")
-    print("="*60)
+    print(f"\n[Step 3/5] Creating CST ROI masks...")
     
     try:
         masks = create_cst_roi_masks(
@@ -160,13 +159,11 @@ def cmd_extract(args: argparse.Namespace) -> dict | None:
             reorientation_transform=warped.get('reorientation_transform')
         )
     except Exception as e:
-        print(f"Error creating ROI masks: {e}")
+        print(f"  ✗ Creating ROI masks failed: {e}")
         return None
-    
+
     # Step 4: Extract CST
-    print("\n" + "="*60)
-    print(f"Step 4: Extracting bilateral CST (method: {extraction_method})")
-    print("="*60)
+    print(f"\n[Step 4/5] Extracting bilateral CST (method: {extraction_method})...")
     
     try:
         if extraction_method == "passthrough":
@@ -197,13 +194,11 @@ def cmd_extract(args: argparse.Namespace) -> dict | None:
                 verbose=verbose
             )
     except Exception as e:
-        print(f"Error during CST extraction: {e}")
+        print(f"  ✗ CST extraction failed: {e}")
         return None
-    
+
     # Step 5: Save outputs
-    print("\n" + "="*60)
-    print("Step 5: Saving extracted tractograms")
-    print("="*60)
+    print(f"\n[Step 5/5] Saving extracted tractograms...")
     
     try:
         reference_img = nib.load(str(args.fa))
@@ -217,7 +212,7 @@ def cmd_extract(args: argparse.Namespace) -> dict | None:
         
         save_extraction_report(cst_result, output_paths, args.out, args.subject_id)
     except Exception as e:
-        print(f"Error saving outputs: {e}")
+        print(f"  ✗ Saving outputs failed: {e}")
         return None
     
     if getattr(args, 'save_visualizations', False):
@@ -234,15 +229,12 @@ def cmd_extract(args: argparse.Namespace) -> dict | None:
         )
 
     # Summary
-    print(f"\n{'='*60}")
-    print("EXTRACTION COMPLETE")
-    print(f"{'='*60}")
-    print(f"Subject: {args.subject_id}")
-    print(f"Left CST:  {cst_result['stats']['cst_left_count']:,} streamlines")
-    print(f"Right CST: {cst_result['stats']['cst_right_count']:,} streamlines")
-    print(f"Total:     {cst_result['stats']['cst_total_count']:,} streamlines")
-    print(f"Extraction rate: {cst_result['stats']['extraction_rate']:.2f}%")
-    print(f"{'='*60}")
+    print(f"\n✓ Extraction complete")
+    print(f"  Subject:        {args.subject_id}")
+    print(f"  Left CST:       {cst_result['stats']['cst_left_count']:,} streamlines")
+    print(f"  Right CST:      {cst_result['stats']['cst_right_count']:,} streamlines")
+    print(f"  Total:          {cst_result['stats']['cst_total_count']:,} streamlines")
+    print(f"  Extraction rate: {cst_result['stats']['extraction_rate']:.2f}%")
     
     return {
         'cst_left_path': output_paths.get('cst_left'),
@@ -282,7 +274,7 @@ def run_roi_seeded_extraction(
     
     # Load preprocessed DWI data
     if verbose:
-        print(f"Loading preprocessed data: {preproc_path}")
+        print(f"    • Input: {preproc_path}")
     
     dwi_img = nib.load(str(preproc_path))
     data = dwi_img.get_fdata()
@@ -311,9 +303,7 @@ def run_roi_seeded_extraction(
     
     # Step 1: Registration
     if verbose:
-        print("\n" + "="*60)
-        print("Step 1: Registering MNI template to subject space")
-        print("="*60)
+        print(f"\n[Step 1/5] Registering MNI template to subject space...")
     
     level_iters_affine = [1000, 100, 10] if getattr(args, 'fast_registration', False) else [10000, 1000, 100]
     level_iters_syn = [5, 5, 3] if getattr(args, 'fast_registration', False) else [10, 10, 5]
@@ -328,9 +318,7 @@ def run_roi_seeded_extraction(
     
     # Step 2: Warp atlases
     if verbose:
-        print("\n" + "="*60)
-        print("Step 2: Warping Harvard-Oxford atlases to subject space")
-        print("="*60)
+        print(f"\n[Step 2/5] Warping Harvard-Oxford atlases to subject space...")
     
     warped = warp_harvard_oxford_to_subject(
         registration_result=reg_result,
@@ -341,9 +329,7 @@ def run_roi_seeded_extraction(
     
     # Step 3: Create ROI masks
     if verbose:
-        print("\n" + "="*60)
-        print("Step 3: Creating CST ROI masks")
-        print("="*60)
+        print(f"\n[Step 3/5] Creating CST ROI masks...")
     
     masks = create_cst_roi_masks(
         warped_cortical=warped['cortical_warped'],
@@ -361,9 +347,7 @@ def run_roi_seeded_extraction(
     
     # Step 4: ROI-seeded extraction
     if verbose:
-        print("\n" + "="*60)
-        print("Step 4: ROI-seeded CST extraction")
-        print("="*60)
+        print(f"\n[Step 4/5] ROI-seeded CST extraction...")
     
     cst_result = extract_cst_roi_seeded(
         data=data,
@@ -384,9 +368,7 @@ def run_roi_seeded_extraction(
     
     # Step 5: Save outputs
     if verbose:
-        print("\n" + "="*60)
-        print("Step 5: Saving extracted tractograms")
-        print("="*60)
+        print(f"\n[Step 5/5] Saving extracted tractograms...")
     
     output_paths = save_cst_tractograms(
         cst_result=cst_result,
@@ -414,14 +396,11 @@ def run_roi_seeded_extraction(
 
     # Summary
     if verbose:
-        print(f"\n{'='*60}")
-        print("ROI-SEEDED EXTRACTION COMPLETE")
-        print(f"{'='*60}")
-        print(f"Subject: {subject_id}")
-        print(f"Left CST:  {cst_result['stats']['cst_left_count']:,} streamlines")
-        print(f"Right CST: {cst_result['stats']['cst_right_count']:,} streamlines")
-        print(f"Total:     {cst_result['stats']['cst_total_count']:,} streamlines")
-        print(f"{'='*60}")
+        print(f"\n✓ ROI-seeded extraction complete")
+        print(f"  Subject:   {subject_id}")
+        print(f"  Left CST:  {cst_result['stats']['cst_left_count']:,} streamlines")
+        print(f"  Right CST: {cst_result['stats']['cst_right_count']:,} streamlines")
+        print(f"  Total:     {cst_result['stats']['cst_total_count']:,} streamlines")
     
     return {
         'cst_left_path': output_paths.get('cst_left'),
