@@ -1,0 +1,75 @@
+---
+title: "csttool Batch Module"
+---
+flowchart TD
+    %% Input Sources
+    input_manifest["Manifest Input<br/>(--manifest)<br/>YAML/JSON study configuration<br/>Subject list with paths & options"]
+
+    input_bids["BIDS Discovery<br/>(--bids-dir)<br/>Auto-discover subjects<br/>Optional: --include/--exclude filters"]
+
+    %% Step 1: Subject Discovery
+    discover["Subject Discovery<br/>Load subject specifications<br/>Detect input type (DICOM/NIfTI)<br/>Find gradient files (.bval/.bvec)<br/>Find JSON sidecars"]
+
+    %% Step 2: DICOM Series Validation
+    dicom_check{DICOM Input?}
+    series_validate["Series Validation<br/>validate_single_series<br/>Check for series ambiguity<br/>Resolve or require series_uid"]
+
+    %% Step 3: Batch Configuration
+    config["Build Batch Configuration<br/>Output directory<br/>Timeout settings<br/>Pipeline options<br/>(denoise_method, generate_pdf, etc.)"]
+
+    %% Step 4: Preflight Validation
+    preflight["Preflight Validation<br/>validate_batch_preflight<br/>Check file existence<br/>Verify paths & permissions<br/>Validate configurations"]
+
+    preflight_result{Validation<br/>Passed?}
+
+    validation_error["Validation Failed<br/>Display categorized errors<br/>Subject-specific issues<br/>Exit with error code"]
+
+    %% Step 5: Dry Run Check
+    dry_run{Dry Run<br/>Mode?}
+
+    dry_run_output["Dry Run Report<br/>Total subjects count<br/>Output directory<br/>Subject list preview<br/>No processing executed"]
+
+    %% Step 6: Execute Batch
+    execute["Execute Batch Processing<br/>run_batch<br/>Process each subject<br/>Full pipeline per subject:<br/>Import → Preprocess → Track<br/>→ Extract → Metrics"]
+
+    %% Step 7: Generate Reports
+    reports["Generate Batch Reports<br/>generate_batch_reports<br/>Aggregate metrics CSV<br/>Per-subject summaries<br/>Error logs"]
+
+    %% Step 8: Summary
+    summary["═══════════════════════════════<br/>BATCH PROCESSING COMPLETE<br/>═══════════════════════════════<br/>Success/Failed/Skipped counts<br/>batch_metrics.csv location"]
+
+    %% Flow
+    input_manifest --> discover
+    input_bids --> discover
+
+    discover --> dicom_check
+    dicom_check -->|Yes| series_validate
+    dicom_check -->|No| config
+    series_validate --> config
+
+    config --> preflight
+    preflight --> preflight_result
+
+    preflight_result -->|No| validation_error
+    preflight_result -->|Yes| dry_run
+
+    dry_run -->|--dry-run| dry_run_output
+    dry_run -->|Execute| execute
+
+    execute --> reports
+    reports --> summary
+
+    %% Styling
+    classDef inputNode fill:#e1f5ff,stroke:#0288d1,stroke-width:2px
+    classDef processNode fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    classDef decisionNode fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    classDef outputNode fill:#e8f5e9,stroke:#388e3c,stroke-width:2px
+    classDef errorNode fill:#ffebee,stroke:#c62828,stroke-width:2px
+    classDef summaryNode fill:#e0f2f1,stroke:#00796b,stroke-width:2px
+
+    class input_manifest,input_bids inputNode
+    class discover,series_validate,config,preflight,execute,reports processNode
+    class dicom_check,preflight_result,dry_run decisionNode
+    class dry_run_output outputNode
+    class validation_error errorNode
+    class summary summaryNode

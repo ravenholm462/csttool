@@ -1,0 +1,100 @@
+---
+title: "csttool Validate Module"
+---
+flowchart TD
+    %% Inputs
+    input_cand["Candidate Inputs<br/>--cand-left: Left CST (.trk)<br/>--cand-right: Right CST (.trk)<br/>csttool-extracted tractograms"]
+
+    input_ref["Reference Inputs<br/>--ref-left: Left reference (.trk)<br/>--ref-right: Right reference (.trk)<br/>--ref-space: Reference NIfTI (FA map)<br/>e.g., TractoInferno PYT bundles"]
+
+    %% Step 1: Validation Setup
+    validate_files["Validate Input Files<br/>Check all paths exist<br/>Verify reference space exists<br/>Create output directory"]
+
+    validate_check{Files<br/>Valid?}
+
+    validate_error["Error: File Not Found<br/>Report missing file<br/>Exit with error code"]
+
+    %% Step 2: Per-Hemisphere Processing Loop
+    hemisphere_loop["Process Each Hemisphere<br/>(Left, Right)"]
+
+    %% Step 2A: Spatial Compatibility
+    spatial_check["Verify Spatial Compatibility<br/>check_spatial_compatibility<br/>Compare affine matrices<br/>Tolerance: 1.0mm trans, 1e-3 rot"]
+
+    spatial_result{Spatial<br/>Match?}
+
+    spatial_error["Spatial Mismatch Error<br/>Affine matrices incompatible<br/>Abort validation"]
+
+    %% Step 2B: Hemisphere Alignment
+    hemisphere_check["Hemisphere Alignment Check<br/>check_hemisphere_alignment<br/>Compare bundle centroids<br/>Warn if mismatch detected<br/>Optional: --disable-hemisphere-check"]
+
+    %% Step 2C: Compute Metrics
+    metrics_dice["Compute Bundle Overlap<br/>compute_bundle_overlap<br/>Dice coefficient<br/>Voxelized comparison"]
+
+    metrics_coverage["Compute Coverage<br/>compute_coverage<br/>Reference coverage ratio"]
+
+    metrics_overreach["Compute Overreach<br/>compute_overreach<br/>False positive ratio"]
+
+    metrics_mdf["Mean Closest Distance<br/>mean_closest_distance<br/>Symmetric MDF (mm)<br/>Step size: 2.0mm"]
+
+    metrics_count["Streamline Count Ratio<br/>streamline_count_ratio<br/>Candidate/Reference ratio"]
+
+    %% Step 2D: Visualizations (Optional)
+    viz_check{Generate<br/>Visualizations?}
+
+    viz_generate["Generate Visualizations<br/>save_overlap_maps<br/>save_validation_snapshots<br/>Overlap maps per hemisphere"]
+
+    viz_skip["Skip Visualizations"]
+
+    %% Step 3: Generate Report
+    report["Generate Validation Report<br/>generate_validation_report<br/>JSON output with all metrics<br/>Per-hemisphere results<br/>File paths & metadata"]
+
+    %% Output Summary
+    summary["═══════════════════════════════<br/>VALIDATION COMPLETE<br/>═══════════════════════════════<br/>Per-Hemisphere Metrics:<br/>• Dice coefficient<br/>• Coverage<br/>• Overreach<br/>• MDF Symmetric (mm)<br/>• Count Ratio<br/><br/>Report: validation_report.json"]
+
+    %% Flow
+    input_cand --> validate_files
+    input_ref --> validate_files
+
+    validate_files --> validate_check
+    validate_check -->|No| validate_error
+    validate_check -->|Yes| hemisphere_loop
+
+    hemisphere_loop --> spatial_check
+    spatial_check --> spatial_result
+    spatial_result -->|No| spatial_error
+    spatial_result -->|Yes| hemisphere_check
+
+    hemisphere_check --> metrics_dice
+    metrics_dice --> metrics_coverage
+    metrics_coverage --> metrics_overreach
+    metrics_overreach --> metrics_mdf
+    metrics_mdf --> metrics_count
+
+    metrics_count --> viz_check
+    viz_check -->|--visualize| viz_generate
+    viz_check -->|No| viz_skip
+
+    viz_generate --> hemisphere_loop
+    viz_skip --> hemisphere_loop
+
+    hemisphere_loop -->|Done| report
+    report --> summary
+
+    %% Styling
+    classDef inputNode fill:#e1f5ff,stroke:#0288d1,stroke-width:2px
+    classDef processNode fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    classDef decisionNode fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    classDef outputNode fill:#e8f5e9,stroke:#388e3c,stroke-width:2px
+    classDef errorNode fill:#ffebee,stroke:#c62828,stroke-width:2px
+    classDef metricsNode fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
+    classDef skipNode fill:#eceff1,stroke:#607d8b,stroke-width:1px
+    classDef summaryNode fill:#e0f2f1,stroke:#00796b,stroke-width:2px
+
+    class input_cand,input_ref inputNode
+    class validate_files,spatial_check,hemisphere_check,hemisphere_loop,report processNode
+    class validate_check,spatial_result,viz_check decisionNode
+    class viz_generate outputNode
+    class validate_error,spatial_error errorNode
+    class metrics_dice,metrics_coverage,metrics_overreach,metrics_mdf,metrics_count metricsNode
+    class viz_skip skipNode
+    class summary summaryNode

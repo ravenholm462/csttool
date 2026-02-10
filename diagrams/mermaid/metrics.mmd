@@ -1,0 +1,99 @@
+flowchart TD
+    %% Inputs
+    input_tracts["Required Inputs<br/>Left CST Tractogram (.trk)<br/>Right CST Tractogram (.trk)<br/>Previously extracted from csttool extract/run"]
+
+    input_scalars["Optional Scalar Maps<br/>FA Map --fa<br/>MD Map --md<br/>RD Map --rd<br/>AD Map --ad<br/>For along-tract profiling"]
+
+    %% Step 1: Load tractograms
+    load_tracts["Load CST Tractograms<br/>Load left and right streamlines<br/>Verify file existence<br/>Extract affine transforms"]
+
+    %% Step 2: Load scalar maps
+    load_scalars["Load Scalar Maps<br/>Load diffusion metrics if provided<br/>Use FA affine or tractogram affine<br/>Handle missing maps gracefully"]
+
+    %% Combined loading step
+    load_data["Combine Data<br/>Pair tractograms with scalar maps<br/>Prepare for bilateral analysis"]
+
+    %% Step 3: Analyze left hemisphere
+    analyze_left["Analyze Left Hemisphere<br/>analyze_cst_hemisphere<br/><br/>Morphology: count, length, volume, span<br/>Scalar Profiling: FA/MD/RD/AD profiles<br/>100-point along-tract sampling"]
+
+    %% Step 4: Analyze right hemisphere
+    analyze_right["Analyze Right Hemisphere<br/>analyze_cst_hemisphere<br/><br/>Morphology: count, length, volume, span<br/>Scalar Profiling: FA/MD/RD/AD profiles<br/>100-point along-tract sampling"]
+
+    %% Step 5: Bilateral comparison
+    bilateral_comp["Bilateral Comparison<br/>compare_bilateral_cst<br/><br/>Laterality Index: LI = (L - R) / (L + R)<br/>Asymmetry for volume, FA, MD, RD, AD<br/>Statistical comparisons"]
+
+    %% Decision: Report formats
+    report_decision{"Generate Reports"}
+
+    %% Report outputs
+    json_report["JSON Report<br/>save_json_report<br/>Complete metrics structure<br/>Includes metadata & pipeline params<br/>Machine-readable format"]
+
+    csv_report["CSV Summary<br/>save_csv_summary<br/>Flattened metrics table<br/>Easy spreadsheet import<br/>Minimal format"]
+
+    html_report["HTML Report<br/>save_html_report<br/>Interactive web report<br/>Embedded visualizations<br/>--generate-pdf enables"]
+
+    pdf_report["PDF Report<br/>save_pdf_report<br/>Print-ready clinical report<br/>Converted from HTML<br/>--generate-pdf required"]
+
+    %% Decision: Visualizations
+    viz_decision{"Generate Visualizations"}
+
+    %% Visualization outputs
+    tract_profiles["Tract Profile Plots<br/>plot_tract_profiles<br/>Along-tract FA/MD/RD/AD curves<br/>Left vs Right comparison<br/>Requires scalar maps"]
+
+    bilateral_viz["Bilateral Comparison<br/>plot_bilateral_comparison<br/>Bar charts of asymmetry<br/>Volume, FA, MD metrics<br/>Laterality indices"]
+
+    stacked_profiles["Stacked Profile Plots<br/>plot_stacked_profiles<br/>Multi-metric overlay<br/>FA, MD, RD, AD together<br/>Requires --generate-pdf or --save-visualizations"]
+
+    qc_preview["Tractogram QC Previews<br/>plot_tractogram_qc_preview<br/>Axial, Sagittal, Coronal views<br/>Overlaid on FA background<br/>Requires --generate-pdf or --save-visualizations"]
+
+    %% Summary output
+    summary["═══════════════════════════════════════════════<br/>METRICS ANALYSIS COMPLETE<br/>═══════════════════════════════════════════════<br/>Console Output: Streamline counts | Tract volumes | Mean FA +/- std | Laterality indices"]
+
+    %% Flow
+    input_tracts --> load_tracts
+    input_scalars --> load_scalars
+
+    load_tracts --> load_data
+    load_scalars --> load_data
+
+    load_data --> analyze_left
+    load_data --> analyze_right
+
+    analyze_left --> bilateral_comp
+    analyze_right --> bilateral_comp
+
+    bilateral_comp --> report_decision
+
+    %% Reports
+    report_decision -->|Always generated| json_report
+    report_decision -->|Always generated| csv_report
+    report_decision -->|With --generate-pdf| html_report
+    report_decision -->|With --generate-pdf| pdf_report
+
+    %% Visualizations
+    bilateral_comp --> viz_decision
+
+    viz_decision -->|If scalar maps| tract_profiles
+    viz_decision -->|Always| bilateral_viz
+    viz_decision -->|With --generate-pdf or --save-visualizations| stacked_profiles
+    viz_decision -->|With --generate-pdf or --save-visualizations| qc_preview
+
+    %% Final summary
+    json_report --> summary
+    csv_report --> summary
+    html_report --> summary
+    pdf_report --> summary
+    bilateral_viz --> summary
+
+    %% Styling
+    classDef inputNode fill:#e1f5ff,stroke:#0288d1,stroke-width:2px
+    classDef processNode fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    classDef decisionNode fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    classDef outputNode fill:#e8f5e9,stroke:#388e3c,stroke-width:2px
+    classDef summaryNode fill:#e0f2f1,stroke:#00796b,stroke-width:2px
+
+    class input_tracts,input_scalars inputNode
+    class load_tracts,load_scalars,load_data,analyze_left,analyze_right,bilateral_comp processNode
+    class report_decision,viz_decision decisionNode
+    class json_report,csv_report,html_report,pdf_report,tract_profiles,bilateral_viz,stacked_profiles,qc_preview outputNode
+    class summary summaryNode

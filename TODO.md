@@ -2,7 +2,7 @@
 
 ## General
 
-- [ ] Write project documentation.
+- [/] Write project documentation.
   - See `docs/DOCUMENTATION_CHECKLIST.md` for detailed status.
 - [/] Trim down the codebase.
   - [x] Remove unused code
@@ -28,21 +28,19 @@
 ## Validation & Research
 - [x] Add CST validation against reference bundles (TractoInferno PYT)
   - [x] `csttool validate` command with Dice, overreach, MDF metrics
-  - [ ] Unit tests for validation module
-- [ ] Find standard values for healthy controls, add to metrics.
-- [ ] Use batch processing to process entire TractoInferno training set.
+  - [x] Unit tests for validation module
+- [x] Use batch processing to process entire TractoInferno training set.
 
 ### Testing
-- [ ] Update all unit tests if necessary.
-- [ ] Ensure edge case coverage.
-- [ ] Add unit tests for metrics consistency.
+- [x] Update all unit tests if necessary.
+- [x] Ensure edge case coverage.
+- [x] Add unit tests for metrics consistency.
 
 ## Tracking
-- [ ] Make angle threshold adjustible, keep 45 degrees default.
-  - [ ] Add CLI option.
+- [ ] If ROI seeded extraction chosen, whole brain tractography is a waste of time. Refactor tracking and extraction to account for this.
 
 ## Extraction
-
+- [ ] See above regarding ROI seeded extraction of CST.
 
 ## Metrics
 

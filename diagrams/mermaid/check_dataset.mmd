@@ -1,0 +1,68 @@
+---
+title: "csttool Check Dataset Module"
+---
+flowchart TD
+    %% Input
+    input["Required Inputs<br/>DWI NIfTI file (--dwi)<br/>Optional: --bval, --bvec<br/>Optional: --json (BIDS sidecar)"]
+
+    %% Step 1: Locate Files
+    locate["Locate Gradient Files<br/>Auto-discover .bval/.bvec<br/>from DWI filename<br/>Handle .nii.gz suffix patterns"]
+
+    locate_check{Files Found?}
+    locate_error["Error: Missing Files<br/>Could not locate .bval or .bvec<br/>Please provide --bval/--bvec"]
+
+    %% Step 2: Load Data
+    load["Load Data<br/>Load NIfTI header<br/>Extract voxel dimensions<br/>Read gradient table (bvals/bvecs)<br/>Load BIDS JSON if available"]
+
+    %% Step 3: Assess Quality
+    assess["Assess Acquisition Quality<br/>assess_acquisition_quality<br/>Analyze gradient distribution<br/>Check b0 volume spacing<br/>Validate BIDS metadata<br/>Return warnings & metadata"]
+
+    %% Report Sections
+    report_header["Report Header<br/>Subject/File name<br/>Scan date from BIDS JSON"]
+
+    report_b0["B=0 Volumes Section<br/>Volume count<br/>Maximum gap between b0s<br/>Indices (verbose mode)"]
+
+    report_acq["Acquisition Parameters<br/>Single/Multi-shell detection<br/>B-values per shell<br/>Gradient directions per shell<br/>Voxel size (mm)<br/>Echo time, Multiband factor"]
+
+    report_bids["BIDS Metadata Check<br/>PhaseEncodingDirection<br/>TotalReadoutTime<br/>Optional fields (verbose)"]
+
+    report_quality["Quality Assessment<br/>No issues / Warnings / Critical<br/>Icons: ✅ ⚠️ ❌<br/>Severity-based messaging"]
+
+    report_recommend["Recommended Settings<br/>Maximum SH order<br/>(based on direction count)<br/>Suggested step size<br/>(0.5 × min voxel size)"]
+
+    report_verbose["Detailed Metrics (--verbose)<br/>Total/B0/DWI volume counts<br/>B0 threshold used<br/>Voxel volume & anisotropy<br/>Per-shell SH orders"]
+
+    %% Final Output
+    output["═══════════════════════════════════<br/>ACQUISITION QUALITY REPORT<br/>═══════════════════════════════════<br/>Complete quality assessment<br/>Ready for pipeline decisions"]
+
+    %% Flow
+    input --> locate
+    locate --> locate_check
+    locate_check -->|No| locate_error
+    locate_check -->|Yes| load
+
+    load --> assess
+    assess --> report_header
+
+    report_header --> report_b0
+    report_b0 --> report_acq
+    report_acq --> report_bids
+    report_bids --> report_quality
+    report_quality --> report_recommend
+    report_recommend --> report_verbose
+    report_verbose --> output
+
+    %% Styling
+    classDef inputNode fill:#e1f5ff,stroke:#0288d1,stroke-width:2px
+    classDef processNode fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    classDef decisionNode fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    classDef outputNode fill:#e8f5e9,stroke:#388e3c,stroke-width:2px
+    classDef errorNode fill:#ffebee,stroke:#c62828,stroke-width:2px
+    classDef reportNode fill:#fff9c4,stroke:#f57f17,stroke-width:2px
+
+    class input inputNode
+    class locate,load,assess processNode
+    class locate_check decisionNode
+    class locate_error errorNode
+    class report_header,report_b0,report_acq,report_bids,report_quality,report_recommend,report_verbose reportNode
+    class output outputNode

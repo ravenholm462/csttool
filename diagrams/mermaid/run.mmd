@@ -1,0 +1,110 @@
+---
+title: "csttool Run Module (Complete Pipeline)"
+---
+flowchart TD
+    %% Pipeline Start
+    start["Pipeline Start<br/>Subject ID determination<br/>Output directory setup<br/>Initialize timing & tracking"]
+
+    %% Step 1: Check
+    step1_check{Skip Check?}
+
+    check["STEP 1/6: ENVIRONMENT CHECK<br/>cmd_check<br/>Verify dependencies<br/>Verify csttool modules"]
+
+    check_result{Check<br/>Passed?}
+
+    check_skip["Skip Environment Check<br/>(--skip-check)"]
+
+    %% Step 2: Import
+    import_input{Input Type}
+
+    import_nifti["STEP 2/6: IMPORT (NIfTI)<br/>Validate file exists<br/>Check for broken symlinks<br/>Extract acquisition metadata"]
+
+    import_dicom["STEP 2/6: IMPORT (DICOM)<br/>cmd_import<br/>Convert DICOM → NIfTI<br/>Extract acquisition metadata"]
+
+    %% Step 3: Preprocess
+    preproc_check{Run<br/>Preprocessing?}
+
+    preprocess["STEP 3/6: PREPROCESSING<br/>cmd_preprocess<br/>Denoise (patch2self/nlmeans)<br/>Brain masking<br/>Optional: Gibbs, Motion correction"]
+
+    preproc_skip["Skip Preprocessing<br/>Pass-through input NIfTI<br/>(External preprocessing assumed)"]
+
+    %% Step 4: Track
+    track["STEP 4/6: TRACTOGRAPHY<br/>cmd_track<br/>Whole-brain deterministic tracking<br/>Generate FA, MD, RD, AD maps<br/>Save tractogram (.trk)"]
+
+    %% Step 5: Extract
+    extract_method{Extraction<br/>Method}
+
+    extract_filter["STEP 5/6: CST EXTRACTION<br/>(Filter-based)<br/>cmd_extract<br/>endpoint or passthrough<br/>Filter existing tractogram"]
+
+    extract_roi["STEP 5/6: CST EXTRACTION<br/>(ROI-seeded)<br/>run_roi_seeded_extraction<br/>Track from motor cortex ROIs<br/>Requires DWI data"]
+
+    extract_output["Extraction Output<br/>CST Left tractogram<br/>CST Right tractogram<br/>Extraction statistics"]
+
+    %% Step 6: Metrics
+    metrics["STEP 6/6: METRICS & REPORTS<br/>cmd_metrics<br/>Hemisphere analysis<br/>Bilateral comparison<br/>Generate reports (JSON, CSV)<br/>Optional: HTML/PDF, visualizations"]
+
+    %% Error Handling
+    error_handler{Continue on<br/>Error?}
+
+    save_report_error["Save Partial Report<br/>Record failed step<br/>Exit pipeline"]
+
+    %% Final Summary
+    cleanup["Clean Up<br/>Remove empty intermediate dirs"]
+
+    summary["═══════════════════════════════════<br/>PIPELINE COMPLETE<br/>═══════════════════════════════════<br/>Subject ID<br/>Total time (minutes/seconds)<br/>Step timing breakdown<br/>Success/Failed steps<br/>Output locations"]
+
+    %% Flow - Step 1
+    start --> step1_check
+    step1_check -->|--skip-check| check_skip
+    step1_check -->|No| check
+    check --> check_result
+    check_result -->|No| error_handler
+    check_result -->|Yes| import_input
+    check_skip --> import_input
+
+    %% Flow - Step 2
+    import_input -->|--nifti| import_nifti
+    import_input -->|--dicom| import_dicom
+    import_nifti --> preproc_check
+    import_dicom --> preproc_check
+
+    %% Flow - Step 3
+    preproc_check -->|--preprocess| preprocess
+    preproc_check -->|No| preproc_skip
+    preprocess --> track
+    preproc_skip --> track
+
+    %% Flow - Step 4
+    track --> extract_method
+
+    %% Flow - Step 5
+    extract_method -->|endpoint/passthrough| extract_filter
+    extract_method -->|roi-seeded| extract_roi
+    extract_filter --> extract_output
+    extract_roi --> extract_output
+    extract_output --> metrics
+
+    %% Flow - Step 6
+    metrics --> cleanup
+    cleanup --> summary
+
+    %% Error Flow
+    error_handler -->|--continue-on-error| import_input
+    error_handler -->|No| save_report_error
+
+    %% Styling
+    classDef startNode fill:#e1f5ff,stroke:#0288d1,stroke-width:2px
+    classDef stepNode fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    classDef decisionNode fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    classDef outputNode fill:#e8f5e9,stroke:#388e3c,stroke-width:2px
+    classDef skipNode fill:#eceff1,stroke:#607d8b,stroke-width:1px
+    classDef errorNode fill:#ffebee,stroke:#c62828,stroke-width:2px
+    classDef summaryNode fill:#e0f2f1,stroke:#00796b,stroke-width:2px
+
+    class start startNode
+    class check,import_nifti,import_dicom,preprocess,track,extract_filter,extract_roi,metrics,cleanup stepNode
+    class step1_check,check_result,import_input,preproc_check,extract_method,error_handler decisionNode
+    class extract_output outputNode
+    class check_skip,preproc_skip skipNode
+    class save_report_error errorNode
+    class summary summaryNode

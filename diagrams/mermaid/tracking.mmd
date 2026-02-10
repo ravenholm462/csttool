@@ -1,0 +1,63 @@
+---
+title: "csttool Tracking Module"
+---
+flowchart TD
+    %% Input
+    input[Load Preprocessed DWI + Gradient Table]
+    
+    %% Step 1: Brain masking
+    mask[Brain Masking<br/>Median Otsu threshold]
+    
+    %% Step 2: Tensor fitting with details
+    tensor[Tensor Fitting<br/>Compute FA, MD, RD, AD<br/>Create WM mask: FA > threshold + dilation]
+    
+    %% Step 3: Direction estimation with CLARIFIED details
+    directions[Direction Field Estimation<br/>CSA ODF Model<br/>Validate SH order<br/>Peak extraction: min 80% of max ODF value<br/>Peaks separated by ≥45°, extract strongest direction]
+    
+    %% Step 4: Seeds and stopping with branching
+    seeds[Seed Generation<br/>From FA mask or WM mask<br/>Default density: 1 seed/voxel]
+    
+    stopping{Stopping Approach}
+    stop_fa[FA Threshold<br/>Default: FA < 0.2]
+    stop_brain[FA + Brain Boundary<br/>Optional enhancement]
+    stop_binary[Binary WM Mask<br/>Alternative approach]
+    
+    %% Step 5: Tractography
+    track[Deterministic Local Tracking<br/>LocalTracking algorithm<br/>Step size: 0.5mm<br/>Optional: random seed]
+    
+    %% Step 6: Outputs with details
+    save_tract[Save Tractogram<br/>.trk file RASMM space]
+    save_scalar[Save Scalar Maps<br/>FA, MD, RD, AD .nii.gz]
+    save_report[Generate Processing Report<br/>JSON: params + statistics]
+    save_viz[Optional: QC Visualizations<br/>PNG plots]
+    
+    %% Flow
+    input --> mask
+    mask --> tensor
+    tensor --> directions
+    directions --> seeds
+    seeds --> stopping
+    
+    stopping -->|Default| stop_fa
+    stopping -->|Enhanced| stop_brain
+    stopping -->|Alternative| stop_binary
+    
+    stop_fa --> track
+    stop_brain --> track
+    stop_binary --> track
+    
+    track --> save_tract
+    track --> save_scalar
+    track --> save_report
+    track --> save_viz
+    
+    %% Styling
+    classDef inputNode fill:#e1f5ff,stroke:#0288d1,stroke-width:2px
+    classDef processNode fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    classDef decisionNode fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    classDef outputNode fill:#e8f5e9,stroke:#388e3c,stroke-width:2px
+    
+    class input inputNode
+    class mask,tensor,directions,seeds,track processNode
+    class stopping decisionNode
+    class stop_fa,stop_brain,stop_binary,save_tract,save_scalar,save_report,save_viz outputNode
