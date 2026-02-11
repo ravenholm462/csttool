@@ -37,9 +37,10 @@ from dipy.viz import regtools
 import json
 from datetime import datetime
 
-def load_mni_template(contrast="T1"):
-    
-    print(f"Fetching MNI template (contrast: {contrast}) from Nilearn")
+def load_mni_template(contrast="T1", verbose=True):
+
+    if verbose:
+        print(f"    • Fetching MNI template (contrast: {contrast}) from Nilearn")
 
     # Nilearn's MNI152 template is skull-stripped and 1mm resolution by default
     # This matches the Harvard-Oxford atlas better than DIPY's non-skull-stripped template
@@ -48,18 +49,19 @@ def load_mni_template(contrast="T1"):
     template_data = template_img.get_fdata()
     template_affine = template_img.affine
 
-    print(f"MNI template loaded: shape {template_data.shape}")
+    if verbose:
+        print(f"    • MNI template loaded: shape {template_data.shape}")
 
     return template_img, template_data, template_affine
 
 
-def load_fmrib58_fa_template(target_shape, target_affine):
+def load_fmrib58_fa_template(target_shape, target_affine, verbose=True):
     """
     Load FMRIB58_FA template and resample it to the MNI T1 grid.
-    
+
     This replaces the DIPY HCP FA template which was found to be too sparse.
     FMRIB58_FA is a high-quality (1mm) whole-brain FA template in MNI space.
-    
+
     The template is downloaded from FSL GitLab if not present locally.
     """
     # Cache location
@@ -86,31 +88,38 @@ def load_fmrib58_fa_template(target_shape, target_affine):
         found_local = False
         for fsl_path in potential_fsl_paths:
             if fsl_path.exists():
-                print(f"  → Found local FSL template: {fsl_path}")
+                if verbose:
+                    print(f"    • Found local FSL template: {fsl_path}")
                 shutil.copy(fsl_path, template_path)
                 found_local = True
-                print(f"  ✓ Copied to cache: {template_path}")
+                if verbose:
+                    print(f"    ✓ Copied to cache: {template_path}")
                 break
-        
+
         if not found_local:
-            print("  ⚠️ FMRIB58 FA template not found in project or cache")
-            print("  → Falling back to standard MNI T1 template")
+            if verbose:
+                print("  ⚠️ FMRIB58 FA template not found in project or cache")
+                print("  → Falling back to standard MNI T1 template")
             return None, None
 
-    print(f"Loading FMRIB58_FA template from: {template_path}")
+    if verbose:
+        print(f"    • Loading FMRIB58_FA template from: {template_path}")
     fa_img = nib.load(template_path)
     fa_data = fa_img.get_fdata()
     fa_affine = fa_img.affine
-    
-    print(f"    Original Shape: {fa_data.shape}")
-    
+
+    if verbose:
+        print(f"    • Original Shape: {fa_data.shape}")
+
     # Validation
     if np.count_nonzero(fa_data) < 200000:
-        print(f"WARNING: Downloaded template appears corrupt or sparse.")
+        if verbose:
+            print("  ⚠️ Downloaded template appears corrupt or sparse")
         return None, None
-    
+
     # Resample to target (MNI T1) grid
-    print("    Resampling FA template to MNI T1 grid...")
+    if verbose:
+        print("    • Resampling FA template to MNI T1 grid...")
     
     from nilearn.image import resample_to_img
     
@@ -125,9 +134,10 @@ def load_fmrib58_fa_template(target_shape, target_affine):
     
     resampled_data = resampled_nii.get_fdata()
     resampled_affine = resampled_nii.affine
-    
-    print(f"    Resampled Shape: {resampled_data.shape}")
-    
+
+    if verbose:
+        print(f"    • Resampled Shape: {resampled_data.shape}")
+
     return resampled_data, resampled_affine
 
 
@@ -244,13 +254,14 @@ def compute_affine_registration(
     """
 
     if verbose:
-        print("Computing affine registration...")
-        print(f"    Static (subject): {static_image.shape}")
-        print(f"    Moving (template): {moving_image.shape}")
+        print("  → Computing affine registration...")
+    if verbose:
+        print(f"    • Static (subject): {static_image.shape}")
+        print(f"    • Moving (template): {moving_image.shape}")
 
     # Stage 0: Center of mass alignment
     if verbose:
-        print("    Stage 0/3: Aligning centers of mass...")
+        print("    • Stage 0/3: Aligning centers of mass...")
     c_of_mass = transform_centers_of_mass(
         static_image, static_affine,
         moving_image, moving_affine
@@ -258,10 +269,10 @@ def compute_affine_registration(
 
     # Setup registration
     if verbose:
-        print("    Setting up affine registration...")
-        print(f"        Level iters: {level_iters}")
-        print(f"        Sigmas: {sigmas}")
-        print(f"        Factors: {factors}")
+        print("    • Setup parameters:")
+        print(f"    ├─ Level iters: {level_iters}")
+        print(f"    ├─ Sigmas: {sigmas}")
+        print(f"    └─ Factors: {factors}")
 
     metric = MutualInformationMetric(nbins=nbins, sampling_proportion=sampling_prop)
     affreg = AffineRegistration(
@@ -273,29 +284,29 @@ def compute_affine_registration(
 
     # Stage 1: Translation
     if verbose:
-        print("    Stage 1/3: Translation...")
+        print("    • Stage 1/3: Translation...")
     translation = affreg.optimize(
         static_image, moving_image,
         TranslationTransform3D(), None,
-        static_grid2world=static_affine, 
+        static_grid2world=static_affine,
         moving_grid2world=moving_affine,
         starting_affine=c_of_mass.affine
     )
 
     # Stage 2: Rigid
     if verbose:
-        print("    Stage 2/3: Rigid...")
+        print("    • Stage 2/3: Rigid...")
     rigid = affreg.optimize(
         static_image, moving_image,
         RigidTransform3D(), None,
-        static_grid2world=static_affine, 
+        static_grid2world=static_affine,
         moving_grid2world=moving_affine,
         starting_affine=translation.affine
     )
 
     # Stage 3: Full affine
     if verbose:
-        print("    Stage 3/3: Affine...")
+        print("    • Stage 3/3: Affine...")
     affine = affreg.optimize(
         static_image, moving_image,
         AffineTransform3D(), None,
@@ -373,13 +384,14 @@ def compute_syn_registration(
     """
 
     if verbose:
-        print("Computing SyN non-linear registration...")
-        print(f"    Static (subject): {static_image.shape}")
-        print(f"    Moving (template): {moving_image.shape}")
-        print(f"    Metric: Cross-Correlation (radius={metric_radius})")
-        print(f"    Level iterations: {level_iters}")
+        print("  → Computing SyN non-linear registration...")
+    if verbose:
+        print(f"    • Static (subject): {static_image.shape}")
+        print(f"    • Moving (template): {moving_image.shape}")
+        print(f"    • Metric: Cross-Correlation (radius={metric_radius})")
+        print(f"    • Level iterations: {level_iters}")
         if prealign is not None:
-            print("    Using affine pre-alignment")
+            print("    • Using affine pre-alignment")
 
     # Cross-correlation metric
     # dim=3 for 3D images, sigma_diff controls gradient smoothing
@@ -393,8 +405,8 @@ def compute_syn_registration(
     
     # Compute diffeomorphic mapping
     if verbose:
-        print("    Optimizing diffeomorphic transformation...")
-    
+        print("    • Optimizing diffeomorphic transformation...")
+
     mapping = sdr.optimize(
         static_image, moving_image,
         static_grid2world=static_affine,
@@ -483,10 +495,10 @@ def compute_jacobian_hemisphere_stats(mapping, subject_affine, verbose=True):
     }
 
     if verbose:
-        print("\n    Jacobian Determinant Statistics (per hemisphere):")
-        print(f"    Left:  mean={stats['left_mean']:.3f}, std={stats['left_std']:.3f}, "
+        print("    • Jacobian Determinant Statistics (per hemisphere):")
+        print(f"    ├─ Left:  mean={stats['left_mean']:.3f}, std={stats['left_std']:.3f}, "
               f"negative={stats['left_negative_pct']:.1f}%")
-        print(f"    Right: mean={stats['right_mean']:.3f}, std={stats['right_std']:.3f}, "
+        print(f"    └─ Right: mean={stats['right_mean']:.3f}, std={stats['right_std']:.3f}, "
               f"negative={stats['right_negative_pct']:.1f}%")
 
         # Flag asymmetry
@@ -605,8 +617,8 @@ def register_mni_to_subject(
     
     if verbose:
         voxel_size = np.sqrt(np.sum(subject_affine[:3, :3]**2, axis=0))
-        print(f"    Shape: {subject_data.shape}")
-        print(f"    Voxel size: {voxel_size.round(2)} mm")
+        print(f"    • Shape: {subject_data.shape}")
+        print(f"    • Voxel size: {voxel_size.round(2)} mm")
     
     # -------------------------------------------------------------------------
     # Step 2: Load MNI template
@@ -617,13 +629,13 @@ def register_mni_to_subject(
     if mni_template_path is not None:
         mni_img = nib.load(mni_template_path)
     else:
-        mni_img, _, _ = load_mni_template()
+        mni_img, _, _ = load_mni_template(verbose=verbose)
     
     mni_data = mni_img.get_fdata()
     mni_affine = mni_img.affine
     
     if verbose:
-        print(f"    Shape: {mni_data.shape}")
+        print(f"    • Shape: {mni_data.shape}")
 
     # -------------------------------------------------------------------------
     # Step 2b: Switch to FMRIB58 FA template if requested
@@ -633,7 +645,7 @@ def register_mni_to_subject(
             print("\n[Step 2b] Attempting to load FMRIB58 FA template...")
         
         # We pass the MNI grid settings so we can resample the FA template to it
-        fmrib58_data, fmrib58_affine = load_fmrib58_fa_template(mni_data.shape, mni_affine)
+        fmrib58_data, fmrib58_affine = load_fmrib58_fa_template(mni_data.shape, mni_affine, verbose=verbose)
         
         if fmrib58_data is not None:
             if verbose:
@@ -711,7 +723,7 @@ def register_mni_to_subject(
 
     # Compute hemisphere-specific registration quality metrics
     if verbose:
-        print("\n    Computing registration quality metrics...")
+        print("    • Computing registration quality metrics...")
     jacobian_stats, jacobian_det = compute_jacobian_hemisphere_stats(
         mapping, subject_affine, verbose=verbose
     )
@@ -753,7 +765,7 @@ def register_mni_to_subject(
         # Transform back to original orientation if subject was reoriented
         if was_reoriented and reorientation_transform is not None:
             if verbose:
-                print("    Transforming warped template to original orientation for saving...")
+                print("    • Transforming warped template to original orientation for saving...")
             from nibabel.orientations import apply_orientation
             # Compute inverse transform
             n_axes = len(reorientation_transform)
