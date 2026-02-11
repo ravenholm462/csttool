@@ -44,7 +44,7 @@ def reorient_to_original(data, reorientation_transform):
 def extract_roi_mask(warped_atlas, label, verbose=True):
     """
     Extract a binary mask for a specific label from warped atlas.
-    
+
     Parameters
     ----------
     warped_atlas : ndarray
@@ -53,18 +53,18 @@ def extract_roi_mask(warped_atlas, label, verbose=True):
         Label value to extract.
     verbose : bool, optional
         Print mask statistics.
-        
+
     Returns
     -------
     mask : ndarray
         Binary mask (bool) for the specified label.
     """
     mask = warped_atlas == label
-    
+
     if verbose:
         voxel_count = np.sum(mask)
-        print(f"    Extracted label {label}: {voxel_count:,} voxels")
-    
+        print(f"    • Extracted label {label}: {voxel_count:,} voxels")
+
     return mask
 
 
@@ -74,10 +74,10 @@ def extract_roi_mask(warped_atlas, label, verbose=True):
 def dilate_mask(mask, iterations=1, verbose=True):
     """
     Dilate a binary mask to increase spatial coverage.
-    
+
     Useful for endpoint filtering to catch streamlines that terminate
     near but not exactly within the ROI.
-    
+
     Parameters
     ----------
     mask : ndarray
@@ -86,7 +86,7 @@ def dilate_mask(mask, iterations=1, verbose=True):
         Number of dilation iterations. Default is 1.
     verbose : bool, optional
         Print dilation statistics.
-        
+
     Returns
     -------
     dilated : ndarray
@@ -94,14 +94,14 @@ def dilate_mask(mask, iterations=1, verbose=True):
     """
     if iterations <= 0:
         return mask
-    
+
     original_count = np.sum(mask)
     dilated = binary_dilation(mask, iterations=iterations)
     dilated_count = np.sum(dilated)
-    
+
     if verbose:
-        print(f"    Dilation ({iterations} iterations): {original_count:,} → {dilated_count:,} voxels")
-    
+        print(f"    • Dilation ({iterations} iterations): {original_count:,} → {dilated_count:,} voxels")
+
     return dilated
 
 
@@ -192,51 +192,51 @@ def create_cst_roi_masks(
     # -------------------------------------------------------------------------
     if verbose:
         print("\n[Step 1/3] Extracting brainstem mask...")
-    
+
     brainstem_label = roi_config['brainstem']['label']
     brainstem_raw = extract_roi_mask(warped_subcortical, brainstem_label, verbose=verbose)
-    
+
     if dilate_brainstem > 0:
         brainstem_mask = dilate_mask(brainstem_raw, iterations=dilate_brainstem, verbose=verbose)
     else:
         brainstem_mask = brainstem_raw
-    
+
     masks['brainstem'] = brainstem_mask
-    
+
     # -------------------------------------------------------------------------
     # Step 2: Extract motor cortex masks (using separate L/R labels)
     # -------------------------------------------------------------------------
     if verbose:
         print("\n[Step 2/3] Extracting motor cortex masks...")
-    
+
     # Left Motor (Label 7)
     motor_left_label = roi_config['motor_left']['label']
     if verbose:
-        print("    Left Hemisphere:")
+        print("  → Left Hemisphere:")
     motor_left_raw = extract_roi_mask(warped_cortical, motor_left_label, verbose=verbose)
-    
+
     # Right Motor (Label 107)
     motor_right_label = roi_config['motor_right']['label']
     if verbose:
-        print("    Right Hemisphere:")
+        print("  → Right Hemisphere:")
     motor_right_raw = extract_roi_mask(warped_cortical, motor_right_label, verbose=verbose)
-    
+
     # -------------------------------------------------------------------------
     # Step 3: Dilate masks
     # -------------------------------------------------------------------------
     if verbose:
         print("\n[Step 3/3] Dilating masks...")
-    
+
     # Dilate motor masks
     if dilate_motor > 0:
         if verbose:
-            print("    Dilating motor masks...")
+            print("  → Dilating motor masks...")
         motor_left_mask = dilate_mask(motor_left_raw, iterations=dilate_motor, verbose=verbose)
         motor_right_mask = dilate_mask(motor_right_raw, iterations=dilate_motor, verbose=verbose)
     else:
         motor_left_mask = motor_left_raw
         motor_right_mask = motor_right_raw
-    
+
     masks['motor_left'] = motor_left_mask
     masks['motor_right'] = motor_right_mask
     
@@ -249,14 +249,14 @@ def create_cst_roi_masks(
 
         nifti_dir = output_dir / "nifti"
         nifti_dir.mkdir(parents=True, exist_ok=True)
-        
+
         prefix = f"{subject_id}_" if subject_id else ""
-        
+
         # Determine which affine and data to use for saving
         # If subject was reoriented for registration, transform data back to original orientation
         if original_subject_affine is not None and reorientation_transform is not None:
             if verbose:
-                print("    Transforming to original orientation for saving...")
+                print("    • Transforming to original orientation for saving...")
             brainstem_to_save = reorient_to_original(brainstem_mask.astype(np.uint8), reorientation_transform)
             motor_left_to_save = reorient_to_original(motor_left_mask.astype(np.uint8), reorientation_transform)
             motor_right_to_save = reorient_to_original(motor_right_mask.astype(np.uint8), reorientation_transform)
@@ -266,7 +266,7 @@ def create_cst_roi_masks(
             motor_left_to_save = motor_left_mask.astype(np.uint8)
             motor_right_to_save = motor_right_mask.astype(np.uint8)
             save_affine = subject_affine
-        
+
         # Save brainstem
         brainstem_path = nifti_dir / f"{prefix}roi_brainstem.nii.gz"
         nib.save(
@@ -275,8 +275,8 @@ def create_cst_roi_masks(
         )
         masks['brainstem_path'] = brainstem_path
         if verbose:
-            print(f"    ✓ Brainstem: {brainstem_path}")
-        
+            print(f"  ✓ Brainstem: {brainstem_path}")
+
         # Save motor left
         motor_left_path = nifti_dir / f"{prefix}roi_motor_left.nii.gz"
         nib.save(
@@ -285,8 +285,8 @@ def create_cst_roi_masks(
         )
         masks['motor_left_path'] = motor_left_path
         if verbose:
-            print(f"    ✓ Motor Left: {motor_left_path}")
-        
+            print(f"  ✓ Motor Left: {motor_left_path}")
+
         # Save motor right
         motor_right_path = nifti_dir / f"{prefix}roi_motor_right.nii.gz"
         nib.save(
@@ -295,14 +295,14 @@ def create_cst_roi_masks(
         )
         masks['motor_right_path'] = motor_right_path
         if verbose:
-            print(f"    ✓ Motor Right: {motor_right_path}")
-        
+            print(f"  ✓ Motor Right: {motor_right_path}")
+
         # Save combined visualization mask
         combined = np.zeros_like(brainstem_mask, dtype=np.uint8)
         combined[brainstem_mask] = 1
         combined[motor_left_mask] = 2
         combined[motor_right_mask] = 3
-        
+
         combined_path = nifti_dir / f"{prefix}roi_cst_combined.nii.gz"
         if original_subject_affine is not None and reorientation_transform is not None:
             combined_to_save = reorient_to_original(combined, reorientation_transform)
@@ -314,16 +314,16 @@ def create_cst_roi_masks(
         )
         masks['combined_path'] = combined_path
         if verbose:
-            print(f"    ✓ Combined: {combined_path}")
-    
+            print(f"  ✓ Combined: {combined_path}")
+
     if verbose:
         print("\n" + "=" * 60)
         print("  ✓ ROI mask creation complete")
         print("=" * 60)
-        print(f"\nSummary:")
-        print(f"    Brainstem:   {np.sum(masks['brainstem']):,} voxels")
-        print(f"    Motor Left:  {np.sum(masks['motor_left']):,} voxels")
-        print(f"    Motor Right: {np.sum(masks['motor_right']):,} voxels")
+        print("\nSummary:")
+        print(f"  Brainstem:   {np.sum(masks['brainstem']):,} voxels")
+        print(f"  Motor Left:  {np.sum(masks['motor_left']):,} voxels")
+        print(f"  Motor Right: {np.sum(masks['motor_right']):,} voxels")
     
     return masks
 

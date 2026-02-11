@@ -23,9 +23,9 @@ def run_tractography(csapeaks, stopping_criterion, seeds, affine, step_size=0.5,
     import matplotlib.pyplot as plt
 
     if verbose:
-        print(f"Running tractography (step={step_size}mm)...")
+        print(f"  → Running tractography (step={step_size}mm)...")
         if random_seed is not None:
-            print(f"  Random seed: {random_seed}")
+            print(f"    • Random seed: {random_seed}")
 
     streamline_generator = LocalTracking(
         csapeaks,
@@ -36,14 +36,15 @@ def run_tractography(csapeaks, stopping_criterion, seeds, affine, step_size=0.5,
         random_seed=random_seed
     )
     streamlines = Streamlines(streamline_generator)
-    
+
     if verbose:
-        print(f"  Generated: {len(streamlines):,} streamlines")
+        print(f"    • Generated: {len(streamlines):,} streamlines")
         if len(streamlines) > 0:
             lengths = np.array([length(s) for s in streamlines])
-            print(f"  Length: mean={lengths.mean():.1f}mm, "
-                  f"median={np.median(lengths):.1f}mm, "
-                  f"range=[{lengths.min():.1f}, {lengths.max():.1f}]mm")
+            print(f"    • Length statistics:")
+            print(f"    ├─ Mean:   {lengths.mean():.1f} mm")
+            print(f"    ├─ Median: {np.median(lengths):.1f} mm")
+            print(f"    └─ Range:  [{lengths.min():.1f}, {lengths.max():.1f}] mm")
     
     # Visualization: Native space streamlines (2D projections)
     if visualize and len(streamlines) > 0:

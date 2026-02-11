@@ -109,7 +109,7 @@ def plot_tensor_maps(
     plt.close()
     
     if verbose:
-        print(f"  ✓ Tensor maps: {fig_path}")
+        print(f"  ✓ Saved: {fig_path}")
     
     return fig_path
 
@@ -187,7 +187,7 @@ def plot_white_matter_mask(
     plt.close()
     
     if verbose:
-        print(f"  ✓ White matter mask QC: {fig_path}")
+        print(f"  ✓ Saved: {fig_path}")
     
     return fig_path
 
@@ -330,7 +330,7 @@ def plot_streamlines_2d(
     
     if n_streamlines == 0:
         if verbose:
-            print("⚠️ No streamlines to visualize")
+            print("  ⚠️ No streamlines to visualize")
         return None
     
     # Subsample if needed
@@ -420,7 +420,7 @@ def plot_streamlines_2d(
     plt.close()
     
     if verbose:
-        print(f"  ✓ Streamlines 2D: {fig_path}")
+        print(f"  ✓ Saved: {fig_path}")
     
     return fig_path
 
@@ -451,7 +451,7 @@ def plot_streamline_statistics(
     
     if n_streamlines == 0:
         if verbose:
-            print("⚠️ No streamlines for statistics")
+            print("  ⚠️ No streamlines for statistics")
         return None
     
     # Compute lengths
@@ -563,7 +563,7 @@ def plot_streamline_statistics(
     plt.close()
     
     if verbose:
-        print(f"  ✓ Streamline statistics: {fig_path}")
+        print(f"  ✓ Saved: {fig_path}")
     
     return fig_path
 
@@ -721,7 +721,7 @@ def create_tracking_summary(
     plt.close()
     
     if verbose:
-        print(f"  ✓ Tracking summary: {fig_path}")
+        print(f"  ✓ Saved: {fig_path}")
     
     return fig_path
 
@@ -749,32 +749,32 @@ def save_all_tracking_visualizations(
     Generate and save all tracking visualizations.
     """
     if verbose:
-        print("\nGenerating tracking visualizations...")
-    
+        print("  → Generating tracking visualizations...")
+
     viz_paths = {}
-    
+
     viz_paths['tensor_maps'] = plot_tensor_maps(
         fa, md, brain_mask, output_dir, stem, tenfit, verbose=verbose
     )
-    
+
     viz_paths['wm_mask_qc'] = plot_white_matter_mask(
         fa, white_matter, brain_mask, output_dir, stem, fa_thresh, verbose=verbose
     )
-    
+
     viz_paths['streamlines_2d'] = plot_streamlines_2d(
         streamlines, fa, affine, output_dir, stem, verbose=verbose
     )
-    
+
     viz_paths['streamline_stats'] = plot_streamline_statistics(
         streamlines, fa, seeds, affine, output_dir, stem, verbose=verbose
     )
-    
+
     viz_paths['summary'] = create_tracking_summary(
         streamlines, fa, md, white_matter, brain_mask, seeds, affine,
         output_dir, stem, tracking_params, verbose=verbose
     )
-    
+
     if verbose:
-        print(f"  ✓ All tracking visualizations saved to: {Path(output_dir) / 'visualizations'}")
+        print(f"  ✓ All visualizations saved to: {Path(output_dir) / 'visualizations'}")
     
     return viz_paths

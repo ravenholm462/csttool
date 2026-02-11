@@ -59,8 +59,8 @@ def validate_sh_order(gtab, sh_order: int, verbose: bool = False) -> int:
     max_safe_order = get_max_sh_order(n_directions)
     
     if verbose:
-        print(f"    Gradient directions: {n_directions}")
-        print(f"    Maximum safe SH order: {max_safe_order}")
+        print(f"    • Gradient directions: {n_directions}")
+        print(f"    • Maximum safe SH order: {max_safe_order}")
     
     if sh_order > max_safe_order:
         warnings.warn(
@@ -104,8 +104,8 @@ def estimate_directions(data, gtab, white_matter, sh_order=6, sphere_name="symme
     validated_sh_order = validate_sh_order(gtab, sh_order, verbose=verbose)
     
     if verbose:
-        print(f"Estimating directions (CSA ODF, SH order={validated_sh_order})...")
-        print(f"    White matter voxels: {white_matter.sum():,}")
+        print(f"  → Estimating directions (CSA ODF, SH order={validated_sh_order})...")
+        print(f"    • White matter voxels: {white_matter.sum():,}")
     
     csamodel = CsaOdfModel(gtab, sh_order_max=validated_sh_order)
     
@@ -122,8 +122,8 @@ def estimate_directions(data, gtab, white_matter, sh_order=6, sphere_name="symme
     if verbose:
         # Count voxels with valid peaks
         valid_peaks = (csapeaks.peak_values[..., 0] > 0).sum()
-        print(f"    Voxels with valid peaks: {valid_peaks:,}")
         coverage = valid_peaks / white_matter.sum() * 100
-        print(f"    Coverage: {coverage:.1f}%")
+        print(f"    • Voxels with valid peaks: {valid_peaks:,}")
+        print(f"    • Coverage: {coverage:.1f}%")
     
     return csapeaks

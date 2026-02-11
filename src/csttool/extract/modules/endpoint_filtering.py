@@ -138,7 +138,7 @@ def filter_streamlines_by_endpoints(
 ):
     """
     Filter streamlines that connect two ROIs.
-    
+
     Parameters
     ----------
     streamlines : Streamlines or list
@@ -151,7 +151,7 @@ def filter_streamlines_by_endpoints(
         Affine matrix for the ROI masks.
     verbose : bool, optional
         Print progress information.
-        
+
     Returns
     -------
     filtered : Streamlines
@@ -160,26 +160,27 @@ def filter_streamlines_by_endpoints(
         Indices of kept streamlines in original array.
     """
     kept_indices = []
-    
+
     for i, sl in enumerate(streamlines):
         if endpoints_in_rois(sl, roi_a, roi_b, affine):
             kept_indices.append(i)
-        
+
         # Progress update
         if verbose and (i + 1) % 10000 == 0:
-            print(f"    Processed {i + 1:,} / {len(streamlines):,} streamlines...")
-    
+            print(f"    • Processed {i + 1:,} / {len(streamlines):,} streamlines...")
+
     kept_indices = np.array(kept_indices, dtype=int)
-    
+
     if len(kept_indices) > 0:
         filtered = Streamlines([streamlines[i] for i in kept_indices])
     else:
         filtered = Streamlines()
-    
+
     if verbose:
-        print(f"    Filtering: {len(streamlines):,} → {len(filtered):,} streamlines")
-        print(f"    Reduction: {100 * (1 - len(filtered) / len(streamlines)):.1f}%")
-    
+        print(f"  → Filtering: {len(streamlines):,} → {len(filtered):,} streamlines")
+    if verbose:
+        print(f"    • Reduction: {100 * (1 - len(filtered) / len(streamlines)):.1f}%")
+
     return filtered, kept_indices
 
 
@@ -233,29 +234,30 @@ def extract_bilateral_cst(
         print("EXTRACT BILATERAL CST")
         print("=" * 60)
         print(f"\nInput: {len(streamlines):,} streamlines")
-    
+
     # -------------------------------------------------------------------------
     # Step 1: Length filtering
     # -------------------------------------------------------------------------
     if verbose:
         print(f"\n[Step 1/3] Length filtering ({min_length}-{max_length} mm)...")
-    
+
     lengths = np.array([length(sl) for sl in streamlines])
     length_mask = (lengths >= min_length) & (lengths <= max_length)
     length_valid_indices = np.where(length_mask)[0]
-    
+
     streamlines_length_filtered = Streamlines([streamlines[i] for i in length_valid_indices])
-    
+
     if verbose:
-        print(f"    {len(streamlines):,} → {len(streamlines_length_filtered):,} streamlines")
-        print(f"    Removed: {len(streamlines) - len(streamlines_length_filtered):,} (too short/long)")
-    
+        print(f"  → {len(streamlines):,} → {len(streamlines_length_filtered):,} streamlines")
+    if verbose:
+        print(f"    • Removed: {len(streamlines) - len(streamlines_length_filtered):,} (too short/long)")
+
     # -------------------------------------------------------------------------
     # Step 2: Extract Left CST (brainstem ↔ motor_left)
     # -------------------------------------------------------------------------
     if verbose:
         print("\n[Step 2/3] Extracting Left CST (brainstem ↔ motor_left)...")
-    
+
     cst_left, left_indices_filtered = filter_streamlines_by_endpoints(
         streamlines_length_filtered,
         masks['brainstem'],
@@ -263,16 +265,16 @@ def extract_bilateral_cst(
         affine,
         verbose=verbose
     )
-    
+
     # Map back to original indices
     left_indices_original = length_valid_indices[left_indices_filtered]
-    
+
     # -------------------------------------------------------------------------
     # Step 3: Extract Right CST (brainstem ↔ motor_right)
     # -------------------------------------------------------------------------
     if verbose:
         print("\n[Step 3/3] Extracting Right CST (brainstem ↔ motor_right)...")
-    
+
     cst_right, right_indices_filtered = filter_streamlines_by_endpoints(
         streamlines_length_filtered,
         masks['brainstem'],
@@ -280,7 +282,7 @@ def extract_bilateral_cst(
         affine,
         verbose=verbose
     )
-    
+
     # Map back to original indices
     right_indices_original = length_valid_indices[right_indices_filtered]
     
@@ -304,14 +306,16 @@ def extract_bilateral_cst(
     
     if verbose:
         print("\n" + "=" * 60)
-        print("CST EXTRACTION COMPLETE")
+        print("  ✓ CST extraction complete")
         print("=" * 60)
-        print(f"\nResults:")
-        print(f"    Left CST:  {stats['cst_left_count']:,} streamlines")
-        print(f"    Right CST: {stats['cst_right_count']:,} streamlines")
-        print(f"    Total:     {stats['cst_total_count']:,} streamlines")
-        print(f"    Extraction rate: {stats['extraction_rate']:.2f}%")
-        print(f"    L/R ratio: {stats['left_right_ratio']:.2f}")
+        print("\nResults:")
+        print(f"  Left CST:  {stats['cst_left_count']:,} streamlines")
+        print(f"  Right CST: {stats['cst_right_count']:,} streamlines")
+        print(f"  Total:     {stats['cst_total_count']:,} streamlines")
+    if verbose:
+        print("\nDiagnostics:")
+        print(f"    • Extraction rate: {stats['extraction_rate']:.2f}%")
+        print(f"    • L/R ratio: {stats['left_right_ratio']:.2f}")
     
     return {
         'cst_left': cst_left,
@@ -332,7 +336,7 @@ def save_cst_tractograms(
 ):
     """
     Save extracted CST tractograms as .trk files.
-    
+
     Parameters
     ----------
     cst_result : dict
@@ -345,7 +349,7 @@ def save_cst_tractograms(
         Subject identifier for filenames.
     verbose : bool, optional
         Print progress information.
-        
+
     Returns
     -------
     paths : dict
@@ -354,10 +358,10 @@ def save_cst_tractograms(
     output_dir = Path(output_dir)
     trk_dir = output_dir / "trk"
     trk_dir.mkdir(parents=True, exist_ok=True)
-    
+
     prefix = f"{subject_id}_" if subject_id else ""
     paths = {}
-    
+
     # Save Left CST
     if len(cst_result['cst_left']) > 0:
         left_path = trk_dir / f"{prefix}cst_left.trk"
@@ -365,12 +369,12 @@ def save_cst_tractograms(
         save_tractogram(sft_left, str(left_path))
         paths['cst_left'] = left_path
         if verbose:
-            print(f"✓ Left CST: {left_path}")
+            print(f"  ✓ Left CST: {left_path}")
     else:
         if verbose:
-            print("⚠️ No Left CST streamlines to save")
+            print("  ⚠️ No Left CST streamlines to save")
         paths['cst_left'] = None
-    
+
     # Save Right CST
     if len(cst_result['cst_right']) > 0:
         right_path = trk_dir / f"{prefix}cst_right.trk"
@@ -378,12 +382,12 @@ def save_cst_tractograms(
         save_tractogram(sft_right, str(right_path))
         paths['cst_right'] = right_path
         if verbose:
-            print(f"✓ Right CST: {right_path}")
+            print(f"  ✓ Right CST: {right_path}")
     else:
         if verbose:
-            print("⚠️ No Right CST streamlines to save")
+            print("  ⚠️ No Right CST streamlines to save")
         paths['cst_right'] = None
-    
+
     # Save Combined CST
     if len(cst_result['cst_combined']) > 0:
         combined_path = trk_dir / f"{prefix}cst_bilateral.trk"
@@ -391,12 +395,12 @@ def save_cst_tractograms(
         save_tractogram(sft_combined, str(combined_path))
         paths['cst_combined'] = combined_path
         if verbose:
-            print(f"✓ Bilateral CST: {combined_path}")
+            print(f"  ✓ Bilateral CST: {combined_path}")
     else:
         if verbose:
-            print("⚠️ No CST streamlines to save")
+            print("  ⚠️ No CST streamlines to save")
         paths['cst_combined'] = None
-    
+
     return paths
 
 

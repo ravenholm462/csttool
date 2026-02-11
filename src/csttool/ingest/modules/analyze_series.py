@@ -121,7 +121,7 @@ def analyze_series(
     _assess_suitability(analysis)
     
     if verbose:
-        _print_analysis(analysis)
+        _print_analysis(analysis, verbose=verbose)
     
     return analysis
 
@@ -378,32 +378,35 @@ def _assess_suitability(analysis: SeriesAnalysis) -> None:
         analysis.recommendation = "✗ Not recommended for tractography"
 
 
-def _print_analysis(analysis: SeriesAnalysis) -> None:
+def _print_analysis(analysis: SeriesAnalysis, verbose: bool = True) -> None:
     """Print formatted analysis results."""
-    
+
     print(f"\n{'=' * 60}")
     print(f"Series: {analysis.name}")
     print(f"{'=' * 60}")
-    
-    print(f"  Description:     {analysis.series_description or 'N/A'}")
-    print(f"  Series Number:   {analysis.series_number}")
-    print(f"  Files:           {analysis.n_files}")
-    print(f"  Matrix:          {analysis.rows} × {analysis.columns}")
-    print(f"  Image Type:      {analysis.image_type}")
-    print(f"  Classification:  {analysis.series_type.value}")
-    
-    if analysis.b_values:
-        print(f"  B-values:        {analysis.b_values}")
-    if analysis.n_volumes_estimated:
-        print(f"  Est. Volumes:    {analysis.n_volumes_estimated}")
-    if analysis.phase_encoding_direction:
-        print(f"  Phase Encoding:  {analysis.phase_encoding_direction}")
-    
+
+    if verbose:
+        print(f"    • Description:     {analysis.series_description or 'N/A'}")
+        print(f"    • Series Number:   {analysis.series_number}")
+        print(f"    • Files:           {analysis.n_files}")
+        print(f"    • Matrix:          {analysis.rows} × {analysis.columns}")
+        print(f"    • Image Type:      {analysis.image_type}")
+        print(f"    • Classification:  {analysis.series_type.value}")
+
+    if verbose:
+        if analysis.b_values:
+            print(f"    • B-values:        {analysis.b_values}")
+        if analysis.n_volumes_estimated:
+            print(f"    • Est. Volumes:    {analysis.n_volumes_estimated}")
+        if analysis.phase_encoding_direction:
+            print(f"    • Phase Encoding:  {analysis.phase_encoding_direction}")
+
     print(f"\n  {analysis.recommendation}")
-    print(f"  Score: {analysis.suitability_score:.0f}")
-    
+    if verbose:
+        print(f"    • Score: {analysis.suitability_score:.0f}")
+
     if analysis.warnings:
-        print(f"\n  Warnings:")
+        print("  Warnings:")
         for w in analysis.warnings:
             print(f"    ⚠️ {w}")
 
@@ -461,7 +464,7 @@ def recommend_series(
     if not suitable:
         if verbose:
             print("\n  ✗ No suitable series found for tractography")
-            print("  All series appear to be derived images or non-diffusion data")
+            print("    • All series appear to be derived images or non-diffusion data")
         return None
     
     # Sort by score (descending)
@@ -472,22 +475,22 @@ def recommend_series(
         print("\n" + "=" * 60)
         print("RECOMMENDATION")
         print("=" * 60)
-        print(f"\n  Best series: {best.name}")
-        print(f"  Score:       {best.suitability_score:.0f}")
-        print(f"  Files:       {best.n_files}")
-        
+        print(f"\n  ✓ Best series: {best.name}")
+        print(f"    • Score:       {best.suitability_score:.0f}")
+        print(f"    • Files:       {best.n_files}")
+
         if len(suitable) > 1:
-            print(f"\n  Alternative suitable series:")
+            print("\n  Alternative suitable series:")
             for alt in suitable[1:]:
-                print(f"    - {alt.name} (score: {alt.suitability_score:.0f})")
-        
+                print(f"    • {alt.name} (score: {alt.suitability_score:.0f})")
+
         # Check for AP/PA pair
         ap_series = [a for a in suitable if 'AP' in a.name.upper()]
         pa_series = [a for a in analyses if 'PA' in a.name.upper()]
-        
+
         if ap_series and pa_series:
-            print(f"\n  → AP/PA pair detected")
-            print(f"     For distortion correction, use both with FSL topup/eddy")
-            print(f"     (not yet implemented in csttool)")
+            print("\n  → AP/PA pair detected")
+            print("    • For distortion correction, use both with FSL topup/eddy")
+            print("    • (not yet implemented in csttool)")
     
     return best

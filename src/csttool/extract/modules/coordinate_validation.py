@@ -218,7 +218,7 @@ def _print_validation_summary(result: dict, tractogram_path: str, reference_path
     print("=" * 60)
 
     ref = result['reference_info']
-    print(f"Reference: {reference_path}")
+    print(f"\nReference: {reference_path}")
     print(f"  Shape: {ref['shape']}")
     print(f"  Orientation: {ref['orientation']}")
     bounds = ref['bounds_mm']
@@ -237,11 +237,11 @@ def _print_validation_summary(result: dict, tractogram_path: str, reference_path
               f"Z[{bounds['z'][0]:.1f}, {bounds['z'][1]:.1f}]")
 
     if result['valid']:
-        print("\n✓ Coordinate validation passed")
+        print("\n  ✓ Coordinate validation passed")
     else:
-        print("\n✗ Coordinate validation failed:")
+        print("\n  ✗ Coordinate validation failed:")
         for err in result['errors']:
-            print(f"  ✗ {err}")
+            print(f"    • {err}")
 
     for warn in result['warnings']:
         if warn not in [e for e in result['errors']]:

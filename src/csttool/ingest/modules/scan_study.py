@@ -151,7 +151,7 @@ def scan_study(
         raise ValueError(f"Not a directory: {study_dir}")
     
     if verbose:
-        print(f"Scanning study directory: {study_dir}")
+        print(f"  → Scanning study directory: {study_dir}")
     
     series_list = []
     
@@ -165,7 +165,7 @@ def scan_study(
             'depth': 0
         })
         if verbose:
-            print(f"  Found series at root: {study_dir.name} ({n_files} files)")
+            print(f"    • Found series at root: {study_dir.name} ({n_files} files)")
     
     # Scan subdirectories
     if recursive:
@@ -174,7 +174,7 @@ def scan_study(
                 _scan_recursive(item, series_list, study_dir, verbose, max_depth=3)
     
     if verbose:
-        print(f"\nFound {len(series_list)} DICOM series")
+        print(f"\n  ✓ Found {len(series_list)} DICOM series")
     
     return series_list
 
@@ -221,8 +221,8 @@ def _scan_recursive(
         })
         
         if verbose:
-            indent = "  " * current_depth
-            print(f"{indent}Found series: {directory.name} ({n_files} files)")
+            indent = "  " * (current_depth + 1)
+            print(f"{indent}• Found series: {directory.name} ({n_files} files)")
     else:
         # Continue searching subdirectories
         for item in sorted(directory.iterdir()):
@@ -257,26 +257,33 @@ def filter_series_by_file_count(
     return [s for s in series_list if s['n_files'] >= min_files]
 
 
-def print_series_summary(series_list: List[Dict]) -> None:
+def print_series_summary(series_list: List[Dict], verbose: bool = True) -> None:
     """
     Print a formatted summary of discovered series.
-    
+
     Parameters
     ----------
     series_list : List[Dict]
         List of series from scan_study()
+    verbose : bool, optional
+        Print verbose details. Default is True.
     """
     if not series_list:
         print("  ⚠️ No DICOM series found")
         return
-    
+
     print("\n" + "=" * 60)
     print("DISCOVERED DICOM SERIES")
     print("=" * 60)
-    print(f"{'#':<4} {'Series Name':<45} {'Files':<10}")
-    print("-" * 60)
 
-    for i, series in enumerate(series_list, 1):
-        print(f"{i:<4} {series['name']:<45} {series['n_files']:<10}")
+    if verbose:
+        print(f"{'#':<4} {'Series Name':<45} {'Files':<10}")
+        print("-" * 60)
+
+        for i, series in enumerate(series_list, 1):
+            print(f"{i:<4} {series['name']:<45} {series['n_files']:<10}")
+    else:
+        for i, series in enumerate(series_list, 1):
+            print(f"  {i}. {series['name']} ({series['n_files']} files)")
 
     print("=" * 60)

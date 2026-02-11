@@ -293,7 +293,7 @@ def _run_subject_worker(
         ))
 
 def run_batch(
-    subjects: List[SubjectSpec], 
+    subjects: List[SubjectSpec],
     config: BatchConfig,
     verbose: bool = False
 ) -> List[SubjectResult]:
@@ -303,7 +303,7 @@ def run_batch(
     """
     config_hash = compute_config_hash(config)
     results = []
-    
+
     # Setup signal handling for the main orchestrator
     def _sig_handler(signum, frame):
         logger.warning(f"Batch interrupted by signal {signum}. Shutting down...")
@@ -311,20 +311,22 @@ def run_batch(
         if _current_child and _current_child.is_alive():
             _current_child.terminate()
         sys.exit(1)
-        
+
     signal.signal(signal.SIGINT, _sig_handler)
     signal.signal(signal.SIGTERM, _sig_handler)
 
     logger.info(f"Starting batch processing for {len(subjects)} subjects")
     logger.info(f"Output directory: {config.out}")
-    logger.info(f"Config hash: {config_hash[:8]}")
+    if verbose:
+        logger.info(f"Config hash: {config_hash[:8]}")
 
     for subj_spec in subjects:
         final_dir = _get_subject_output_dir(config.out, subj_spec.subject_id, subj_spec.session_id)
         
         # 1. Check if already completed
         if not config.force and is_subject_completed(subj_spec, final_dir, config_hash):
-            logger.info(f"Skipping {subj_spec.subject_id}: Already completed")
+            if verbose:
+                logger.info(f"Skipping {subj_spec.subject_id}: Already completed")
             results.append(SubjectResult(
                 subject_id=subj_spec.subject_id,
                 session_id=subj_spec.session_id,

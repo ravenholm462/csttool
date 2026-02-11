@@ -89,9 +89,9 @@ def convert_dicom_to_nifti(
     output_nii = output_dir / f"{output_name}.nii.gz"
     
     if verbose:
-        print(f"Converting DICOM to NIfTI...")
-        print(f"  Input:  {dicom_dir}")
-        print(f"  Output: {output_nii}")
+        print("    → Converting: DICOM to NIfTI...")
+        print(f"    • Input:  {dicom_dir}")
+        print(f"    • Output: {output_nii}")
     
     result = {
         'nifti_path': None,
@@ -120,7 +120,7 @@ def convert_dicom_to_nifti(
             result['success'] = True
             
             if verbose:
-                print(f"  ✓ NIfTI created: {nii_path}")
+                print(f"    ✓ NIfTI created: {nii_path}")
         else:
             result['warnings'].append("NIfTI file not created")
             raise RuntimeError("Conversion produced no output file")
@@ -129,20 +129,20 @@ def convert_dicom_to_nifti(
         if bval_path and Path(bval_path).exists():
             result['bval_path'] = Path(bval_path)
             if verbose:
-                print(f"  ✓ bval file: {bval_path}")
+                print(f"    ✓ bval file: {bval_path}")
         else:
             result['warnings'].append("No .bval file generated")
             if verbose:
-                print(f"  ⚠️ No .bval file generated")
+                print("    ⚠️ No .bval file generated")
         
         if bvec_path and Path(bvec_path).exists():
             result['bvec_path'] = Path(bvec_path)
             if verbose:
-                print(f"  ✓ bvec file: {bvec_path}")
+                print(f"    ✓ bvec file: {bvec_path}")
         else:
             result['warnings'].append("No .bvec file generated")
             if verbose:
-                print(f"  ⚠️ No .bvec file generated")
+                print("    ⚠️ No .bvec file generated")
         
         # Check if gradient files are needed
         if result['nifti_path'] and (not result['bval_path'] or not result['bvec_path']):
@@ -151,8 +151,7 @@ def convert_dicom_to_nifti(
     except Exception as e:
         result['success'] = False
         result['warnings'].append(f"Conversion error: {str(e)}")
-        if verbose:
-            print(f"  ✗ Conversion failed: {e}")
+        print(f"  ✗ Conversion failed: {e}")
         raise RuntimeError(f"DICOM to NIfTI conversion failed: {e}")
     
     return result
@@ -216,10 +215,10 @@ def _check_if_gradients_needed(result: Dict, verbose: bool) -> None:
         # Check if 4D (diffusion) or 3D (structural)
         if len(shape) == 3:
             # 3D image - likely structural, gradients not needed
-            result['warnings'] = [w for w in result['warnings'] 
+            result['warnings'] = [w for w in result['warnings']
                                   if 'bval' not in w.lower() and 'bvec' not in w.lower()]
             if verbose:
-                print(f"  ℹ️  3D volume detected - gradient files not required")
+                print("    • 3D volume detected - gradient files not required")
         elif len(shape) == 4 and shape[3] > 1:
             # 4D image - definitely needs gradients
             if not result['bval_path'] or not result['bvec_path']:
@@ -228,10 +227,10 @@ def _check_if_gradients_needed(result: Dict, verbose: bool) -> None:
                     "Tractography will not be possible without bval/bvec files."
                 )
                 if verbose:
-                    print(f"  ⚠️ 4D data ({shape[3]} volumes) requires gradient files")
+                    print(f"    ⚠️ 4D data ({shape[3]} volumes) requires gradient files")
     except Exception as e:
         if verbose:
-            print(f"  ⚠️ Could not verify image dimensions: {e}")
+            print(f"    ⚠️ Could not verify image dimensions: {e}")
 
 
 def validate_conversion(
@@ -292,14 +291,13 @@ def validate_conversion(
             validation['n_volumes'] = 1
         
         if verbose:
-            print(f"\nNIfTI Validation:")
-            print(f"  Shape: {data_shape}")
-            print(f"  Voxel size: {img.header.get_zooms()[:3]}")
-            print(f"  Data type: {img.get_data_dtype()}")
+            print("    • NIfTI Validation:")
+            print(f"    ├─ Shape: {data_shape}")
+            print(f"    ├─ Voxel size: {img.header.get_zooms()[:3]}")
+            print(f"    └─ Data type: {img.get_data_dtype()}")
     except Exception as e:
         validation['issues'].append(f"Invalid NIfTI: {e}")
-        if verbose:
-            print(f"\n  ✗ Invalid NIfTI: {e}")
+        print(f"  ✗ Invalid NIfTI: {e}")
         return validation
     
     # Validate gradient files (if this is 4D diffusion data)
@@ -333,21 +331,21 @@ def validate_conversion(
                 validation['gradients_valid'] = True
             
             if verbose:
-                print(f"\nGradient Validation:")
-                print(f"  B-values: {len(bvals)}")
-                print(f"  Unique b-values: {sorted(set(bvals.astype(int)))}")
-                print(f"  Gradient vectors: {bvecs.shape}")
+                print("    • Gradient Validation:")
+                print(f"    ├─ B-values: {len(bvals)}")
+                print(f"    ├─ Unique b-values: {sorted(set(bvals.astype(int)))}")
+                print(f"    └─ Gradient vectors: {bvecs.shape}")
                 
         except Exception as e:
             validation['issues'].append(f"Error reading gradient files: {e}")
             if verbose:
-                print(f"\n  ⚠️ Error reading gradient files: {e}")
+                print(f"    ⚠️ Error reading gradient files: {e}")
     
     elif validation['n_volumes'] == 1:
         # Single volume - gradients not required
         validation['gradients_valid'] = True
         if verbose:
-            print(f"\n  Single volume - gradient files not required")
+            print("    • Single volume - gradient files not required")
     
     # Overall validity
     validation['valid'] = (validation['nifti_valid'] and 
@@ -356,11 +354,11 @@ def validate_conversion(
     
     if verbose:
         if validation['valid']:
-            print(f"\n  ✓ Conversion validation passed")
+            print("  ✓ Conversion validation passed")
         else:
-            print(f"\n  ✗ Conversion validation failed")
+            print("  ✗ Conversion validation failed")
             for issue in validation['issues']:
-                print(f"  ✗ {issue}")
+                print(f"    • {issue}")
     
     return validation
 
@@ -402,8 +400,8 @@ def convert_with_fallback(
             return result
     except Exception as e:
         if verbose:
-            print(f"dicom2nifti failed: {e}")
-            print("Attempting fallback...")
+            print(f"    ⚠️ dicom2nifti failed: {e}")
+            print("    → Attempting fallback...")
     
     # Try dcm2niix as fallback
     try:
@@ -413,7 +411,7 @@ def convert_with_fallback(
         return result
     except Exception as e:
         if verbose:
-            print(f"dcm2niix fallback also failed: {e}")
+            print(f"    ⚠️ dcm2niix fallback also failed: {e}")
     
     # Both failed
     raise RuntimeError(
@@ -446,7 +444,7 @@ def _convert_with_dcm2niix(
     output_dir.mkdir(parents=True, exist_ok=True)
     
     if verbose:
-        print(f"Using dcm2niix for conversion...")
+        print("    → Using dcm2niix for conversion...")
     
     # Run dcm2niix
     cmd = [
@@ -486,8 +484,8 @@ def _convert_with_dcm2niix(
     
     if verbose:
         if result['success']:
-            print(f"  ✓ dcm2niix conversion successful")
+            print("    ✓ dcm2niix conversion successful")
         else:
-            print(f"  ✗ dcm2niix produced no output")
+            print("    ✗ dcm2niix produced no output")
     
     return result

@@ -74,7 +74,7 @@ def save_ingest_outputs(
         subject_id = _extract_subject_id(series_analysis.name)
     
     if verbose:
-        print(f"\nOrganizing outputs for: {subject_id}")
+        print(f"\n  → Organizing outputs for: {subject_id}")
     
     # Create directory structure
     nifti_dir = output_dir / "nifti"
@@ -101,7 +101,7 @@ def save_ingest_outputs(
         outputs['nifti_path'] = dst_nii
         
         if verbose:
-            print(f"  ✓ NIfTI: {dst_nii}")
+            print(f"    ✓ NIfTI: {dst_nii}")
         
         # bval file
         if conversion_result['bval_path']:
@@ -111,7 +111,7 @@ def save_ingest_outputs(
             outputs['bval_path'] = dst_bval
             
             if verbose:
-                print(f"  ✓ bval:  {dst_bval}")
+                print(f"    ✓ bval:  {dst_bval}")
         
         # bvec file
         if conversion_result['bvec_path']:
@@ -121,7 +121,7 @@ def save_ingest_outputs(
             outputs['bvec_path'] = dst_bvec
             
             if verbose:
-                print(f"  ✓ bvec:  {dst_bvec}")
+                print(f"    ✓ bvec:  {dst_bvec}")
     else:
         # Use original locations
         outputs['nifti_path'] = conversion_result['nifti_path']
@@ -133,7 +133,7 @@ def save_ingest_outputs(
     _save_series_info(series_analysis, series_info_path)
     
     if verbose:
-        print(f"  ✓ Series info: {series_info_path}")
+        print(f"    ✓ Series info: {series_info_path}")
     
     # Save import report
     report_path = nifti_dir / f"{subject_id}_import_report.json"
@@ -143,7 +143,7 @@ def save_ingest_outputs(
     outputs['report_path'] = report_path
     
     if verbose:
-        print(f"  ✓ Report: {report_path}")
+        print(f"    ✓ Report: {report_path}")
     
     return outputs
 
@@ -255,47 +255,52 @@ def _save_import_report(
         json.dump(report, f, indent=2)
 
 
-def print_import_summary(outputs: Dict, series_analysis) -> None:
+def print_import_summary(outputs: Dict, series_analysis, verbose: bool = True) -> None:
     """
     Print a formatted summary of the import.
-    
+
     Parameters
     ----------
     outputs : Dict
         Output from save_ingest_outputs()
     series_analysis : SeriesAnalysis
         Analysis from analyze_series()
+    verbose : bool, optional
+        Print verbose details. Default is True.
     """
     print("\n" + "=" * 60)
     print("IMPORT COMPLETE")
     print("=" * 60)
-    
-    print(f"\nSubject ID: {outputs['subject_id']}")
-    print(f"Source:     {series_analysis.name}")
-    
-    print(f"\nData Properties:")
-    if series_analysis.b_values:
-        print(f"  B-values:    {series_analysis.b_values}")
-    if series_analysis.n_volumes_estimated:
-        print(f"  Volumes:     ~{series_analysis.n_volumes_estimated}")
-    if series_analysis.phase_encoding_direction:
-        print(f"  Phase Enc:   {series_analysis.phase_encoding_direction}")
-    
-    print(f"\nOutput Files:")
-    print(f"  NIfTI: {outputs['nifti_path']}")
+
+    print(f"\n  Subject ID: {outputs['subject_id']}")
+    if verbose:
+        print(f"    • Source: {series_analysis.name}")
+
+    if verbose:
+        print("\n  Data Properties:")
+        if series_analysis.b_values:
+            print(f"    • B-values:    {series_analysis.b_values}")
+        if series_analysis.n_volumes_estimated:
+            print(f"    • Volumes:     ~{series_analysis.n_volumes_estimated}")
+        if series_analysis.phase_encoding_direction:
+            print(f"    • Phase Enc:   {series_analysis.phase_encoding_direction}")
+
+    print("\n  Output Files:")
+    print(f"    • NIfTI: {outputs['nifti_path']}")
     if outputs['bval_path']:
-        print(f"  bval:  {outputs['bval_path']}")
+        print(f"    • bval:  {outputs['bval_path']}")
     if outputs['bvec_path']:
-        print(f"  bvec:  {outputs['bvec_path']}")
-    print(f"  Report: {outputs['report_path']}")
-    
-    print(f"\n{series_analysis.recommendation}")
-    
+        print(f"    • bvec:  {outputs['bvec_path']}")
+    if verbose:
+        print(f"    • Report: {outputs['report_path']}")
+
+    print(f"\n  {series_analysis.recommendation}")
+
     if series_analysis.warnings:
-        print(f"\n  Warnings:")
+        print("\n  Warnings:")
         for w in series_analysis.warnings:
-            print(f"  ⚠️ {w}")
-    
+            print(f"    ⚠️ {w}")
+
     print("=" * 60)
 
 

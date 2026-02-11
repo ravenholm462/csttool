@@ -37,10 +37,9 @@ def load_and_mask(nii_dirname, nii_fname, visualize=False, verbose=False):
     img = nii
 
     if verbose:
-        print(f"Loaded dataset: {nii_dirname}/{nii_fname}")
-        print(f"    Data shape: {data.shape}")
-        print(f"    Affine:\n{affine}")
-        print(f"    Gradient table: {len(gtab.bvals)} volumes")
+        print(f"  → Loaded dataset: {nii_dirname}/{nii_fname}")
+        print(f"    • Data shape: {data.shape}")
+        print(f"    • Gradient table: {len(gtab.bvals)} volumes")
 
     # background_segmentation(data, gtab=None, median_radius=2, numpass=1, autocrop=False)
     # Original used visualize=visualize, but new one doesn't support visualize arg directly in computation 
@@ -52,8 +51,7 @@ def load_and_mask(nii_dirname, nii_fname, visualize=False, verbose=False):
     )
 
     if verbose:
-        print("Brain mask generated.")
         mask_coverage = brain_mask.sum() / brain_mask.size * 100
-        print(f"    Brain mask: {brain_mask.sum():,} voxels ({mask_coverage:.1f}%)")
+        print(f"    • Brain mask: {brain_mask.sum():,} voxels ({mask_coverage:.1f}%)")
 
     return data, affine, img, gtab, masked_data, brain_mask

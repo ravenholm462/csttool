@@ -52,41 +52,41 @@ def save_tracking_outputs(streamlines, img, fa, md, affine, out_dir, stem, rd=No
     outputs['tractogram'] = tractogram_path
     
     if verbose:
-        print(f"Tractogram: {tractogram_path}")
-    
+        print(f"  ✓ Saved: {tractogram_path}")
+
     # 2. Save FA map
     fa_path = scalar_dir / f"{stem}_fa.nii.gz"
     nib.save(nib.Nifti1Image(fa.astype(np.float32), affine), fa_path)
     outputs['fa_map'] = fa_path
-    
+
     if verbose:
-        print(f"FA map: {fa_path}")
-    
+        print(f"  ✓ Saved: {fa_path}")
+
     # 3. Save MD map
     md_path = scalar_dir / f"{stem}_md.nii.gz"
     nib.save(nib.Nifti1Image(md.astype(np.float32), affine), md_path)
     outputs['md_map'] = md_path
-    
+
     if verbose:
-        print(f"MD map: {md_path}")
-    
+        print(f"  ✓ Saved: {md_path}")
+
     # 4. Save RD map (if provided)
     if rd is not None:
         rd_path = scalar_dir / f"{stem}_rd.nii.gz"
         nib.save(nib.Nifti1Image(rd.astype(np.float32), affine), rd_path)
         outputs['rd_map'] = rd_path
-        
+
         if verbose:
-            print(f"RD map: {rd_path}")
-    
+            print(f"  ✓ Saved: {rd_path}")
+
     # 5. Save AD map (if provided)
     if ad is not None:
         ad_path = scalar_dir / f"{stem}_ad.nii.gz"
         nib.save(nib.Nifti1Image(ad.astype(np.float32), affine), ad_path)
         outputs['ad_map'] = ad_path
-        
+
         if verbose:
-            print(f"AD map: {ad_path}")
+            print(f"  ✓ Saved: {ad_path}")
     
     # 6. Compute statistics for report
     lengths = np.array([length(s) for s in streamlines]) if len(streamlines) > 0 else np.array([])
@@ -171,6 +171,6 @@ def save_tracking_outputs(streamlines, img, fa, md, affine, out_dir, stem, rd=No
     outputs['report'] = report_path
     
     if verbose:
-        print(f"Report: {report_path}")
+        print(f"  ✓ Saved: {report_path}")
     
     return outputs

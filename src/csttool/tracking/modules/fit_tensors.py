@@ -25,39 +25,41 @@ def fit_tensors(data, gtab, brain_mask, fa_thresh=0.2, visualize=False, verbose=
     
     # Fit tensor model
     if verbose:
-        print("Fitting tensor model...")
-    
+        print("  → Fitting tensor model...")
+
     tenmodel = TensorModel(gtab)
     tenfit = tenmodel.fit(data, mask=brain_mask)
-    
+
     # Compute scalar maps with NaN handling
     # Current approach: set all implausible values to 0. Revise if results not satisfactory.
     fa = np.nan_to_num(tenfit.fa, nan=0.0, posinf=0.0, neginf=0.0)
     md = np.nan_to_num(mean_diffusivity(tenfit.evals), nan=0.0, posinf=0.0, neginf=0.0)
     rd = np.nan_to_num(radial_diffusivity(tenfit.evals), nan=0.0, posinf=0.0, neginf=0.0)
     ad = np.nan_to_num(axial_diffusivity(tenfit.evals), nan=0.0, posinf=0.0, neginf=0.0)
-    
+
     if verbose:
         fa_brain = fa[brain_mask > 0]
         md_brain = md[brain_mask > 0]
         rd_brain = rd[brain_mask > 0]
         ad_brain = ad[brain_mask > 0]
-        print(f"    FA in brain: mean={fa_brain.mean():.3f}, std={fa_brain.std():.3f}")
-        print(f"    MD in brain: mean={md_brain.mean():.2e}, std={md_brain.std():.2e}")
-        print(f"    RD in brain: mean={rd_brain.mean():.2e}, std={rd_brain.std():.2e}")
-        print(f"    AD in brain: mean={ad_brain.mean():.2e}, std={ad_brain.std():.2e}")
+        print("    • Tensor metrics:")
+        print(f"    ├─ FA mean: {fa_brain.mean():.3f}, std: {fa_brain.std():.3f}")
+        print(f"    ├─ MD mean: {md_brain.mean():.2e}, std: {md_brain.std():.2e}")
+        print(f"    ├─ RD mean: {rd_brain.mean():.2e}, std: {rd_brain.std():.2e}")
+        print(f"    └─ AD mean: {ad_brain.mean():.2e}, std: {ad_brain.std():.2e}")
     
     # Create white matter mask
     white_matter = (fa > fa_thresh) & brain_mask
     wm_before_dilation = white_matter.sum()
-    
+
     # Dilate to reach cortical grey matter interface
     white_matter = binary_dilation(white_matter, iterations=1)
     wm_after_dilation = white_matter.sum()
-    
+
     if verbose:
-        print(f"    White matter (FA > {fa_thresh}): {wm_before_dilation:,} voxels")
-        print(f"    After dilation: {wm_after_dilation:,} voxels (+{wm_after_dilation - wm_before_dilation:,})")
+        print(f"    • White matter (FA > {fa_thresh}):")
+        print(f"    ├─ Before dilation: {wm_before_dilation:,} voxels")
+        print(f"    └─ After dilation:  {wm_after_dilation:,} voxels (+{wm_after_dilation - wm_before_dilation:,})")
     
     # Visualization
     if visualize:
