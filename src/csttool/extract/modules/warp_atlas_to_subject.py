@@ -130,34 +130,35 @@ def fetch_harvard_oxford(verbose=True):
         )
     
     if verbose:
-        print("Fetching Harvard-Oxford atlas from nilearn...")
-    
+        print("  → Fetching Harvard-Oxford atlas from nilearn...")
+
     # Fetch cortical atlas (contains precentral gyrus)
     if verbose:
-        print("    Downloading cortical atlas...")
+        print("    • Downloading cortical atlas...")
     cort_atlas = datasets.fetch_atlas_harvard_oxford(
         'cort-maxprob-thr25-1mm',
         # symmetric_split=False
     )
-    
+
     # Fetch subcortical atlas (contains brainstem)
     if verbose:
-        print("    Downloading subcortical atlas...")
+        print("    • Downloading subcortical atlas...")
     subcort_atlas = datasets.fetch_atlas_harvard_oxford(
         'sub-maxprob-thr25-1mm'
     )
-    
+
     # Load the atlas images
     cort_img = cort_atlas.maps
     subcort_img = subcort_atlas.maps
-    
+
     if verbose:
         print(f"    ✓ Cortical atlas: {cort_atlas.maps}")
         print(f"    ✓ Subcortical atlas: {subcort_atlas.maps}")
-        print(f"    Cortical shape: {cort_img.shape}")
-        print(f"    Subcortical shape: {subcort_img.shape}")
-        print(f"    Cortical labels: {len(cort_atlas.labels)} regions")
-        print(f"    Subcortical labels: {len(subcort_atlas.labels)} regions")
+    if verbose:
+        print(f"    • Cortical shape: {cort_img.shape}")
+        print(f"    • Subcortical shape: {subcort_img.shape}")
+        print(f"    • Cortical labels: {len(cort_atlas.labels)} regions")
+        print(f"    • Subcortical labels: {len(subcort_atlas.labels)} regions")
     
     return {
         'cortical_path': str(cort_atlas.maps),
@@ -193,18 +194,18 @@ def split_atlas_hemispheres_mni(atlas_img, verbose=True):
         Atlas image with separate L/R labels.
     """
     if verbose:
-        print("\nSplitting atlas hemispheres in MNI space...")
-    
+        print("  → Splitting atlas hemispheres in MNI space...")
+
     # Validation: Check orientation is RAS
     # We rely on X axis being the first dimension and positive direction being Right
     current_ornt = nib.io_orientation(atlas_img.affine)
     expected_ornt = nib.orientations.axcodes2ornt(('R', 'A', 'S'))
-    
+
     if not np.array_equal(current_ornt, expected_ornt):
         # Allow L, A, S as well, just need to know which is X
         axcodes = nib.orientations.aff2axcodes(atlas_img.affine)
         if verbose:
-            print(f"    Atlas orientation: {axcodes}")
+            print(f"    • Atlas orientation: {axcodes}")
         
         if axcodes != ('R', 'A', 'S'):
              raise ValueError(f"Atlas must be in RAS orientation for splitting. Got: {axcodes}")
@@ -259,12 +260,13 @@ def split_atlas_hemispheres_mni(atlas_img, verbose=True):
     if verbose:
         n_modified = np.sum(mask_to_modify)
         print(f"    ✓ Modified {n_modified:,} voxels in Right Hemisphere (Offset +{offset})")
-        
+
+    if verbose:
         # Check label 7 specifically
         orig_7 = np.sum(data == 7)
         new_7 = np.sum(modified_data == 7)
         new_107 = np.sum(modified_data == 107)
-        print(f"    Label 7 (Total): {orig_7} -> Left: {new_7}, Right: {new_107}")
+        print(f"    • Label 7 split: Total={orig_7}, Left={new_7}, Right={new_107}")
         
     return nib.Nifti1Image(modified_data, affine, atlas_img.header)
 
@@ -299,8 +301,8 @@ def resample_atlas_to_mni_grid(atlas_img, mni_shape, mni_affine, verbose=True):
     
     
     if verbose:
-        print(f"    Resampling atlas from {atlas_data.shape} to {mni_shape}...")
-    
+        print(f"    • Resampling atlas from {atlas_data.shape} to {mni_shape}...")
+
     # Create a proxy image for the MNI template (target geometry)
     # We only need the grid definition (shape + affine), not the data
     # (Creating a dummy image is cheap)
@@ -315,9 +317,9 @@ def resample_atlas_to_mni_grid(atlas_img, mni_shape, mni_affine, verbose=True):
         interpolation='nearest',
         copy_header=True
     )
-    
+
     resampled_data = resampled_img.get_fdata()
-    
+
     if verbose:
         orig_labels = np.unique(atlas_data[atlas_data > 0])
         new_labels = np.unique(resampled_data[resampled_data > 0])
@@ -381,8 +383,8 @@ def warp_atlas_to_subject(
     
     if verbose:
         unique_labels = np.unique(atlas_data[atlas_data > 0])
-        print(f"    • Running fixed warp function for {len(unique_labels)} labels")
-        print(f"    → Warping atlas to subject space...")
+        print(f"  → Warping atlas to subject space...")
+    if verbose:
         print(f"    • Atlas shape: {atlas_shape}")
         print(f"    • Target shape: {subject_shape}")
         print(f"    • Unique labels: {len(unique_labels)}")
@@ -413,11 +415,13 @@ def warp_atlas_to_subject(
         warped_unique = np.unique(warped_atlas[warped_atlas > 0])
         print(f"    • Warped labels: {len(warped_unique)}")
 
+    if verbose:
         # Sanity check: labels should be preserved
         orig_labels = np.unique(atlas_img.get_fdata()[atlas_img.get_fdata() > 0])
         if len(warped_unique) != len(orig_labels):
             print(f"    ⚠️ Label count changed ({len(orig_labels)} → {len(warped_unique)})")
 
+    if verbose:
         # QC: Report motor ROI centroids and bounding boxes (if motor labels present)
         if 7 in warped_unique and 107 in warped_unique:
             left_coords = np.array(np.where(warped_atlas == 7)).T
@@ -430,9 +434,9 @@ def warp_atlas_to_subject(
             left_world = subject_affine @ np.append(left_centroid, 1)
             right_world = subject_affine @ np.append(right_centroid, 1)
 
-            print(f"\n    • Motor ROI Diagnostics:")
-            print(f"    • Left centroid (world):  X={left_world[0]:.1f}, Y={left_world[1]:.1f}, Z={left_world[2]:.1f}")
-            print(f"    • Right centroid (world): X={right_world[0]:.1f}, Y={right_world[1]:.1f}, Z={right_world[2]:.1f}")
+            print("    • Motor ROI Diagnostics:")
+            print(f"    ├─ Left centroid (world):  X={left_world[0]:.1f}, Y={left_world[1]:.1f}, Z={left_world[2]:.1f}")
+            print(f"    └─ Right centroid (world): X={right_world[0]:.1f}, Y={right_world[1]:.1f}, Z={right_world[2]:.1f}")
 
             # Check for obvious issues
             if left_world[0] > 0:
