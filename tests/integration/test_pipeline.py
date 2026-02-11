@@ -89,11 +89,21 @@ def test_step_by_step_pipeline(synthetic_nifti_data, tmp_path):
     extract_dir = out_dir / "cst"
     # We need to mock registration to avoid MNI fetching/alignment issues likely to fail on random data
     # We'll mock 'csttool.cli.cmd_extract' internals or just 'register_mni_to_subject'
-    
+
     with patch('csttool.extract.modules.registration.register_mni_to_subject') as mock_reg, \
          patch('csttool.extract.modules.registration.load_mni_template') as mock_load, \
-         patch('csttool.extract.modules.passthrough_filtering.extract_cst_passthrough') as mock_extract:
-         
+         patch('csttool.extract.modules.passthrough_filtering.extract_cst_passthrough') as mock_extract, \
+         patch('csttool.extract.modules.coordinate_validation.validate_tractogram_coordinates') as mock_validate:
+
+        # Mock coordinate validation to always pass
+        mock_validate.return_value = {
+            'valid': True,
+            'warnings': [],
+            'errors': [],
+            'tractogram_info': {'n_streamlines': 81},
+            'reference_info': {'shape': (10, 10, 10), 'orientation': 'RAS', 'bounds_mm': {}}
+        }
+
         # Mock extraction result
         dummy_streamlines = [np.zeros((10, 3)) for _ in range(5)]
         
@@ -209,8 +219,18 @@ def test_full_run_command(mock_convert, synthetic_dicom_dir, tmp_path):
     # Mock registration and extraction
     with patch('csttool.extract.modules.registration.register_mni_to_subject') as mock_reg, \
          patch('csttool.extract.modules.registration.load_mni_template') as mock_load, \
-         patch('csttool.extract.modules.passthrough_filtering.extract_cst_passthrough') as mock_extract:
-         
+         patch('csttool.extract.modules.passthrough_filtering.extract_cst_passthrough') as mock_extract, \
+         patch('csttool.extract.modules.coordinate_validation.validate_tractogram_coordinates') as mock_validate:
+
+        # Mock coordinate validation to always pass
+        mock_validate.return_value = {
+            'valid': True,
+            'warnings': [],
+            'errors': [],
+            'tractogram_info': {'n_streamlines': 81},
+            'reference_info': {'shape': (10, 10, 10), 'orientation': 'RAS', 'bounds_mm': {}}
+        }
+
         # Mock extraction result
         # Streamlines should be a list of arrays (or Streamlines object), not a tuple
         dummy_streamlines = [np.zeros((10, 3)) for _ in range(5)]

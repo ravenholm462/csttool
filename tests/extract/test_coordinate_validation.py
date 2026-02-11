@@ -242,4 +242,6 @@ def test_verbose_mode_prints_summary(fa_image, valid_tractogram_world, capsys):
     assert 'COORDINATE VALIDATION' in captured.out
     assert 'Reference:' in captured.out
     assert 'Tractogram:' in captured.out
-    assert '[OK]' in captured.out or '[FAIL]' in captured.out
+    # Check for new format: ✓ or ✗ symbols
+    assert ('✓ Coordinate validation passed' in captured.out or
+            '✗ Coordinate validation failed:' in captured.out)
