@@ -12,6 +12,8 @@
   - [x] Fix warning print statements
   - [x] Format all print statements throughout the codebase so they are unified and minimal.
 
+- [ ] Make all atlases csttool is using available in the repo directly, following the example of FMRIB58_FA template
+
 ## CLI
 
 - [x] `cli.py` is an absolute monster of a script. Needs refactoring.
