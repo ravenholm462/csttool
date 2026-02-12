@@ -36,11 +36,13 @@ csttool extract \
 ### Parameters
 
 #### Required Parameters
+
 - `--tractogram PATH`: Path to whole-brain tractogram file (.trk format)
 - `--fa PATH`: Path to FA (Fractional Anisotropy) map (.nii or .nii.gz)
 - `--out PATH`: Output directory for results
 
 #### Optional Parameters
+
 - `--subject-id STR`: Subject identifier for output naming (default: derived from input files)
 - `--extraction-method {passthrough,endpoint}`: Extraction method (default: `passthrough`)
   - Note: `roi-seeded` method requires raw DWI and is only available via `csttool run`
@@ -57,25 +59,31 @@ csttool extract \
 ### Extraction Methods
 
 #### 1. Passthrough (Default)
+
 ```bash
 csttool extract --tractogram whole_brain.trk --fa fa.nii.gz --out results --extraction-method passthrough
 ```
+
 - **Input**: Whole-brain tractogram (.trk)
 - **Logic**: Keeps streamlines that pass through *both* the Brainstem and Primary Motor Cortex ROIs
 - **Use Case**: Standard post-hoc filtering; more permissive than endpoint method
 
 #### 2. Endpoint
+
 ```bash
 csttool extract --tractogram whole_brain.trk --fa fa.nii.gz --out results --extraction-method endpoint
 ```
+
 - **Input**: Whole-brain tractogram (.trk)
 - **Logic**: Keeps only streamlines where endpoints (first/last points) fall within the ROIs
 - **Use Case**: Stricter anatomical constraints; more selective filtering
 
 #### 3. ROI-Seeded
+
 ```bash
 csttool run --dwi dwi.nii.gz --bval dwi.bval --bvec dwi.bvec --out results --extraction-method roi-seeded
 ```
+
 - **Input**: Preprocessed DWI + FA map (requires `csttool run`, not `csttool extract`)
 - **Logic**: Seeds tractography directly from Motor Cortex ROIs; filters by Brainstem traversal
 - **Parameters**:
@@ -87,7 +95,9 @@ csttool run --dwi dwi.nii.gz --bval dwi.bval --bvec dwi.bvec --out results --ext
 ### Algorithm Pipeline
 
 #### Step 0: Coordinate Validation (Automatic)
+
 **New in version 0.4.0**: Validates tractogram coordinates match FA space to prevent silent failures:
+
 - **Bounding box check**: Verifies streamlines fall within FA volume
 - **Unit detection**: Flags tractograms in voxel space (0-256 range) instead of world coordinates (mm)
 - **Orientation check**: Verifies RAS coordinate consistency
@@ -97,7 +107,9 @@ If validation fails, extraction stops with an error. This critical check prevent
 **Bypass (not recommended)**: Use `--skip-coordinate-validation` to skip this check, but be aware this can lead to silent failures.
 
 #### Step 1: Registration
+
 Registers the MNI152 template to the subject's FA map using:
+
 - **Affine registration**: Coarse alignment (12 DOF)
 - **SyN registration**: Non-linear deformation field
 - **Control**: Use `--fast-registration` for reduced iterations (testing only)
@@ -105,13 +117,17 @@ Registers the MNI152 template to the subject's FA map using:
   - Fast: `[1000, 100, 10]` affine, `[5, 5, 3]` SyN
 
 #### Step 2: Atlas Warping
+
 Applies computed transforms to Harvard-Oxford atlases:
+
 - **Cortical Atlas**: 48 cortical regions
 - **Subcortical Atlas**: 21 subcortical structures
 - Both atlases are warped to match the subject's FA space
 
 #### Step 3: ROI Creation
+
 Extracts and prepares anatomical ROIs:
+
 - **Brainstem**: Extracted from Subcortical atlas
   - Dilated by `--dilate-brainstem` iterations (default: `2`)
 - **Motor Cortex (Left & Right)**: Precentral Gyrus from Cortical atlas
@@ -119,14 +135,18 @@ Extracts and prepares anatomical ROIs:
 - **Purpose**: Dilation ensures ROIs overlap with white matter streamlines
 
 #### Step 4: Streamline Filtering
+
 Applies extraction logic based on selected method:
+
 - **Passthrough**: Streamlines traversing both ROIs
 - **Endpoint**: Streamlines with endpoints in ROIs
 - Length filtering: `--min-length` to `--max-length` (default: 30-200mm)
 - Bilateral separation: Automatically splits into left/right CST
 
 #### Step 5: Output Generation
+
 Saves extracted tractograms and metadata:
+
 - **Tractograms**: `{subject_id}_cst_left.trk`, `{subject_id}_cst_right.trk`, `{subject_id}_cst_combined.trk`
 - **Report**: JSON file with extraction statistics
 - **Visualizations**: Optional PNG/HTML plots (`--save-visualizations`)
@@ -136,7 +156,7 @@ Saves extracted tractograms and metadata:
 
 After successful extraction, the output directory contains:
 
-```
+```bash
 extraction_results/
 ├── {subject_id}_cst_left.trk          # Left hemisphere CST
 ├── {subject_id}_cst_right.trk         # Right hemisphere CST
@@ -150,7 +170,7 @@ extraction_results/
 
 If `--save-visualizations` is used, additional QC visualization files are generated:
 
-```
+```bash
 visualizations/
 ├── {subject_id}_registration_qc.png         # MNI-to-subject alignment check
 ├── {subject_id}_roi_masks.png               # ROI placement on FA background
@@ -217,15 +237,18 @@ Extraction rate: 1.01%
 ## Troubleshooting
 
 ### "Coordinate validation failed"
+
 **New in version 0.4.0**: This critical error prevents silent failures caused by coordinate system mismatches.
 
 **Error message example**:
-```
+
+```bash
 Error: Coordinate validation failed. This can lead to incorrect results.
 Errors: Coordinate space mismatch detected: values suggest voxel indices, not mm
 ```
 
 **Solution**:
+
 1. Verify your tractogram is in world coordinates (mm), not voxel space
 2. Convert if needed (see [Data Requirements - Coordinate Space](../../getting-started/data-requirements.md#coordinate-space-requirements))
 3. Ensure tractogram and FA map are from the same processing pipeline
@@ -233,23 +256,28 @@ Errors: Coordinate space mismatch detected: values suggest voxel indices, not mm
 **Only if absolutely necessary**: Use `--skip-coordinate-validation` to bypass this check, but be aware this can produce anatomically plausible but incorrect results.
 
 ### "roi-seeded method requires raw DWI data"
+
 The ROI-seeded extraction method is not available in `csttool extract`. Use `csttool run` instead:
+
 ```bash
 csttool run --dwi dwi.nii.gz --bval dwi.bval --bvec dwi.bvec --extraction-method roi-seeded
 ```
 
 ### Low extraction rate (< 0.5%)
+
 - Increase ROI dilation: `--dilate-brainstem 3 --dilate-motor 2`
 - Try passthrough method instead of endpoint
 - Check that tractogram and FA are in the same space
 - Verify whole-brain tractogram quality
 
 ### Very high extraction rate (> 5%)
+
 - Decrease ROI dilation: `--dilate-brainstem 1 --dilate-motor 0`
 - Try endpoint method for stricter filtering
 - Adjust length constraints: `--min-length 40 --max-length 180`
 
 ### Registration failures
+
 - Ensure FA map has good contrast and quality
 - Try `--fast-registration` first to verify pipeline, then run full registration
 - Check that FA values are in expected range (0-1)
