@@ -84,6 +84,34 @@ csttool version 0.3.1
 
 ---
 
+## Download Atlas Data
+
+CST extraction requires FSL-licensed anatomical atlases. Download them using:
+
+```bash
+csttool fetch-data
+```
+
+This will:
+
+- Display the FSL non-commercial license terms
+- Prompt for acceptance
+- Download FMRIB58_FA template and Harvard-Oxford atlases (~2 MB)
+- Verify checksums and install to user data directory
+
+!!! info "License Requirement"
+    The FSL atlases are licensed for **non-commercial use only**. By downloading, you confirm your use is for academic research or educational purposes. For commercial use, you must obtain a commercial license from the University of Oxford.
+
+For automated/scripted installations:
+
+```bash
+csttool fetch-data --accept-fsl-license
+```
+
+See the [fetch-data reference](../reference/cli/fetch-data.md) for detailed information.
+
+---
+
 ## Python Dependencies
 
 csttool installs the following packages automatically:

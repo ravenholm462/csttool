@@ -11,6 +11,7 @@ import nibabel as nib
 from pathlib import Path
 from nilearn import image
 from nibabel.orientations import apply_orientation, ornt_transform, inv_ornt_aff
+from ...data.loader import get_harvard_oxford_path
 
 
 # Harvard-Oxford label definitions for CST extraction
@@ -91,16 +92,18 @@ def reorient_to_original(data, reorientation_transform):
 
 def fetch_harvard_oxford(verbose=True):
     """
-    Fetch Harvard-Oxford atlases via nilearn.
-    
-    Downloads both cortical and subcortical parcellations in MNI152
+    Load Harvard-Oxford atlases from user data directory.
+
+    Loads both cortical and subcortical parcellations in MNI152
     space at 1mm resolution.
-    
+
+    The atlases must be fetched using 'csttool fetch-data --accept-fsl-license'.
+
     Parameters
     ----------
     verbose : bool, optional
         Print progress information. Default is True.
-        
+
     Returns
     -------
     atlases : dict
@@ -109,106 +112,93 @@ def fetch_harvard_oxford(verbose=True):
         - 'subcortical_path': Path to subcortical atlas NIfTI
         - 'cortical_img': Loaded cortical NIfTI image
         - 'subcortical_img': Loaded subcortical NIfTI image
-        
+
+    Raises
+    ------
+    DataNotInstalledError
+        If atlases are not found in user data directory
+
     Notes
     -----
-    Requires nilearn: `pip install nilearn`
-    
-    First call will download atlas files to nilearn's cache directory
-    (~/.nilearn/data/).
-    
+    Run 'csttool fetch-data --accept-fsl-license' to download FSL-licensed
+    atlas data.
+
     Atlas variants:
     - 'cort-maxprob-thr25-1mm': Cortical, max probability, 25% threshold
     - 'sub-maxprob-thr25-1mm': Subcortical, max probability, 25% threshold
     """
-    try:
-        from nilearn import datasets
-    except ImportError:
-        raise ImportError(
-            "nilearn is required for Harvard-Oxford atlas. "
-            "Install with: pip install nilearn"
-        )
-    
     if verbose:
-        print("  → Fetching Harvard-Oxford atlas from nilearn...")
+        print("  → Loading Harvard-Oxford atlases...")
 
-    # Fetch cortical atlas (contains precentral gyrus)
-    if verbose:
-        print("    • Downloading cortical atlas...")
-    cort_atlas = datasets.fetch_atlas_harvard_oxford(
-        'cort-maxprob-thr25-1mm',
-        # symmetric_split=False
-    )
-
-    # Fetch subcortical atlas (contains brainstem)
-    if verbose:
-        print("    • Downloading subcortical atlas...")
-    subcort_atlas = datasets.fetch_atlas_harvard_oxford(
-        'sub-maxprob-thr25-1mm'
-    )
+    # Get atlas paths from user data directory
+    cort_path = get_harvard_oxford_path("cortical", "1mm")
+    subcort_path = get_harvard_oxford_path("subcortical", "1mm")
 
     # Load the atlas images
-    cort_img = cort_atlas.maps
-    subcort_img = subcort_atlas.maps
+    if verbose:
+        print("    • Loading cortical atlas...")
+    cort_img = nib.load(cort_path)
 
     if verbose:
-        print(f"    ✓ Cortical atlas: {cort_atlas.maps}")
-        print(f"    ✓ Subcortical atlas: {subcort_atlas.maps}")
+        print("    • Loading subcortical atlas...")
+    subcort_img = nib.load(subcort_path)
+
     if verbose:
+        print(f"    ✓ Cortical atlas: {cort_path}")
+        print(f"    ✓ Subcortical atlas: {subcort_path}")
         print(f"    • Cortical shape: {cort_img.shape}")
         print(f"    • Subcortical shape: {subcort_img.shape}")
-        print(f"    • Cortical labels: {len(cort_atlas.labels)} regions")
-        print(f"    • Subcortical labels: {len(subcort_atlas.labels)} regions")
-    
+
     return {
-        'cortical_path': str(cort_atlas.maps),
-        'subcortical_path': str(subcort_atlas.maps),
+        'cortical_path': str(cort_path),
+        'subcortical_path': str(subcort_path),
         'cortical_img': cort_img,
         'subcortical_img': subcort_img,
-        'cortical_labels': cort_atlas.labels,
-        'subcortical_labels': subcort_atlas.labels
     }
 
 
 def split_atlas_hemispheres_mni(atlas_img, verbose=True):
     """
     Split atlas labels into Left and Right hemispheres in MNI space.
-    
+
     Modifies label values in the Right Hemisphere (X >= 0) by adding an offset of 100.
     Left Hemisphere labels remain unchanged.
-    
+
     This must be done in MNI space *before* warping to subject space, because
     non-linear registration warps the anatomical midline. Splitting at X=0
     in subject space is inaccurate due to these warps and potential subject offsets.
-    
+
     Parameters
     ----------
     atlas_img : Nifti1Image
-        Atlas image in MNI space (must be RAS).
+        Atlas image in MNI space (will be reoriented to RAS if needed).
     verbose : bool, optional
         Print progress information.
-        
+
     Returns
     -------
     modified_img : Nifti1Image
-        Atlas image with separate L/R labels.
+        Atlas image with separate L/R labels in original orientation.
     """
     if verbose:
         print("  → Splitting atlas hemispheres in MNI space...")
 
-    # Validation: Check orientation is RAS
-    # We rely on X axis being the first dimension and positive direction being Right
-    current_ornt = nib.io_orientation(atlas_img.affine)
-    expected_ornt = nib.orientations.axcodes2ornt(('R', 'A', 'S'))
+    # Check current orientation
+    axcodes = nib.orientations.aff2axcodes(atlas_img.affine)
+    if verbose:
+        print(f"    • Atlas orientation: {axcodes}")
 
-    if not np.array_equal(current_ornt, expected_ornt):
-        # Allow L, A, S as well, just need to know which is X
-        axcodes = nib.orientations.aff2axcodes(atlas_img.affine)
+    # Reorient to RAS if needed
+    if axcodes != ('R', 'A', 'S'):
         if verbose:
-            print(f"    • Atlas orientation: {axcodes}")
-        
-        if axcodes != ('R', 'A', 'S'):
-             raise ValueError(f"Atlas must be in RAS orientation for splitting. Got: {axcodes}")
+            print(f"    • Reorienting from {axcodes} to RAS for processing...")
+        atlas_img = nib.as_closest_canonical(atlas_img)
+        axcodes_new = nib.orientations.aff2axcodes(atlas_img.affine)
+        if axcodes_new != ('R', 'A', 'S'):
+            raise ValueError(
+                f"Failed to reorient atlas to RAS. Got {axcodes_new} instead. "
+                "This atlas may have an unusual orientation."
+            )
     
     data = atlas_img.get_fdata().astype(np.int32)
     affine = atlas_img.affine
@@ -315,7 +305,8 @@ def resample_atlas_to_mni_grid(atlas_img, mni_shape, mni_affine, verbose=True):
         source_img=atlas_img,
         target_img=mni_proxy,
         interpolation='nearest',
-        copy_header=True
+        copy_header=True,
+        force_resample=True
     )
 
     resampled_data = resampled_img.get_fdata()

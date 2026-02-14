@@ -1,0 +1,47 @@
+FMRIB Software Library (FSL) License
+
+Copyright (C) 1999-2024, University of Oxford (FMRIB Centre)
+
+The FMRIB Software Library (FSL) and associated data are available for
+non-commercial use only.
+
+IMPORTANT NOTICE: The following data files are subject to FSL licensing terms:
+- FMRIB58_FA template and skeleton
+- Harvard-Oxford cortical and subcortical atlases
+
+DEFINITION OF NON-COMMERCIAL USE:
+Commercial use is any use, reproduction, modification, or distribution that is
+primarily intended for or directed toward commercial advantage or monetary
+compensation. This includes, without limitation:
+- Any use in connection with the development, testing, validation, or
+  commercialization of a commercial product or service
+- Any use in a commercial organization where the work contributes to the
+  organization's commercial activities
+- Any use that results in monetary compensation
+
+If you are unsure whether your use constitutes commercial use, you should
+contact the University of Oxford for clarification.
+
+NON-COMMERCIAL LICENSE GRANT:
+For non-commercial use, you may copy, modify, and distribute the data files,
+provided that:
+1. The above copyright notice and this permission notice appear in all copies
+2. Any modifications are clearly marked as such
+3. You do not represent the data as your own work
+
+COMMERCIAL LICENSING:
+For commercial use, you must obtain a separate commercial license from the
+University of Oxford. Contact:
+  FMRIB Centre
+  John Radcliffe Hospital
+  Headington
+  Oxford OX3 9DU, UK
+  Email: fsl@fmrib.ox.ac.uk
+
+DISCLAIMER:
+This data is provided "as is" without warranty of any kind, either express or
+implied, including but not limited to the implied warranties of merchantability
+and fitness for a particular purpose. The University of Oxford shall not be
+liable for any damages arising from the use of this data.
+
+Full FSL license: https://fsl.fmrib.ox.ac.uk/fsl/docs/license.html

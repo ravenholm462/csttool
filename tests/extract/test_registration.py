@@ -9,20 +9,19 @@ from csttool.extract.modules.registration import (
 
 def test_load_mni_template():
     """Test MNI template loading (mocked)."""
-    # Fix: Patch nilearn.datasets.load_mni152_template instead of non-existent local functions
-    with patch('csttool.extract.modules.registration.datasets.load_mni152_template') as mock_load:
-        # Mock what dipy returns (img, data, affine) ?? or just img?
-        # csttool implementation: mni_img = load_mni152_template()
-        # then mni_data = mni_img.get_fdata(), mni_affine = mni_img.affine
+    # Mock the bundled data loader
+    with patch('csttool.extract.modules.registration.load_bundled_mni152') as mock_load:
+        # Mock returns (img, data, affine) tuple
         mock_img = MagicMock()
-        mock_img.get_fdata.return_value = np.zeros((10,10,10))
-        mock_img.affine = np.eye(4)
-        mock_load.return_value = mock_img
-        
+        mock_data = np.zeros((10,10,10))
+        mock_affine = np.eye(4)
+        mock_load.return_value = (mock_img, mock_data, mock_affine)
+
         img, data, affine = load_mni_template(contrast="T1")
-        
+
         assert data.shape == (10,10,10)
         assert affine.shape == (4,4)
+        mock_load.assert_called_once()
 
 def test_compute_affine_registration(synthetic_image_data, synthetic_affine):
     """Test affine registration wrapper."""

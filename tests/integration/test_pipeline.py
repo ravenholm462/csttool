@@ -92,6 +92,7 @@ def test_step_by_step_pipeline(synthetic_nifti_data, tmp_path):
 
     with patch('csttool.extract.modules.registration.register_mni_to_subject') as mock_reg, \
          patch('csttool.extract.modules.registration.load_mni_template') as mock_load, \
+         patch('csttool.extract.modules.warp_atlas_to_subject.fetch_harvard_oxford') as mock_atlas, \
          patch('csttool.extract.modules.passthrough_filtering.extract_cst_passthrough') as mock_extract, \
          patch('csttool.extract.modules.coordinate_validation.validate_tractogram_coordinates') as mock_validate:
 
@@ -137,7 +138,18 @@ def test_step_by_step_pipeline(synthetic_nifti_data, tmp_path):
         
         # Mock template loading
         mock_load.return_value = (MagicMock(), np.zeros((10,10,10)), np.eye(4))
-        
+
+        # Mock Harvard-Oxford atlas loading with real nibabel images
+        mock_cort_img = nib.Nifti1Image(np.zeros((10,10,10)), np.eye(4))
+        mock_subcort_img = nib.Nifti1Image(np.zeros((10,10,10)), np.eye(4))
+
+        mock_atlas.return_value = {
+            'cortical_path': '/mock/path/cortical.nii.gz',
+            'subcortical_path': '/mock/path/subcortical.nii.gz',
+            'cortical_img': mock_cort_img,
+            'subcortical_img': mock_subcort_img,
+        }
+
         assert run_cli([
             'extract',
             '--tractogram', str(trk_file),
@@ -219,6 +231,7 @@ def test_full_run_command(mock_convert, synthetic_dicom_dir, tmp_path):
     # Mock registration and extraction
     with patch('csttool.extract.modules.registration.register_mni_to_subject') as mock_reg, \
          patch('csttool.extract.modules.registration.load_mni_template') as mock_load, \
+         patch('csttool.extract.modules.warp_atlas_to_subject.fetch_harvard_oxford') as mock_atlas, \
          patch('csttool.extract.modules.passthrough_filtering.extract_cst_passthrough') as mock_extract, \
          patch('csttool.extract.modules.coordinate_validation.validate_tractogram_coordinates') as mock_validate:
 
@@ -260,7 +273,19 @@ def test_full_run_command(mock_convert, synthetic_dicom_dir, tmp_path):
         }
         mock_reg.return_value['mapping'].transform_inverse.return_value = np.zeros((10,10,10)) # transformed atlas
         mock_reg.return_value['mapping'].transform.return_value = np.zeros((10,10,10))
-        mock_reg.return_value['affine_map'].transform_inverse.return_value = np.zeros((10,10,10)) 
+        mock_reg.return_value['affine_map'].transform_inverse.return_value = np.zeros((10,10,10))
+
+        # Mock Harvard-Oxford atlas loading with real nibabel images
+        mock_cort_img = nib.Nifti1Image(np.zeros((10,10,10)), np.eye(4))
+        mock_subcort_img = nib.Nifti1Image(np.zeros((10,10,10)), np.eye(4))
+
+        mock_atlas.return_value = {
+            'cortical_path': '/mock/path/cortical.nii.gz',
+            'subcortical_path': '/mock/path/subcortical.nii.gz',
+            'cortical_img': mock_cort_img,
+            'subcortical_img': mock_subcort_img,
+        }
+
         # run command logic: check -> import -> preproc -> track -> extract -> metrics
         
         # IMPORTANT: 'run' command inside `cli.py` might call `cmd_check`, `cmd_import` etc. directly.

@@ -116,6 +116,7 @@ DATA_MANIFEST = {
 ```
 
 Utility functions:
+
 - `verify_checksum(path, expected_sha256) -> bool`
 - `get_manifest_entry(relative_key) -> dict`
 
@@ -294,6 +295,7 @@ Replace nilearn calls with `get_harvard_oxford_path()` + `nib.load()`. Print uni
 
 | File | Action |
 |------|--------|
+
 | `pyproject.toml` | **Modify** - add `platformdirs` dependency |
 | `src/csttool/data/__init__.py` | **Create** - package marker + re-exports |
 | `src/csttool/data/loader.py` | **Create** - two-tier path resolution (`importlib.resources` + `platformdirs`) |

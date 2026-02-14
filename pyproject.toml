@@ -19,9 +19,9 @@ dependencies = [
     "nibabel",
     "dicom2nifti",
     "nilearn",
+    "platformdirs",
     "weasyprint",
-    "jinja2",
-    "tomllib"
+    "jinja2"
 ]
 
 [project.optional-dependencies]

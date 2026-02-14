@@ -11,7 +11,6 @@ import numpy as np
 import nibabel as nib
 from pathlib import Path
 import os
-import shutil
 
 
 # Consolidating imports at top level to fix patching issues
@@ -30,9 +29,9 @@ from dipy.align.imwarp import SymmetricDiffeomorphicRegistration
 from dipy.align.metrics import CCMetric
 from dipy.align.reslice import reslice
 
-
-from nilearn import datasets
 from nibabel.orientations import axcodes2ornt, ornt_transform, apply_orientation
+from ...data.loader import load_mni152_template as load_bundled_mni152
+from ...data.loader import get_fmrib58_fa_path
 from dipy.viz import regtools
 import json
 from datetime import datetime
@@ -40,14 +39,11 @@ from datetime import datetime
 def load_mni_template(contrast="T1", verbose=True):
 
     if verbose:
-        print(f"    • Fetching MNI template (contrast: {contrast}) from Nilearn")
+        print(f"    • Loading bundled MNI152 template (contrast: {contrast})")
 
-    # Nilearn's MNI152 template is skull-stripped and 1mm resolution by default
-    # This matches the Harvard-Oxford atlas better than DIPY's non-skull-stripped template
-    template_img = datasets.load_mni152_template(resolution=1)
-
-    template_data = template_img.get_fdata()
-    template_affine = template_img.affine
+    # Load bundled MNI152 template from package data
+    # This is skull-stripped and 1mm resolution, matching Harvard-Oxford atlas
+    template_img, template_data, template_affine = load_bundled_mni152()
 
     if verbose:
         print(f"    • MNI template loaded: shape {template_data.shape}")
@@ -62,48 +58,23 @@ def load_fmrib58_fa_template(target_shape, target_affine, verbose=True):
     This replaces the DIPY HCP FA template which was found to be too sparse.
     FMRIB58_FA is a high-quality (1mm) whole-brain FA template in MNI space.
 
-    The template is downloaded from FSL GitLab if not present locally.
+    The template must be fetched using 'csttool fetch-data --accept-fsl-license'.
     """
-    # Cache location
-    cache_dir = Path.home() / ".cache" / "csttool" / "templates"
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    
-    template_path = cache_dir / "FMRIB58_FA_1mm.nii.gz"
-    
-    # Download if missing
-    if not template_path.exists():
-        # Check if FSL is installed locally to avoid download
-        potential_fsl_paths = []
-        
-        # User specified path
-        # 1. Check project template directory (prioritize local repo)
-        try:
-            repo_root = Path(__file__).resolve().parents[4]
-            project_template = repo_root / "templates" / "fmrib58_fa" / "FMRIB58_FA_1mm.nii.gz"
-            potential_fsl_paths.append(project_template)
-        except Exception:
-            pass
+    from ...data.loader import DataNotInstalledError
 
-
-        found_local = False
-        for fsl_path in potential_fsl_paths:
-            if fsl_path.exists():
-                if verbose:
-                    print(f"    • Found local FSL template: {fsl_path}")
-                shutil.copy(fsl_path, template_path)
-                found_local = True
-                if verbose:
-                    print(f"    ✓ Copied to cache: {template_path}")
-                break
-
-        if not found_local:
-            if verbose:
-                print("  ⚠️ FMRIB58 FA template not found in project or cache")
-                print("  → Falling back to standard MNI T1 template")
-            return None, None
+    try:
+        # Get path to user-fetched FMRIB58_FA template
+        template_path = get_fmrib58_fa_path()
+    except DataNotInstalledError:
+        if verbose:
+            print("  ⚠️ FMRIB58_FA template not found")
+            print("  → Run 'csttool fetch-data --accept-fsl-license' to download")
+            print("  → Falling back to standard MNI T1 template")
+        return None, None
 
     if verbose:
-        print(f"    • Loading FMRIB58_FA template from: {template_path}")
+        print(f"    • Loading FMRIB58_FA template")
+
     fa_img = nib.load(template_path)
     fa_data = fa_img.get_fdata()
     fa_affine = fa_img.affine
@@ -114,24 +85,24 @@ def load_fmrib58_fa_template(target_shape, target_affine, verbose=True):
     # Validation
     if np.count_nonzero(fa_data) < 200000:
         if verbose:
-            print("  ⚠️ Downloaded template appears corrupt or sparse")
+            print("  ⚠️ Template appears corrupt or sparse")
         return None, None
 
     # Resample to target (MNI T1) grid
     if verbose:
         print("    • Resampling FA template to MNI T1 grid...")
-    
+
     from nilearn.image import resample_to_img
-    
+
     # Create the FA Nifti image
     fa_nii = nib.Nifti1Image(fa_data, fa_affine)
-    
+
     # Create a dummy target image defined by the MNI T1 grid
     target_nii = nib.Nifti1Image(np.zeros(target_shape), target_affine)
-    
+
     # Resample
     resampled_nii = resample_to_img(fa_nii, target_nii, interpolation='continuous')
-    
+
     resampled_data = resampled_nii.get_fdata()
     resampled_affine = resampled_nii.affine
 

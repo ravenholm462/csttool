@@ -16,6 +16,7 @@ from .commands.metrics import cmd_metrics
 from .commands.run import cmd_run
 from .commands.batch import cmd_batch
 from .commands.validate import add_validate_parser, cmd_validate
+from .commands.fetch_data import cmd_fetch_data
 
 def main() -> None:
     """Entrypoint for the csttool CLI."""
@@ -732,6 +733,20 @@ def main() -> None:
     )
 
     p_batch.set_defaults(func=cmd_batch)
+
+    # -------------------------------------------------------------------------
+    # fetch-data subtool
+    # -------------------------------------------------------------------------
+    p_fetch_data = subparsers.add_parser(
+        "fetch-data",
+        help="Download FSL-licensed atlas data (FMRIB58_FA, Harvard-Oxford)"
+    )
+    p_fetch_data.add_argument(
+        "--accept-fsl-license",
+        action="store_true",
+        help="Accept FSL non-commercial license without interactive prompt"
+    )
+    p_fetch_data.set_defaults(func=cmd_fetch_data)
 
     # -------------------------------------------------------------------------
     # validate subtool
