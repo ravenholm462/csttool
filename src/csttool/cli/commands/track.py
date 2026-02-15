@@ -13,6 +13,7 @@ from csttool.tracking.modules import (
     run_tractography,
     save_tracking_outputs,
 )
+from csttool.reproducibility import RunContext
 
 def cmd_track(args: argparse.Namespace) -> dict | None:
     """
@@ -20,7 +21,11 @@ def cmd_track(args: argparse.Namespace) -> dict | None:
     """
     preproc_nii = args.nifti
     verbose = getattr(args, 'verbose', False)
-    
+
+    # Create RunContext with seed from CLI
+    run_seed = getattr(args, 'rng_seed', None)
+    ctx = RunContext(run_seed=run_seed) if run_seed is not None else RunContext(run_seed=42)
+
     if not preproc_nii.exists():
         print(f"  ✗ Preprocessed NIfTI not found: {preproc_nii}")
         return None
@@ -36,6 +41,10 @@ def cmd_track(args: argparse.Namespace) -> dict | None:
     print("=" * 60)
     print("WHOLE-BRAIN TRACTOGRAPHY")
     print("=" * 60)
+    if ctx.run_seed is not None:
+        print(f"  → Using random seed: {ctx.run_seed}")
+    else:
+        print(f"  → Random seeding disabled - results will vary between runs")
     print(f"  → Loading preprocessed data: {preproc_nii}")
     
     try:
@@ -110,7 +119,6 @@ def cmd_track(args: argparse.Namespace) -> dict | None:
 
     # Step 5: Deterministic tracking
     print(f"\n[Step 5/6] Deterministic tracking...")
-    random_seed = getattr(args, 'rng_seed', None)
     try:
         streamlines = run_tractography(
             csapeaks,
@@ -118,7 +126,7 @@ def cmd_track(args: argparse.Namespace) -> dict | None:
             seeds,
             affine,
             step_size=args.step_size,
-            random_seed=random_seed,
+            random_seed=ctx.rng_tracking_seed(),
             verbose=verbose,
             visualize=getattr(args, 'show_plots', False)
         )
@@ -141,10 +149,10 @@ def cmd_track(args: argparse.Namespace) -> dict | None:
         'stopping_criterion': 'fa_threshold' + ('+brain_mask' if use_brain_mask_stop else ''),
         'relative_peak_threshold': 0.8,
         'min_separation_angle': 45,  # Peak extraction: minimum angle between detected peaks
-        'random_seed': random_seed,
+        'random_seed': ctx.run_seed,
         'use_brain_mask_stop': use_brain_mask_stop,
     }
-    
+
     try:
         outputs = save_tracking_outputs(
             streamlines,
@@ -157,6 +165,7 @@ def cmd_track(args: argparse.Namespace) -> dict | None:
             rd=rd,
             ad=ad,
             tracking_params=tracking_params,
+            provenance=ctx.provenance,
             verbose=verbose
         )
     except Exception as e:

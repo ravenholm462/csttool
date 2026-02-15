@@ -18,13 +18,13 @@
 
   ## 1. Determinism & Reproducibility
 
-  - [ ] Make fixed random seed the default behavior
-  - [ ] Allow optional random seeding via explicit CLI flag
-  - [ ] Verify identical `.trk` files across repeated runs with fixed seed
-  - [ ] Compare derived metrics (FA, MD, RD, AD, LI) across repeated runs
-  - [ ] Quantify numeric deviation across runs
-  - [ ] Define acceptable tolerance thresholds for metric stability
-  - [ ] Document reproducibility guarantees clearly in thesis
+  - [x] Make fixed random seed the default behavior
+  - [x] Allow optional random seeding via explicit CLI flag
+  - [/] Verify identical `.trk` files across repeated runs with fixed seed (test infrastructure created, empirical validation pending)
+  - [/] Compare derived metrics (FA, MD, RD, AD, LI) across repeated runs (test infrastructure created, empirical validation pending)
+  - [/] Quantify numeric deviation across runs (tolerance framework defined, empirical validation pending)
+  - [x] Define acceptable tolerance thresholds for metric stability
+  - [/] Document reproducibility guarantees clearly in thesis (initial evidence document created, full quantitative validation pending)
 
   ## 2. Parameter Transparency
 
@@ -38,8 +38,8 @@
   ## 3. Version Locking & Environment Control
 
   - [ ] Pin exact library versions in requirements.txt / pyproject.toml
-  - [ ] Log library versions at runtime
-  - [ ] Log Python version at runtime
+  - [x] Log library versions at runtime
+  - [x] Log Python version at runtime
   - [ ] Document atlas version and template source explicitly
   - [ ] Ensure nilearn fetch behavior is stable and reproducible
   - [ ] Consider storing atlas checksum or local copy
@@ -94,10 +94,10 @@
 
   - [ ] Include run ID in output
   - [ ] Include timestamp
-  - [ ] Include Git commit hash
+  - [x] Include Git commit hash
   - [ ] Include full parameter configuration
   - [ ] Include seed value used
-  - [ ] Include library versions
+  - [x] Include library versions
   - [ ] Store structured run metadata file (JSON/YAML)
 
   ## 10. Narrative Alignment Check

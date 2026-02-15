@@ -7,7 +7,8 @@ csttool depends on nilearn to fetch MNI152 and Harvard-Oxford atlas files at run
 ## License Audit
 
 | Asset | License | Source | Bundleable in wheel? |
-|-------|---------|--------|---------------------|
+|-------|---------|--------|----------------------|
+
 | MNI152 T1 1mm (ICBM 2009) | Permissive BSD-like (free use/copy/redistribute, include copyright) | McGill/MNI | **Yes** |
 | FMRIB58_FA 1mm | FSL non-commercial | Oxford/FMRIB | **No** |
 | FMRIB58_FA skeleton 1mm | FSL non-commercial | Oxford/FMRIB | **No** |
@@ -15,9 +16,10 @@ csttool depends on nilearn to fetch MNI152 and Harvard-Oxford atlas files at run
 | Harvard-Oxford subcortical | FSL non-commercial | Oxford/FMRIB | **No** |
 
 Sources:
-- MNI152: https://nist.mni.mcgill.ca/icbm-152-nonlinear-atlases-2009/
-- FSL license: https://fsl.fmrib.ox.ac.uk/fsl/docs/license.html
-- Harvard-Oxford: https://nilearn.github.io/dev/modules/description/harvard_oxford.html
+
+- MNI152: <https://nist.mni.mcgill.ca/icbm-152-nonlinear-atlases-2009/>
+- FSL license: <https://fsl.fmrib.ox.ac.uk/fsl/docs/license.html>
+- Harvard-Oxford: <https://nilearn.github.io/dev/modules/description/harvard_oxford.html>
 
 ## Architecture: Two-Tier Data Strategy
 
@@ -37,7 +39,7 @@ Sources:
 
 ## Directory Structure
 
-### In-package (bundled, committed to git):
+### In-package (bundled, committed to git)
 
 ```text
 src/csttool/data/
@@ -51,7 +53,7 @@ src/csttool/data/
         MNI152_T1_1mm.nii.gz           # ~900 KB, permissive license
 ```
 
-### User data directory (fetched on demand, cross-platform via `platformdirs`):
+### User data directory (fetched on demand, cross-platform via `platformdirs`)
 
 ```text
 <user_data_dir>/csttool/               # Linux: ~/.local/share/csttool
@@ -164,7 +166,7 @@ Add `"platformdirs"` to `dependencies` list. Zero transitive deps, handles Linux
 - Extract MNI152 template: one-time Python to save from nilearn to `src/csttool/data/mni152/MNI152_T1_1mm.nii.gz`
 - Create `src/csttool/data/LICENSES/MNI152_LICENSE.txt` - verbatim ICBM copyright:
   > Copyright (C) 1993-2009 Louis Collins, McConnell Brain Imaging Centre, Montreal Neurological Institute, McGill University. Permission to use, copy, modify, and distribute this software and its documentation for any purpose and without fee is hereby granted, provided that the above copyright notice appear in all copies.
-- Create `src/csttool/data/LICENSES/FSL_LICENSE.txt` - FSL non-commercial terms from https://fsl.fmrib.ox.ac.uk/fsl/docs/license.html
+- Create `src/csttool/data/LICENSES/FSL_LICENSE.txt` - FSL non-commercial terms from <https://fsl.fmrib.ox.ac.uk/fsl/docs/license.html>
 - Compute SHA256 of MNI152 file for the manifest
 
 ### Step 3: Create `src/csttool/data/manifest.py`
@@ -214,11 +216,13 @@ def get_fmrib58_fa_path() -> Path:
 ```
 
 **Validation stamp logic** (`_validate_if_needed`):
+
 - Check `.validated` stamp for matching size + mtime
 - If stale or missing: compute SHA256, verify against manifest, update stamp
 - If mismatch: raise error
 
 Functions:
+
 - `load_mni152_template()` -> `(img, data, affine)` via `importlib.resources` + `as_file()`
 - `get_fmrib58_fa_path()` -> Tier 2 `Path`; raises `DataNotInstalledError` if missing
 - `get_harvard_oxford_path(atlas_name)` -> Tier 2 `Path`; same error behavior
@@ -234,6 +238,7 @@ Custom exception `DataNotInstalledError(FileNotFoundError)`.
 Downloads directly from FSL GitLab at pinned tags via `urllib.request` (stdlib):
 
 Command behavior:
+
 1. Display FSL license summary prominently, including the broad definition of "commercial use"
 2. **Require `--accept-fsl-license`** flag (no shorthand). Interactive y/n prompt if flag omitted.
 3. Download each file from pinned tag URLs (see "Pinned Source URLs" section above)
@@ -273,9 +278,11 @@ Replace nilearn calls with `get_harvard_oxford_path()` + `nib.load()`. Print uni
 ### Step 11: Update tests
 
 **File:** `tests/extract/test_registration.py`
+
 - `test_load_mni_template()`: Patch target changes from `registration.datasets.load_mni152_template` to the new `csttool.data.loader` import.
 
 **New file:** `tests/test_data_loader.py`
+
 - Verify MNI152 bundled file exists and checksum matches manifest
 - Test `DataNotInstalledError` raised when Tier 2 files missing
 - Test `get_harvard_oxford_path()` validates atlas names

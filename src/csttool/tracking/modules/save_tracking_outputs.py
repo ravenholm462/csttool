@@ -1,6 +1,6 @@
-def save_tracking_outputs(streamlines, img, fa, md, affine, out_dir, stem, rd=None, ad=None, tracking_params=None, verbose=False):
+def save_tracking_outputs(streamlines, img, fa, md, affine, out_dir, stem, rd=None, ad=None, tracking_params=None, provenance=None, verbose=False):
     """Save tractography outputs: tractogram, scalar maps, and processing report.
-    
+
     Args:
         streamlines (Streamlines): Generated streamlines from run_tractography().
         img (Nifti1Image): Reference NIfTI image for tractogram space.
@@ -12,8 +12,9 @@ def save_tracking_outputs(streamlines, img, fa, md, affine, out_dir, stem, rd=No
         rd (ndarray, optional): Radial diffusivity map (X, Y, Z).
         ad (ndarray, optional): Axial diffusivity map (X, Y, Z).
         tracking_params (dict): Parameters used for tracking (for reproducibility).
+        provenance (dict, optional): Provenance information (git hash, versions, platform).
         verbose (bool): Print processing details.
-        
+
     Returns:
         dict: Paths to all saved outputs:
             - tractogram: Path to .trk file
@@ -163,6 +164,10 @@ def save_tracking_outputs(streamlines, img, fa, md, affine, out_dir, stem, rd=No
         'scalar_stats': scalar_stats,
         'output_files': output_files
     }
+
+    # Add provenance information if provided
+    if provenance is not None:
+        report['provenance'] = provenance
     
     # 7. Save report
     report_path = log_dir / f"{stem}_tracking_report.json"

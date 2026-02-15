@@ -246,8 +246,15 @@ def main() -> None:
     p_track.add_argument(
         "--rng-seed",
         type=int,
-        default=None,
-        help="Random seed for reproducible tractography. If not set, results may vary between runs."
+        default=42,
+        help="Random seed for reproducible tractography (default: 42). Use --random to disable."
+    )
+    p_track.add_argument(
+        "--random",
+        action="store_const",
+        const=None,
+        dest="rng_seed",
+        help="Disable deterministic seeding (use random initialization)."
     )
     p_track.add_argument(
         "--use-brain-mask-stop",
