@@ -1,0 +1,62 @@
+%% ============================================================================
+%% TEMPLATE: Replace this preamble with your TU Graz thesis template
+%% Once you have the official template from your supervisor, swap out
+%% the documentclass and preamble below. Keep the \input{} chapter
+%% structure and bibliography setup.
+%% ============================================================================
+
+\documentclass[12pt, a4paper, twoside, openright]{scrreprt}
+
+% Encoding and fonts
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+
+% Language
+\usepackage[english]{babel}
+
+% Graphics
+\usepackage{graphicx}
+\graphicspath{{figures/}}
+
+% Math
+\usepackage{amsmath, amssymb}
+
+% Tables
+\usepackage{booktabs}
+
+% Hyperlinks
+\usepackage{hyperref}
+\hypersetup{
+    colorlinks=true,
+    linkcolor=black,
+    citecolor=black,
+    urlcolor=blue,
+}
+
+% Bibliography
+\usepackage[backend=biber, style=numeric, sorting=none]{biblatex}
+\addbibresource{references.bib}
+
+%% ============================================================================
+%% END TEMPLATE SECTION
+%% ============================================================================
+
+\title{Deterministic Corticospinal Tract Extraction and Quantification from Diffusion-Weighted MRI}
+\author{Alem}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+
+\input{chapters/introduction}
+\input{chapters/background}
+\input{chapters/methods}
+\input{chapters/results}
+\input{chapters/discussion}
+
+\printbibliography
+
+\end{document}
