@@ -4,4 +4,205 @@
 \chapter{Background}
 \label{ch:background}
 
+\section{Clinical \& Anatomical Background}
+
+\subsection{ALS}
+Amyotrophic lateral sclerosis is a neurodegenerative, fatal disease of the central nervous system (CNS). ALS presents itself as a combination of upper motor neuron and lower motor neuron dysfunction, which leads to progressive weakness of the voluntary skeletal muscles in control of movement, swallowing, speaking and respiratory function. There are multiple phenotypes of the disease, with the most common being bulbar-onset ALS affecting the muscles of the face, jaw, throat and tongue, as well as spinal-onset ALS affecting the muscles of the arms, the upper trunk (cervical) and legs (lumbar). From onset, the disease spreads contralaterally, rostrally and caudally. ALS can also cause cognitive and behavioral changes. Normal language and executive function such as fluency, inhibition and working memory are negatively affected. \cite{feldman_amyotrophic_2022}
+
+\subsection{CST}
+
+\begin{figure}[tbp]
+    \centering
+    \includegraphics[width=0.5\linewidth]{figs/cst.png}
+    \caption{CST anatomy (blue) conveying motor signals from the cortex to the skeletal muscles \cite{roos_studies_2013}}
+    \label{fig:cst}
+\end{figure}
+
+The corticospinal tract (CST) is the principal motor pathway for voluntary movement. The majority of CST axons originate in the primary motor and sensor cortex. From the cortex, the trajectory of the axons leads to the brainstem. Up until the brainstem, the axons maintain their initial position. However, at the junction between the brainstem and the spinal cord, the vast majority of the CST axons cross the midline and pass from a ventral to a dorsal position. The resulting pyramidal decussation is the reason why the left side of the brain controls the right side of the spinal cord, and vice versa. Once in the spinal cord, the CST axons leave the white matter tracts at cervical or lumbar enlargements, eventually transmitting motor commands to the limbs. \cite{welniarz_corticospinal_2017}. An illustration of CST anatomy is shown in Fig.~\ref{fig:cst}. Autopsies of ALS cases reveal the CST columns degrade and become sclerotic i.e. stiff and hard.
+
+\clearpage
+
+\section{Diffusion MRI Fundamentals}
+
+\subsection{Basics}
+
+Diffusion-weighted imaging (DWI) is an MRI technique that generates image contrast based on the diffusion of water molecules. Diffusion, or Brownian motion, refers to the random thermal movement of particles. In a homogeneous medium, diffusion is isotropic—occurring equally in all directions. In biological tissue, however, cellular structures such as membranes and organelles hinder free motion, causing diffusion to become directionally dependent, or anisotropic. The degree and orientation of this anisotropy reflect tissue microstructure and can change in various pathological conditions, making DWI an essential tool in neuroimaging.
+
+\subsection{Generation of contrast}
+
+MRI traditionally measures signals from hydrogen nuclei ($^1$H) of water and fat molecules. These nuclei possess an intrinsic property called spin, which enables magnetic resonance. To make the MRI signal sensitive to diffusion, pairs of diffusion gradients (DGs) are applied around a refocusing $180^{\circ}$ pulse in a spin-echo sequence. For stationary spins, the accumulated phase from the first DG is fully reversed by the second DG. On the other hand, diffusing spins will have moved to a different environment before the second DG can refocus them. Subsequently, they fall out of phase and the signal is lost. This creates contrast between stationary and diffusing spins. Fig.~\ref{fig:dwi_sequence} offers a graphical explanation of this process.
+
+\subsection{\textit{b}-value}
+
+The degree to which diffusion affects the resulting image is called the $b$-value. It is an operator controlled parameter that affects how quickly the signal from a diffusion-weighted image decays:
+
+\begin{equation}
+    S(b) = S_0 \cdot \exp(-bD)
+    \label{eq:signal}
+\end{equation}
+
+where $S_0$ is the signal without diffusion weighting ($b = 0$) and $D$ is the diffusion coefficient for a unit area per unit time. Consequently, the unit for the $b$-value is unit time per unit area.
+
+In relation to the properties of applied rectangular diffusion gradients, the $b$-value is modeled as:
+
+\begin{equation}
+    b = \gamma^2 G^2 \delta^2 (\Delta - \delta/3)
+    \label{eq:stejskal-tanner}
+\end{equation}
+
+where $\gamma$ is the gyromagnetic ratio in $\frac{1}{\mathrm{s^2}\mathrm{T^2}}$, $G$ is the gradient magnitude in $[\frac{\mathrm{T^2}}{\mathrm{m^2}}]$, $\delta$ is the gradient duration in $[\mathrm{s^2}]$ and $\Delta$ is the time interval separating the diffusion gradient in in $[\mathrm{s}]$ \cite{stejskal_spin_1965}. A visual explanation is provided in Fig.~\ref{fig:stejskal_tanner}. The $b$-value depends on the strength, duration and spacing of diffusion gradients. In practice, the $b$-value is given in units $[\frac{\mathrm{s}}{\mathrm{mm^2}}]$. There is no singular optimal choice for $b$; it is chosen based on number of signals averaged, on features of the patient and on predicted pathology.
+
+\begin{figure}[!tbp]
+  \begin{subfigure}[b]{0.4\textwidth}
+    \includegraphics[width=\textwidth]{figs/dwi_sequence.png}
+    \caption{Effect of diffusion gradients  on stationary and diffusing spins}
+    \label{fig:dwi_sequence}
+  \end{subfigure}
+  \hfill
+  \begin{subfigure}[b]{0.4\textwidth}
+    \includegraphics[width=\textwidth]{figs/stejskal_tanner.png}
+    \caption{Illustration of $b$-value parameters described in Eq.~\ref{eq:stejskal-tanner}}
+    \label{fig:stejskal_tanner}
+  \end{subfigure}
+  \caption{Stejskal-Tanner pulsed gradient diffusion method. Courtesy of Allen D. Elster, MRIquestions.com}
+\end{figure}
+
+\subsection{Diffusion tensor}
+
+Eq.~\ref{eq:signal} uses the diffusion coefficient $D$ to model Brownian motion. This is an overly simplistic approach that assumes isotropic motion of spins and is inapplicable to heterogenous environments such as the intracellular space. The diffusion tensor $\mathcal{D}$ expands on the diffusion coefficient $D$ by taking into account both the rates of diffusion and their direction. Typically, it is represented as a $3 \times 3$ array:
+
+\begin{equation}
+    \mathcal{D} = 
+    \begin{bmatrix}
+        D_{xx} & D_{xy} & D_{xz}\\
+        D_{yx} & D_{yy} & D_{yz} \\
+        D_{zx} & D_{zy} & D_{zz}
+    \end{bmatrix} 
+    \xrightarrow{\text{isotropic}}
+    \begin{bmatrix}
+        D & 0 & 0\\
+        0 & D & 0 \\
+        0 & 0 & D
+    \end{bmatrix} 
+\end{equation}
+
+In the case of anisotropic diffusion, the most common approach of obtaining $\mathcal{D}$ is to estimate its components from a set of diffusion-weighted measurements acquired along multiple gradient directions. Using eigenvalue decomposition, $\mathcal{D}$ can be expressed in terms of its eigenvalues $\lambda_i$ and eigenvectors $\mathbf{v}_i = [v_{i,x}~v_{i,y}~v_{i,z}]$ as
+
+\begin{equation}
+    \mathcal{D} \mathbf{v} = \lambda \mathbf{v}
+\end{equation}
+
+The eigenvectors in $\mathbf{v}$ represent the principal directions of diffusion, while the eigenvalue $\lambda$ represents its magnitude.
+
+In matrix form, $\mathcal{D}$ can also be represented as
+
+\begin{equation}
+    \mathcal{D} = \mathbf{V} \Lambda \mathbf{V}^T
+    \label{eq:diffusion_matrix_form}
+\end{equation}
+
+where $\mathbf{V} = [\mathbf{v}_1~\mathbf{v}_2~\mathbf{v}_3]$ and $\Lambda = \mathrm{diag}(\lambda_1, \lambda_2, \lambda_3)$, or
+
+\begin{equation}
+\Lambda = 
+    \begin{bmatrix}
+        \lambda_1 & 0 & 0\\
+        0 & \lambda_2 & 0 \\
+        0 & 0 & \lambda_3
+    \end{bmatrix}
+    \label{eq:biglambda}
+\end{equation}
+
+This formulation is useful because it geometrically maps to a diffusion ellipsoid oriented along $\mathbf{v}_i$ and scaled by $\sqrt{\lambda_i}$, as seen in Fig.~\ref{fig:diffusion_ellipsoid}. Under this model, for $\lambda_1 = \lambda_2 = \lambda_3 = \lambda$, the ellipsoid reduces to a sphere, representing isotropic diffusion.
+
+\begin{figure}[hbt!]
+    \centering
+    \includegraphics[width=0.5\linewidth]{figs/diffusion_ellipsoid.png}
+    \caption{Diffusion ellipsoid with directions shown by eigenvectors $\mathbf{\epsilon}_i$ and magnitudes shown by eigenvalues $\lambda_i$. Courtesy of Allen D. Elster, MRIquestions.com}
+    \label{fig:diffusion_ellipsoid}
+\end{figure}
+
+There are two benefits to using the diffusion ellipsoid approach. 
+
+First, $\mathcal{D}$ can be determined from measurements obtained from any frame of reference, making quantification of diffusion rotation-invariant. 
+
+Second, in the principal diffusion frame (Eq.~\ref{eq:diffusion_matrix_form}), the off-diagonal elements of $\mathcal{D}$ vanish thanks to Eq.~\ref{eq:biglambda}, reducing the tensor to a diagonal form and thereby simplifying computation and interpretation.
+
+\subsection{DTI}
+
+Diffusion tensor imaging (DTI) uses the eigenvalues and eigenvectors obtained from $\mathcal{D}$ to quantify diffusion properties of a tissue. The most commonly used metrics are axial diffusivity AD, radial diffusivity RD, mean diffusivity MD and fractional anisotropy FA.
+
+AD is given by Eq.~\ref{eq:AD} and describes the magnitude of apparent diffusion along the principal axis. It corresponds to the first eigenvalue of $\mathcal{D}$.
+
+\begin{equation}
+    \mathrm{AD} = \lambda_1
+    \label{eq:AD}
+\end{equation}
+
+RD is given by Eq.~\ref{eq:RD} and represents the average apparent diffusion along the secondary and tertiary diffusion axes i.e. perpendicular to the principal axis.
+
+\begin{equation}
+    \mathrm{RD} = \frac{\lambda_2 + \lambda_3}{2}
+    \label{eq:RD}
+\end{equation}
+
+MD is given by Eq.~\ref{eq:MD}, describing the average amount of diffusion in a given voxel. It is an absolute measure and is independent of direction. 
+
+\begin{equation}
+    \mathrm{MD} = \frac{\lambda_1 + \lambda_2 + \lambda_3}{3}
+    \label{eq:MD}
+\end{equation}
+
+FA is given by Eq.~\ref{eq:FA} as a relative measure describing the amount of diffusion asymmetry in a voxel. FA values vary between $0$ and $1$. Low FA values generally indicate isotropic diffusion; high FA values generally indicate diffusion along only one direction.
+
+\begin{equation}
+    \mathrm{FA} = \sqrt{\frac{(\lambda_1 - \lambda_2)^2 + (\lambda_2 - \lambda_3)^2 + (\lambda_3 - \lambda_1)^2}{2(\lambda_1^2 + \lambda_2^2 + \lambda_3^2)}}
+    \label{eq:FA}
+\end{equation}
+
+Although commonly used as biomarkers in diffusion MRI studies, the previously described DTI metrics face limitations when tackling voxels with a large amount of crossing white fiber tracts. Fig.~\ref{fig:dti_limits} demonstrates how changes in FA, or a lack thereof, do not necessarily correspond to true alterations in white matter microstructure.
+
+However, these limitations do not speak against DTI as a valuable tool for neuroimaging. First, the issues described in Fig.~\ref{fig:dti_limits} arise primarily due to the nature of FA as a relative measure. Staying within the framework of DTI, using non-relative values such as MD or the trace of $\mathcal{D}$ (i.e. total apparent diffusion along the three tensor axes; $\mathrm{Trace} = \lambda_1 + \lambda_2 + \lambda_3$) offers more robust measurements of areas strongly riddled with fiber crossings. This is because they do not only account for, but also equally weight the amount of diffusion along all three axes of $\mathcal{D}$. Indeed, in Fig.~\ref{fig:dti_limits} both the MD and the trace would increase as expected, as diffusion in the voxel would be less restricted. Second, inaccuracies due to high density of fiber crossings are less likely to occur when imaging regions where complex fiber geometries are generally not expected, such as the CST or the corpus callosum. Finally, for clinical findings, the results of DTI should always be corroborated with other imaging metrics to ensure result validity. \cite{figley_potential_2022}
+
+\begin{figure}[!tbp]
+  \begin{subfigure}[t]{0.4\textwidth}
+    \includegraphics[width=\textwidth]{figs/dti_limits_a.png}
+    \caption{\textit{Left}: FA=$0$ as there is no dominant fiber direction. \textit{Right}: Due to fiber loss, $\lambda_1$ increases w.r.t $\lambda_2$ and $\lambda_3$. This results in FA increase despite net fiber loss.}
+    \label{fig:dti_limits_a}
+  \end{subfigure}
+  \hfill
+  \begin{subfigure}[t]{0.4\textwidth}
+    \includegraphics[width=\textwidth]{figs/dti_limits_b.png}
+    \caption{\textit{Left}: A principle fiber orientation is present and $\mathrm{FA}>0$. \textit{Right}: All fibers undergo tissue degradation proportionally such that $\lambda_1$, $\lambda_2$ and $\lambda_3$ are increased proportionally. Therefore, FA remains unchanged despite change in fiber microstructure.}
+    \label{fig:dti_limits_b}
+  \end{subfigure}
+  \caption{Cartoon depiction of a voxel containing three white matter crossing fibers (horizontal, vertial and through-plane), showing how tissue loss (\ref{fig:dti_limits_a}) or damage (\ref{fig:dti_limits_b}) in voxels containing multiple white-matter fiber populations can lead to counter-intuitive or unchanged FA values. Original figure from Figley et al. (2022) \cite{figley_potential_2022}}
+  \label{fig:dti_limits}
+\end{figure}
+
+\clearpage
+
+\subsection{White Matter Tractography}
+
+The primary eigenvector of the diffusion tensor $\mathcal{D}$ can be used to obtain the three-dimensional representation of the white matter pathways or fiber bundles. The method of projecting 3D trajectories of fiber pathways between different brain systems \textit{in vivo} is called tractography. The resulting approximation allows for both visualization and quantitative analysis of specific tracts \cite{soares_hitchhikers_2013}.
+
+The process of tractography generally has three stages: seeding, propagation and termination. Seeding is the act of defining starting points in the image from which the fiber tracts will be drawn. One approach is to generate the fibers only from specific regions. Another is to seed large portions of the brain, then subsequently selecting only bundles belonging to regions of interest.
+
+Propagation determines the algorithm used to follow along the tract as it travels through the brain. Two main categories of propagation algorithms exist: deterministic and probabilistic. 
+
+In deterministic tractography, a streamline is propagated by following the principal eigenvector $\mathbf{v}_1$ of the local diffusion tensor at each step. Given a current position $\mathbf{x}_t$, the next position is:
+
+\begin{equation}
+	\mathbf{x}_{t+1} = \mathbf{x}_t + h \cdot \mathbf{v}_1(\mathbf{x}_t)
+	\label{eq:det_step}
+\end{equation}
+
+where $h$ is the step size. For a fixed diffusion dataset, given identical input parameters, multiple tractography runs will always produce the same result. This makes the algorithm reproducible.
+
+Probabilistic tractography aims to model the uncertainty of local fiber direction by sampling from an orientation distribution function (ODF) at each step \cite{lazar_mapping_2010}. If the algorithm runs from the same seed repeatedly, a distribution of plausible pathways will be returned instead of a single trajectory. This approach is useful for areas with high volumes of crossing fibers or low FA.
+
+\clearpage
+
+\subsection{Atlas-Based Tract Extraction}
+
 
