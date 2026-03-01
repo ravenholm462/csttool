@@ -205,4 +205,21 @@ Probabilistic tractography aims to model the uncertainty of local fiber directio
 
 \subsection{Atlas-Based Tract Extraction}
 
+Whole-brain tractography results in a vast number of fibers, with the orders of magnitude typically being $10^6$ or $10^7$. To proceed with quantitative analysis, the relevant streamlines first need to be extracted from the full dataset according to anatomical criteria. The golden standard is manual placement of ROIs by an expert. The ROIs define inclusion or exclusion zones for the tracts of interest. While this method is very accurate, it has the following disadvantages: it is time-consuming, it requires an expertly trained individual, and the results are prone to inter-operator variability.
+
+Atlas-based methods seek to address these limitations by automating ROI placement by transferring anatomical definitions from a reference atlas to individual subject space. First, anatomical knowledge about the tract trajectories, encoded in a standardized coordinate system, is warped to each subject's native diffusion space using image registration. Streamlines are then filtered according to their intersection with the warped ROIs. This approach eliminates the need for manual ROI placement while maintaining anatomical validity.
+
+\subsubsection{Filtering Strategies}
+
+Two principal strategies of filtering streamlines based on ROI intersection exist: endpoint and passthrough filtering. Endpoint filtering requires that the first and last coordinate of the streamline fall within the specified ROIs. This results in a strict requirement that ensures the selected streamlines genuinely connect to the regions of interest. Passthrough filtering is a more lenient method that retains streamlines that merely traverse the specified ROIs at any point along their trajectory. The end result is a more sensitive filtering approach at the cost of potentially including streamlines that are not wanted.
+
+Both strategies can be combined with logical operations---AND (intersection), NOT (exclusion), and CUT (truncation)---to refine tract selection \cite{wakana2007reproducibility}. The AND operation retains only streamlines satisfying multiple ROI constraints, while NOT operations exclude streamlines passing through anatomically implausible regions. Fig.~\ref{fig:roi_operations} offers a graphical explanation.
+
+\begin{figure}[htbp]
+	\centering
+	\includegraphics[width=0.8\linewidth]{figs/roi_operations.png}
+	\caption{Schematic of ROI-based streamline filtering operations. (A) Initial ROI retrieves all penetrating streamlines. (B) AND operation retains only streamlines passing through both ROIs. (C) NOT operation excludes streamlines penetrating the exclusion region. (D) CUT operation truncates streamlines between ROIs. Adapted from Wakana et al. (2007) \cite{wakana2007reproducibility}.}
+	\label{fig:roi_operations}
+\end{figure}
+
 
