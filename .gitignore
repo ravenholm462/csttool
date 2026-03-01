@@ -45,3 +45,8 @@ thesis/*.run.xml
 thesis/*.synctex.gz
 thesis/*.toc
 thesis/chapters/*.aux
+
+# local venv (in-repo)
+lib/
+lib64/
+pyvenv.cfg
