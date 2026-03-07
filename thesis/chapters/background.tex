@@ -226,9 +226,9 @@ Both strategies can be combined with logical operations---AND (intersection), NO
 
 To ensure successful atlas-based extraction, accurate spatial correspondence between atlas and subject spaces is necessary. Two methods of image registration are possible.
 
-\paragraph{Streamlines-to-atlas}
+\paragraph{Streamlines-to-atlas} The goal of this approach is to warp the subject's tractography to a standardized coordinate system. The first step is to apply an affine transformation to align global brain geometry. Second, local anatomical variations are accounted for by applying a non-linear transform. The result can be used to directly filter streamlines using atlas-defined ROIs in standard space. This technique lends itself well to batch analyses because all subjects will share a common coordinate frame. However, streamline-to-atlas approaches are not only computationally demanding due to the sheer amount of streamlines that need to be processed, but may introduce geometric artifacts due to interpolation.
 
-\paragraph{Atlas-to-subject}
+\paragraph{Atlas-to-subject} The inverse approach to the one above. Streamlines are kept in native space, and the ROIs themselves are warped to each subject. The subject's anatomical (e.g. T1-weighted) or diffusion-derived (e.g. FA) image is used to compute the registration. Resulting transformation is applied to the atlas labels. This technique avoids distorting subject's tractography output and preserves spatial relationships captured during propagation, making it more suited when attempting to analyze pathologies.
 
 
 
