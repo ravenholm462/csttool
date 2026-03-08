@@ -22,23 +22,75 @@ TODO: Explain all parameters and their CLI calls in a table. Explain how this pa
 \section{Diffusion Tensor Fitting}
 \label{sec:methods_diffusiontensorfitting}
 
+TODO: Tie in to \ref{subsec:background_dti}; describe the use of DIPY's TensorModel, the eigenvalue decomposition, derived scalar maps (FA, MD, AD, RD), white matter mask generation, NaN/Inf handling. 
+
+Question: FA map as redundancy if anat T1 not found for future pipeline?
+
 \section{Whole Brain Tractography}
 \label{sec:methods_wholebraintractography}
+
+TODO: Tie in to \ref{subsec:background_tractography}. Points to touch on:
+
+- Direction field estimation:
+- CSA-ODF model (Constant Solid Angle)
+- Spherical harmonic order (default 6, auto-reduced if insufficient gradients)
+
+Seeding:
+- Seed mask: voxels with FA $\geq$ 0.2
+- Seed density: configurable (default 1 per voxel)
+
+Propagation:
+- Deterministic local tracking (DIPY's LocalTracking)
+- Step size: 0.5 mm (Eq. 2.10 from your background)
+- Fixed random seed (default 42) for reproducibility
+
+Stopping criterion:
+- FA threshold-based (ThresholdStoppingCriterion)
+- Optional brain mask boundary
+
+Justify deterministic over probabilistic: reproducibility, interpretability, sufficient for CST (low crossing-fiber complexity).
+
 
 \section{Atlas-Based CST Extraction}
 \label{sec:methods_atlasbasedextraction}
 
+TODO: Maps to \ref{subsec:background_atlasbasedextraction}
+
 \subsection{Image Registration}
 \label{subsec:methods_imageregistration}
+
+TODO: How the atlas-to-subject approach described in \ref{subsubsec:background_registration} is implemented:
+
+1. Affine registration: Translation → Rigid → Affine (Mutual Information metric)
+2. Diffeomorphic registration: SyN (Symmetric Normalization, Cross-Correlation metric)
+3. Target: MNI152 template (1mm, skull-stripped, bundled with csttool)
+
 
 \subsection{Atlas Warping}
 \label{subsec:methods_atlaswarping}
 
+
+- Harvard-Oxford atlases (FSL, via templateflow):
+	- Cortical: 96 regions
+	- Subcortical: 21 regions
+- Inverse deformation applied to warp labels MNI → subject native space
+
+
 \subsection{ROI Definition}
 \label{subsec:methods_roidefinition}
 
+TODO: Which ROIs are defined, from which atlas, label number, purpose. Maybe tie in to \ref{sec:background_anatomicalbackground}
+
 \subsection{Streamline Filtering}
 \label{subsec:methods_streamlinefiltering}
+
+TODO: Tie into \ref{subsubsec:background_filteringstrategies}. Explain this:
+
+  1. Endpoint filtering (strict): Requires one endpoint in brainstem, other in motor cortex. Bidirectional checking.
+  2. Passthrough filtering (default, permissive): Streamlines must traverse both ROIs; endpoints flexible.
+
+Length filtering: 20–200 mm (anatomically plausible CST range).
+
 
 \section{Tract-Level Metrics}
 \label{sec:methods_metrics}
@@ -46,8 +98,38 @@ TODO: Explain all parameters and their CLI calls in a table. Explain how this pa
 \subsection{Unilateral Analysis}
 \label{subsec:methods_unilateral}
 
+Morphological:
+- Streamline count
+- Length statistics (mean, std, min, max)
+- Tract volume (unique voxels x voxel size, mm3)
+
+Microstructural:
+- FA, MD, RD, AD sampled along streamlines
+- Statistics: mean, std, median, min, max
+- 20-point along-tract profiles
+
+
 \subsection{Bilateral Analysis}
 \label{subsec:methods_bilateral}
 
+Laterality Index:
+
+\begin{equation}
+	LI = \frac{L-R}{L+R}
+\end{equation}
+
+Interpretation thresholds: What makes the result symmetric, mildly asymmetric, moderately asymmetric or strongly asymmetric. Find sources maybe?
+
+Computed for: volume, streamline count, length, FA, MD, RD, AD
+
+
 \section{Implementation Details}
 \label{sec:methods_details}
+
+
+- Language: Python $\geq$ 3.10
+- Core libraries: DIPY (tractography, tensor fitting), nibabel (NIfTI I/O), nilearn (atlas handling), scipy (morphology). MAKE SURE TO CITE THEM ALL.
+- CLI architecture: Modular commands, each stage independent
+- Reproducibility: Provenance tracking, optional deterministic seeding
+- More?
+
