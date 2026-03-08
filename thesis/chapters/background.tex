@@ -4,11 +4,15 @@
 \chapter{Background}
 \label{ch:background}
 
+This chapter serves to describe the framework needed to understand \texttt{csttool}'s implementation and results. It introduces the pathology of ALS, the neuroanatomy of the CST, as well as the fundamentals of diffusion MRI and DTI. In addition, it reviews different approaches to computing white matter tractograms and atlas-driven streamline extraction. Together, these concepts define the scientific context for the development of \texttt{csttool} and clarify how diffusion-derived metrics can be used to assess microstructural changes of the CST associated with ALS. 
+
 \section{Clinical \& Anatomical Background}
 \label{sec:background_anatomicalbackground}
 
 \subsection{ALS}
 Amyotrophic lateral sclerosis is a neurodegenerative, fatal disease of the central nervous system (CNS). ALS presents itself as a combination of upper motor neuron and lower motor neuron dysfunction, which leads to progressive weakness of the voluntary skeletal muscles in control of movement, swallowing, speaking and respiratory function. There are multiple phenotypes of the disease, with the most common being bulbar-onset ALS affecting the muscles of the face, jaw, throat and tongue, as well as spinal-onset ALS affecting the muscles of the arms, the upper trunk (cervical) and legs (lumbar). From onset, the disease spreads contralaterally, rostrally and caudally. ALS can also cause cognitive and behavioral changes. Normal language and executive function such as fluency, inhibition and working memory are negatively affected. \cite{feldman_amyotrophic_2022}
+
+Diagnosis of ALS remains primarily clinical and is based on the identification of upper and lower motor neuron signs combined with disease progression, since no single definitive biomarker currently exists. Degeneration of upper motor neurons leads to structural and microstructural alterations of the corticospinal tract, the principal descending motor pathway of the brain. These changes can be detected using diffusion based magnetic resonance imaging techniques, which makes the corticospinal tract a key target for quantitative imaging approaches that aim to provide objective markers of disease related neurodegeneration.
 
 \subsection{CST}
 \label{subsec:background_cst}
@@ -20,7 +24,13 @@ Amyotrophic lateral sclerosis is a neurodegenerative, fatal disease of the centr
     \label{fig:cst}
 \end{figure}
 
-The corticospinal tract (CST) is the principal motor pathway for voluntary movement. The majority of CST axons originate in the primary motor and sensor cortex. From the cortex, the trajectory of the axons leads to the brainstem. Up until the brainstem, the axons maintain their initial position. However, at the junction between the brainstem and the spinal cord, the vast majority of the CST axons cross the midline and pass from a ventral to a dorsal position. The resulting pyramidal decussation is the reason why the left side of the brain controls the right side of the spinal cord, and vice versa. Once in the spinal cord, the CST axons leave the white matter tracts at cervical or lumbar enlargements, eventually transmitting motor commands to the limbs. \cite{welniarz_corticospinal_2017}. An illustration of CST anatomy is shown in Fig.~\ref{fig:cst}. Autopsies of ALS cases reveal the CST columns degrade and become sclerotic i.e. stiff and hard.
+The corticospinal tract (CST) is the principal descending motor pathway responsible for voluntary movement. The majority of CST axons originate in the primary motor cortex and, to a lesser extent, the premotor and somatosensory cortices. From the cortical motor areas, the axons descend through the corona radiata and converge in the posterior limb of the internal capsule (PLIC), which represents a major anatomical bottleneck where many motor fibers pass in close proximity. From there, the fibers continue through the cerebral peduncles of the midbrain and descend into the brainstem.
+
+Along this trajectory the CST fibers maintain a largely organized arrangement until they reach the caudal medulla. At the junction between the brainstem and the spinal cord, the majority of CST fibers cross the midline in the pyramidal decussation. This crossing causes the motor cortex of one hemisphere to control voluntary movements on the contralateral side of the body. After decussation, the fibers descend within the lateral columns of the spinal cord, where they terminate at different spinal levels by synapsing onto interneurons and lower motor neurons that ultimately innervate skeletal muscles. \cite{welniarz_corticospinal_2017}
+
+Degeneration of upper motor neurons in ALS is closely associated with structural and microstructural damage of the corticospinal tract. Postmortem studies have shown that the CST columns undergo degeneration and sclerosis, reflecting the loss of axons and associated myelin. These pathological changes often occur in both hemispheres, although the degree of degeneration may differ between sides. This bilateral but potentially asymmetric involvement makes the CST a key target for diffusion MRI based studies that aim to quantify disease related changes in white matter integrity.
+
+These microstructural changes cannot be directly visualized with conventional structural MRI, but they alter the diffusion behavior of water molecules within white matter, making diffusion-weighted MRI a suitable modality for detecting and quantifying degeneration of the corticospinal tract.
 
 \clearpage
 
@@ -56,7 +66,7 @@ In relation to the properties of applied rectangular diffusion gradients, the $b
     \label{eq:stejskal-tanner}
 \end{equation}
 
-where $\gamma$ is the gyromagnetic ratio in $\frac{1}{\mathrm{s^2}\mathrm{T^2}}$, $G$ is the gradient magnitude in $[\frac{\mathrm{T^2}}{\mathrm{m^2}}]$, $\delta$ is the gradient duration in $[\mathrm{s^2}]$ and $\Delta$ is the time interval separating the diffusion gradient in in $[\mathrm{s}]$ \cite{stejskal_spin_1965}. A visual explanation is provided in Fig.~\ref{fig:stejskal_tanner}. The $b$-value depends on the strength, duration and spacing of diffusion gradients. In practice, the $b$-value is given in units $[\frac{\mathrm{s}}{\mathrm{mm^2}}]$. There is no singular optimal choice for $b$; it is chosen based on number of signals averaged, on features of the patient and on predicted pathology.
+where $\gamma$ is the gyromagnetic ratio in $\frac{\mathrm{rad}}{\mathrm{s \cdot c}}$, $G$ is the gradient magnitude in $[\frac{\mathrm{T}}{\mathrm{m}}]$, $\delta$ is the gradient duration in $[\mathrm{s}]$ and $\Delta$ is the time interval separating the diffusion gradient in in $[\mathrm{s}]$ \cite{stejskal_spin_1965}. A visual explanation is provided in Fig.~\ref{fig:stejskal_tanner}. The $b$-value depends on the strength, duration and spacing of diffusion gradients. In practice, the $b$-value is given in units $[\frac{\mathrm{s}}{\mathrm{mm^2}}]$. There is no singular optimal choice for $b$; it is chosen based on number of signals averaged, on features of the patient and on predicted pathology.
 
 \begin{figure}[!tbp]
   \begin{subfigure}[b]{0.4\textwidth}
@@ -72,6 +82,8 @@ where $\gamma$ is the gyromagnetic ratio in $\frac{1}{\mathrm{s^2}\mathrm{T^2}}$
   \end{subfigure}
   \caption{Stejskal-Tanner pulsed gradient diffusion method. Courtesy of Allen D. Elster, MRIquestions.com}
 \end{figure}
+
+TODO: Find typical b-values, write here, find citation.
 
 \subsection{Diffusion tensor}
 \label{subsec:background_diffusiontensor}
@@ -135,6 +147,8 @@ First, $\mathcal{D}$ can be determined from measurements obtained from any frame
 
 Second, in the principal diffusion frame (Eq.~\ref{eq:diffusion_matrix_form}), the off-diagonal elements of $\mathcal{D}$ vanish thanks to Eq.~\ref{eq:biglambda}, reducing the tensor to a diagonal form and thereby simplifying computation and interpretation.
 
+Although a minimum of $6$ gradient directions are required to fit a diffusion tensor, in practice $\geq 30$ directions are used, with $\geq 64$ being preferred. This is necessary to reduce errors due to crossing, kissing or branching fibers.
+
 \subsection{DTI}
 \label{subsec:background_dti}
 
@@ -167,6 +181,8 @@ FA is given by Eq.~\ref{eq:FA} as a relative measure describing the amount of di
     \mathrm{FA} = \sqrt{\frac{(\lambda_1 - \lambda_2)^2 + (\lambda_2 - \lambda_3)^2 + (\lambda_3 - \lambda_1)^2}{2(\lambda_1^2 + \lambda_2^2 + \lambda_3^2)}}
     \label{eq:FA}
 \end{equation}
+
+TODO: Find typical values physiological values, find citation for it.
 
 Although commonly used as biomarkers in diffusion MRI studies, the previously described DTI metrics face limitations when tackling voxels with a large amount of crossing white fiber tracts. Fig.~\ref{fig:dti_limits} demonstrates how changes in FA, or a lack thereof, do not necessarily correspond to true alterations in white matter microstructure.
 
@@ -210,12 +226,16 @@ where $h$ is the step size. For a fixed diffusion dataset, given identical input
 
 Probabilistic tractography aims to model the uncertainty of local fiber direction by sampling from an orientation distribution function (ODF) at each step \cite{lazar_mapping_2010}. If the algorithm runs from the same seed repeatedly, a distribution of plausible pathways will be returned instead of a single trajectory. This approach is useful for areas with high volumes of crossing fibers or low FA.
 
+TODO: Expand on this! csttool uses CSA-ODF. Be thorough.
+
+Finally, the termination criterion defines when a streamline has ended. A common way to implement this is by defining a threshold value. For example, a streamline can be terminated if its FA value drops below a certain threshold. Similarly, the maximum angle between tractography steps being exceeded can also indicate the endpoint of a tract. The length of the streamline can also be used to filter out potential false positives. Alternatively, a previously defined brain mask can also serve as a hard boundary.
+
 \clearpage
 
 \subsection{Atlas-Based Tract Extraction}
 \label{subsec:background_atlasbasedextraction}
 
-Whole-brain tractography results in a vast number of fibers, with the orders of magnitude typically being $10^6$ or $10^7$. To proceed with quantitative analysis, the relevant streamlines first need to be extracted from the full dataset according to anatomical criteria. The golden standard is manual placement of ROIs by an expert. The ROIs define inclusion or exclusion zones for the tracts of interest. While this method is very accurate, it has the following disadvantages: it is time-consuming, it requires an expertly trained individual, and the results are prone to inter-operator variability.
+Whole-brain tractography results in a vast number of fibers, with the orders of magnitude typically being $10^6$ or $10^7$. To proceed with quantitative analysis, the relevant streamlines first need to be extracted from the full dataset according to anatomical criteria. The gold standard is manual placement of ROIs by an expert. The ROIs define inclusion or exclusion zones for the tracts of interest. While this method is very accurate, it has the following disadvantages: it is time-consuming, it requires an expertly trained individual, and the results are prone to inter-operator variability.
 
 Atlas-based methods seek to address these limitations by automating ROI placement by transferring anatomical definitions from a reference atlas to individual subject space. First, anatomical knowledge about the tract trajectories, encoded in a standardized coordinate system, is warped to each subject's native diffusion space using image registration. Streamlines are then filtered according to their intersection with the warped ROIs. This approach eliminates the need for manual ROI placement while maintaining anatomical validity.
 
@@ -242,6 +262,7 @@ To ensure successful atlas-based extraction, accurate spatial correspondence bet
 
 \paragraph{Atlas-to-subject} The inverse approach to the one above. Streamlines are kept in native space, and the ROIs themselves are warped to each subject. The subject's anatomical (e.g. T1-weighted) or diffusion-derived (e.g. FA) image is used to compute the registration. Resulting transformation is applied to the atlas labels. This technique avoids distorting subject's tractography output and preserves spatial relationships captured during propagation, making it more suited when attempting to analyze pathologies.
 
+TODO: Thoroughly define the transformations (equations, figures, everything). What image similarity metric is used?
 
 
 
