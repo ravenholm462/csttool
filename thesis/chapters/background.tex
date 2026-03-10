@@ -226,7 +226,36 @@ where $h$ is the step size. For a fixed diffusion dataset, given identical input
 
 Probabilistic tractography aims to model the uncertainty of local fiber direction by sampling from an orientation distribution function (ODF) at each step \cite{lazar_mapping_2010}. If the algorithm runs from the same seed repeatedly, a distribution of plausible pathways will be returned instead of a single trajectory. This approach is useful for areas with high volumes of crossing fibers or low FA.
 
-TODO: Expand on this! csttool uses CSA-ODF. Be thorough.
+The ODF describes the marginal probability of water diffusion in a particular direction. Given a unit direction vector $\hat{u}$, the ODF is defined as the integral of the diffusion displacement probability density function (PDF) $P(\vec{r})$ over all radii \cite{aganj2010reconstruction}:
+
+\begin{equation}
+	\mathrm{ODF}(\hat{u}) = \int_0^\infty P(r\hat{u})\, r^2\, dr
+	\label{eq:odf_def}
+\end{equation}
+
+The $r^2$ factor arises from the spherical volume element $dv = r^2\,dr\,d\Omega$, where $d\Omega = \sin\theta\,d\theta\,d\varphi$ is the infinitesimal solid angle element. This weighting ensures the ODF is dimensionless and integrates to unity over the sphere. Earlier q-ball imaging (QBI) methods omitted this factor, performing only a linear radial projection of the PDF. The resulting quantity is not a true marginal probability, and requires artificial normalization and sharpening in post-processing \cite{aganj2010reconstruction}.
+
+The constant solid angle (CSA) formulation of \citeauthor{aganj2010reconstruction} corrects this by deriving a closed-form expression for Eq.~\ref{eq:odf_def} from single-shell HARDI data. Under a mono-exponential model for the normalized diffusion signal $\tilde{E}(\hat{u}) = S(\hat{u})/S_0$, the ODF becomes \cite{aganj2010reconstruction}:
+
+\begin{equation}
+	\mathrm{ODF}(\hat{u}) = \frac{1}{4\pi} + \frac{1}{16\pi^2}\,
+	\mathrm{FRT}\!\left\{\nabla_b^2 \ln\!\left(-\ln \tilde{E}(\hat{u})\right)\right\}
+	\label{eq:csa_odf}
+\end{equation}
+
+where FRT is the Funk-Radon transform (the integral of a spherical function over the great circle perpendicular to $\hat{u}$) and $\nabla_b^2$ is the Laplace-Beltrami operator on the unit sphere. The expression is inherently normalized and requires no post-processing sharpening.
+
+In practice, the quantity $\ln(-\ln\tilde{E}(\hat{u}))$ is expanded in a real, symmetric spherical harmonic (SH) basis $\{Y_j\}$ of maximum order $l$:
+
+\begin{equation}
+	\ln\!\left(-\ln \tilde{E}(\hat{u})\right) \approx \sum_{j=1}^{R} c_j\, Y_j(\hat{u}),
+	\quad R = \frac{(l+1)(l+2)}{2}
+	\label{eq:sh_expansion}
+\end{equation}
+
+where $R$ is the number of SH coefficients, requiring at least $R$ diffusion-weighted measurements for stable estimation. The SH coefficients $c_j$ are obtained by least-squares fitting to the acquired signal. Since SH functions are eigenfunctions of $\nabla_b^2$, the Laplace-Beltrami operator is applied analytically by multiplying each $c_j$ by $-k_j(k_j+1)$. The Funk-Radon transform is applied by scaling each coefficient by $2\pi P_{k_j}(0)$, where $P_k$ is the Legendre polynomial of degree $k$ \cite{aganj2010reconstruction}. This makes ODF reconstruction computationally efficient once the SH coefficients are known.
+
+In deterministic tractography, the dominant peak of the CSA-ODF per voxel serves as the local fiber direction, replacing the raw DTI eigenvector $\mathbf{v}_1$ in Eq.~\ref{eq:det_step}. This yields a more accurate direction field in voxels containing crossing fibers, while retaining the reproducibility of deterministic propagation.
 
 Finally, the termination criterion defines when a streamline has ended. A common way to implement this is by defining a threshold value. For example, a streamline can be terminated if its FA value drops below a certain threshold. Similarly, the maximum angle between tractography steps being exceeded can also indicate the endpoint of a tract. The length of the streamline can also be used to filter out potential false positives. Alternatively, a previously defined brain mask can also serve as a hard boundary.
 
