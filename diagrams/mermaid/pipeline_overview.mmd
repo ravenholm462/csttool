@@ -1,0 +1,22 @@
+---
+title: "csttool Processing Pipeline"
+---
+flowchart LR
+    input(["DICOM / NIfTI\n+ bval/bvec"])
+
+    stage1["1. Data Import"]
+    stage2["2. Preprocessing"]
+    stage3["3. DTI Fitting"]
+    stage4["4. Tractography"]
+    stage5["5. CST Extraction"]
+    stage6["6. Tract Metrics"]
+
+    output(["Metrics\n+ Report"])
+
+    input  --> stage1 --> stage2 --> stage3 --> stage4 --> stage5 --> stage6 --> output
+
+    classDef stageNode fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    classDef ioNode    fill:#e1f5ff,stroke:#0288d1,stroke-width:2px
+
+    class stage1,stage2,stage3,stage4,stage5,stage6 stageNode
+    class input,output ioNode
