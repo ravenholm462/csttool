@@ -7,7 +7,39 @@
 \section{Pipeline Overview}
 \label{sec:methods_pipeline}
 
-TODO: Brief intro to the standard pipeline. Add mermaid diagram or flowchart. Mention every module can run individually, as a full run, or multiple runs via batch.
+\texttt{csttool} implements a six-stage processing pipeline that uses raw diffusion-weighted MRI data to generate hemisphere-specific CST bundles with quantitative tract metrics. Two ideas guided pipeline design: full automation without manual ROI placement, and modularity that allows each stage to be executed independently. Figure~\ref{fig:pipeline_overview} illustrates the processing stages and their data flow.
+
+The six stages are:
+
+\begin{enumerate}
+	
+	\item \hyperref[sec:methods_dataimport]{\textbf{Data Import}} — Accepts DICOM or NIfTI input, performs series selection and DICOM-to-NIfTI conversion where necessary, extracts acquisition metadata from BIDS JSON sidecars, and validates gradient table integrity.
+	
+	\item \hyperref[sec:methods_preprocessing]{\textbf{Preprocessing}} — Applies noise reduction to the diffusion-weighted volumes, generates a brain mask via Otsu thresholding on the $b = 0$ images, and optionally applies Gibbs unringing and motion correction.
+	
+	\item \hyperref[sec:methods_diffusiontensorfitting]{\textbf{Diffusion Tensor Fitting}} — Fits the diffusion tensor model to the preprocessed data and derives scalar maps including fractional anisotropy (FA), mean diffusivity (MD), radial diffusivity (RD), and axial diffusivity (AD).
+	
+	\item \hyperref[sec:methods_wholebraintractography]{\textbf{Whole Brain Tractography}} — Estimates a direction field using the Constant Solid Angle (CSA) ODF model, then performs deterministic streamline tracking seeded from white matter voxels to generate a whole-brain tractogram.
+	
+	\item \hyperref[sec:methods_atlasbasedextraction]{\textbf{Atlas-Based Extraction}} — Registers the MNI152 template to the subject's native space, warps the Harvard-Oxford cortical and subcortical atlases using the resulting deformation field, defines brainstem and motor cortex ROIs from the warped labels, and filters the whole-brain tractogram to isolate bilateral CST bundles.
+	
+	\item \hyperref[sec:methods_metrics]{\textbf{Tract-Level Metrics}} — Computes morphological and microstructural statistics for each hemisphere, derives along-tract profiles by resampling streamlines to equidistant points, and calculates laterality indices to determine asymmetry.
+	
+\end{enumerate}
+
+Each stage reads from and writes to a structured output directory, producing intermediary NIfTI volumes, tractogram files (.trk), and JSON reports that record all processing parameters and information. This architecture ensures that any stage can be executed individually or inspected independently without the need to re-run the entire pipeline. For routine use, the command \texttt{csttool run} chains all stages together sequentially, as seen Fig.~\ref{fig:pipeline_diagram}. To chain multiple runs together, \texttt{csttool batch} can be used to process multiple subject in sequence, with per-subject timeout handling and consolidated reporting.
+
+The pipeline is implemented entirely in Python and depends on a small set of open-source libraries. Tractography, tensor fitting, and registration are provided by DIPY~\cite{garyfallidis_dipy_2014}. NIfTI handling uses nibabel~\cite{markiewicz_2026_18944560}, image resampling uses nilearn~\cite{Nilearn}, and morphological operations use SciPy~\cite{virtanen2020scipy}. Atlas data is managed through a two-tier system: the MNI152 T1 1\,mm template~\cite{fonov2011unbiased} is bundled directly with the package and is always available; the FMRIB58 FA template~\cite{smith2006tract} and the Harvard-Oxford cortical and subcortical parcellations~\cite{jenkinson2012fsl} are distributed separately under an FSL licence (non-commercial use) and must be downloaded once with \texttt{csttool fetch-data --accept-fsl-license}. Version information for all libraries and the tool itself is recorded in every output report to support reproducibility.
+
+The following sections describe each stage in detail, beginning with data import and concluding with metric computation.
+
+% TODO: Add pipeline flowchart figure. Use mermaids from csttool/diagrams
+% \begin{figure}[htbp]
+	%     \centering
+	%     \includegraphics[width=\textwidth]{figures/pipeline_overview.pdf}
+	%     \caption{Overview of the \texttt{csttool} processing pipeline. Raw diffusion-weighted MRI data enters as DICOM or NIfTI and is processed through six sequential stages to produce hemisphere-specific CST bundles and quantitative tract-level metrics. Each stage can be executed independently via its corresponding CLI command.}
+	%     \label{fig:pipeline_overview}
+	% \end{figure}
 
 \section{Data Import}
 \label{sec:methods_dataimport}
@@ -61,9 +93,9 @@ TODO: Maps to \ref{subsec:background_atlasbasedextraction}
 
 TODO: How the atlas-to-subject approach described in \ref{subsubsec:background_registration} is implemented:
 
-1. Affine registration: Translation → Rigid → Affine (Mutual Information metric)
+1. Affine registration: Centre-of-mass alignment → Translation → Rigid → Affine (Mutual Information metric)
 2. Diffeomorphic registration: SyN (Symmetric Normalization, Cross-Correlation metric)
-3. Target: MNI152 template (1mm, skull-stripped, bundled with csttool)
+3. Moving image: FMRIB58 FA template (1\,mm, MNI space; preferred for mono-modal FA-to-FA registration) with fallback to the bundled MNI152 T1 template when the FA template is not installed
 
 
 \subsection{Atlas Warping}
@@ -89,7 +121,7 @@ TODO: Tie into \ref{subsubsec:background_filteringstrategies}. Explain this:
   1. Endpoint filtering (strict): Requires one endpoint in brainstem, other in motor cortex. Bidirectional checking.
   2. Passthrough filtering (default, permissive): Streamlines must traverse both ROIs; endpoints flexible.
 
-Length filtering: 20–200 mm (anatomically plausible CST range).
+Length filtering: 20–200\,mm for endpoint and passthrough methods; 30–200\,mm for ROI-seeded tracking (anatomically plausible CST range).
 
 
 \section{Tract-Level Metrics}
