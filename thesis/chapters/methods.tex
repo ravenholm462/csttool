@@ -44,7 +44,76 @@ The following sections describe each stage in detail, beginning with data import
 \section{Data Import}
 \label{sec:methods_dataimport}
 
-TODO: Explain import pipeline, how DICOMs and NIfTIs are handled, gradient table construction, validation of input data structure.
+The data import stage accepts raw diffusion-weighted MRI data in two formats: DICOM and NIfTI. Format detection is automatic --- the pipeline inspects the input directory and routes processing accordingly, so no format flag is required from the user.
+
+\subsection{DICOM Input}
+\label{subsec:methods_dicom}
+
+When a DICOM directory is provided, the pipeline first catalogues all series contained within it. A recursive scan descends up to three directory levels, identifying DICOM-containing subdirectories either by the presence of \texttt{.dcm} or \texttt{.dicom} files or by reading the DICOM preamble magic number (\texttt{DICM} at byte offset 128). Each candidate directory is then analysed using pydicom~\cite{darcy_mason_2024_13824606} to extract series-level metadata: \texttt{SeriesDescription}, \texttt{ImageType} (distinguishing \texttt{ORIGINAL} from \texttt{DERIVED}), detected b-values, estimated volume count, and in-plane phase-encoding direction.
+
+From this metadata each series is classified into one of nine types: raw multi-directional DWI (\texttt{DIFFUSION\_RAW}), trace-weighted (\texttt{DIFFUSION\_TRACE}), ADC map, FA map, other derived diffusion image (\texttt{DIFFUSION\_OTHER} --- matches diffusion keywords but carries a \texttt{DERIVED} or \texttt{SECONDARY} image-type flag), T1/T2 structural, localizer, or unknown. A numerical suitability score is then computed. Raw, non-derived DWI series receive a base score of 50; the \texttt{ORIGINAL} image-type flag adds 10 points; having at least two distinct b-values adds a further 15 points; and anterior-to-posterior (AP) phase encoding adds 10.\footnote{Additional scoring adjustments are applied: an extra 5 points if three or more distinct b-values are present; 5 points if an explicit $b = 0$ is detected; 20 or 10 points for series with $\geq 100$ or $\geq 50$ files respectively; $-10$ for fewer than 20 files; and $-10$ for posterior-to-anterior (PA) phase encoding.} Conversely, a \texttt{DERIVED} or \texttt{SECONDARY} image type subtracts 30, and non-diffusion series are penalised by 100, making them ineligible. Any series with a net positive score is considered suitable for tractography, and the highest-scoring series is selected automatically. The user may override automatic selection by specifying a series index or Series Instance UID on the command line.
+
+The selected series is converted to compressed NIfTI format using \texttt{dicom2nifti}~\cite{dicom2nifti}, which handles vendor-specific encoding including Siemens mosaic multi-band acquisitions and multi-frame Enhanced DICOM objects, and extracts the diffusion gradient table (\texttt{.bval}/\texttt{.bvec}) directly from the DICOM headers. When \texttt{dicom2nifti} fails, a fallback conversion via \texttt{dcm2niix}~\cite{li2016first} is attempted if that tool is available on the system path.
+
+\subsection{NIfTI Input}
+\label{subsec:methods_nifti}
+
+When a pre-converted NIfTI directory is provided, the stage loads the compressed volume (\texttt{.nii.gz}) and the accompanying gradient files directly. Both the \texttt{.bval}/\texttt{.bvec} and the \texttt{.bvals}/\texttt{.bvecs} filename variants are accepted, accommodating data exported by different software packages.
+
+\subsection{Gradient Table and BIDS Metadata}
+\label{subsec:methods_gradienttable}
+
+Regardless of input format, the b-values and b-vectors are used to construct a DIPY \texttt{GradientTable} object~\cite{garyfallidis_dipy_2014}, which encodes the full diffusion-encoding scheme and is passed to subsequent pipeline stages. Volumes with $b \leq 50\;\text{s/mm}^2$ are treated as $b = 0$ reference images, following the default threshold used by the DIPY library~\cite{garyfallidis_dipy_2014}.
+
+BIDS is shorthand for brain-imaging data structure and it attempts to provide a set of guidelines for file and metaddata naming and organization, statistical modeling of neuroimaging data and applications created to be used with said data~\cite{gorgolewski2016brain, karakuzu2022qmri}. If a BIDS-compatible JSON sidecar is present alongside the NIfTI file, the pipeline reads it to extract acquisition metadata. Echo time is stored in seconds in the BIDS convention and is converted to milliseconds internally. Field strength is also extracted where present. These values are recorded in the per-subject JSON import report alongside the library versions used, providing a complete record of acquisition context for downstream reporting.
+
+\subsection{Acquisition Quality Assessment}
+\label{subsec:methods_qualityassessment}
+
+After the gradient table is constructed, a series of data-quality checks are applied and their outcomes are recorded in the import report. Table~\ref{tab:qa_checks} lists all checks grouped by severity. %TODO Find citations for the guidelines chosen for this scoring system.
+
+\begin{table}[htbp]
+\centering
+\caption{Acquisition quality checks applied during data import, grouped by severity. Critical violations halt the pipeline by default.}
+\label{tab:qa_checks}
+\small
+\begin{tabular}{p{1.8cm} p{5.5cm} p{5.5cm}}
+\toprule
+\textbf{Severity} & \textbf{Condition} & \textbf{Rationale} \\
+\midrule
+\multirow{6}{*}{Critical}
+  & Fewer than 15 unique gradient directions & Minimum for reliable CSA-ODF; $\geq 28$ recommended for SH order 6 \\
+  & No $b = 0$ volumes present & Reference images required for normalisation and registration \\
+  & Mismatched \texttt{bval}/\texttt{bvec} lengths & Gradient table is corrupt \\
+  & Near-zero gradient vectors in DWI volumes & Indicates missing or corrupt direction encoding \\
+  & Negative b-values & Physically impossible; indicates corrupt gradient table \\
+  & Highly anisotropic voxels (max/min $> 2.0$) & Severe directional bias in tensor fitting \\
+\midrule
+\multirow{8}{*}{Warning}
+  & Fewer than three $b = 0$ volumes & $\geq 3$ recommended for robust registration \\
+  & b-value range 1.5--2.0 anisotropy ratio & Moderate directional bias \\
+  & b$_\text{max} < 800\;\text{s/mm}^2$ & Risk of FA underestimation \\
+  & b$_\text{max} > 3000\;\text{s/mm}^2$ & Reduced SNR at high b-values \\
+  & Any voxel dimension $> 2.5\;\text{mm}$ & Partial-volume effects in internal capsule and brainstem \\
+  & Voxel volume $> 15\;\text{mm}^3$ & Reduced SNR from large voxels \\
+  & 15--27 unique directions & Limits spherical harmonic order to 4 \\
+  & Fewer than 6 directions in any shell $> 500\;\text{s/mm}^2$ & Insufficient coverage per shell \\
+  & Echo time $> 100\;\text{ms}$ (when BIDS JSON present) & Increased T2 signal loss \\
+  & Missing \texttt{PhaseEncodingDirection} or \texttt{TotalReadoutTime} & Fields required for susceptibility distortion correction \\
+\midrule
+\multirow{4}{*}{Informational}
+  & Multiple b-value shells detected & Pipeline is designed for single-shell acquisitions \\
+  & Large $b = 0$ gap ($> 30$ volumes between reference frames) & May affect motion correction \\
+  & Multiband factor $> 4$ & Reduced SNR from high acceleration \\
+  & Parallel imaging factor $> 3$ & Reduced SNR from high undersampling \\
+  & Unusual phase-encoding direction & Direction not in standard \texttt{i/j/k} conventions \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Shell detection clusters b-values with a relative tolerance of 5\,\% to account for minor scanner calibration variation. Warnings are printed to the console and written to the import report; only critical violations halt the pipeline by default.
+
+The stage concludes by writing an organised output directory containing the NIfTI volume, gradient files, the BIDS JSON sidecar if one was found, and the import report. This directory is the sole input consumed by the preprocessing stage.
 
 \section{Preprocessing}
 \label{sec:methods_preprocessing}
