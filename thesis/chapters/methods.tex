@@ -201,14 +201,135 @@ Finally, the corrected image is obtained by interpolating the optimally shifted 
 	I_{\text{unring}}(x) = I_{r(x)}\!\left(x - \frac{r(x)}{2M}\right)
 \end{equation}
 
+%TODO: Check if explanation aligns with DIPY's code.
+
 \subsection{Motion Correction}
 \label{subsec:methods_motioncorrection}
+
+Due to subject motion during acquisition, volumes become misaligned. The most common way to solve this problem is by performing a registration on each acquired volume to a reference $b=0$~\cite{jenkinson2001global}. The idea is to use a sequence of affine transformations in increasingly finer resolutions. DIPY's \texttt{register\_dwi\_series} function implements this idea in the \texttt{motion\_correction} wrapper.
+
+A stable reference $b_0$ is built first. Afterwards, the motion correction pipeline is implemented, consisting of four stages: center-of-mass alignment, translation, rigid transformation and affine transformation.
+
+First, center-of-mass alignment provides a coarse initialization by aligning the centroids $c_{\text{ref}}$ and $c_{\text{mov}}$ of the reference and moving volumes:
+
+\begin{equation}
+	t_{\text{COM}} = c_{\text{ref}} - c_{\text{mov}}
+\end{equation}
+\label{eq:motioncorrection_com}
+
+Next, a translation-only model is optimized, where $x \in \mathbb{R}^3$ denotes a voxel coordinate and $t \in \mathbb{R}^3$ a translation vector:
+
+\begin{equation}
+	T(x) = x + t
+\end{equation}
+\label{eq:motioncorrection_translation}
+
+This is followed by a rigid transformation, introducing a rotation matrix $R \in SO(3)$:
+
+\begin{equation}
+	T(x) = R x + t, \quad R \in SO(3)
+\end{equation}
+\label{eq:motioncorrection_rigid}
+
+Finally, a full affine transformation is estimated with $A \in \mathbb{R}^{3 \times 3}$ capturing scaling and shear:
+
+\begin{equation}
+	T(x) = A x + t
+\end{equation}
+\label{eq:motioncorrection_affine}
+
+At each stage, the transformation $T$ mapping the moving image $I_{\text{mov}}$ to the reference image $I_{\text{ref}}$ is obtained by minimizing a similarity cost function $C(\cdot)$:
+
+\begin{equation}
+	T^* = \arg\min_T C(I_{\text{ref}}, I_{\text{mov}} \circ T)
+\end{equation}
+\label{eq:motioncorrection_cost}
+
+Here, $\circ$ denotes composition, i.e. resampling of $I_{\text{mov}}$ under the transformation $T$. The optimization is performed in a multi-resolution scheme, starting on coarse images and refining on finer scales to improve convergence.
 
 \subsection{Reslicing}
 \label{subsec:methods_reslicing}
 
+At times, MR images need to be resliced in different resolutions. This is especially needed if datasets come with non-isotropic voxel sizes. \texttt{csttool} uses DIPY's \texttt{reslice} method. First, the function computes the scaling factor
+
+\begin{equation}
+	R = \frac{\text{new\_zooms}}{\text{zooms}}
+\end{equation}
+
+which defines the relative change in voxel size along each spatial dimension. If no target shape is provided, the new image dimensions are determined as
+
+\begin{equation}
+	\text{new\_shape} = \operatorname{round}\left(\frac{\text{zooms}}{\text{new\_zooms}} \cdot \text{shape}\right)
+\end{equation}
+
+so that the physical field of view is preserved while the voxel size changes. The image is then resampled onto the new grid using \texttt{affine\_transform} with \(R\) as the transformation matrix. For 4D datasets, this operation is performed independently for each volume.
+
+Finally, the affine transformation is updated to remain consistent with the new voxel grid. A diagonal scaling matrix is constructed from \(R\),
+
+\begin{equation}
+	R_x =
+	\begin{bmatrix}
+		R_1 & 0 & 0 & 0 \\
+		0 & R_2 & 0 & 0 \\
+		0 & 0 & R_3 & 0 \\
+		0 & 0 & 0 & 1
+	\end{bmatrix}
+\end{equation}
+
+and applied to the original affine as
+
+\begin{equation}
+	\text{affine}_{\text{new}} = \text{affine} \cdot R_x
+\end{equation}
+
+resulting in a resampled image with updated voxel spacing and consistent spatial coordinates.
+
 \subsection{Brain Masking}
 \label{subsec:methods_brainmasking}
+
+For skull stripping, \texttt{csttool} uses DIPY's \texttt{median\_otsu} algorithm, which combines median filtering with Otsu thresholding to generate a binary brain mask.
+
+Given a diffusion dataset $V \in \mathbb{R}^{X \times Y \times Z \times N}$, a reference image is first computed by averaging selected b$_0$ volumes with indices $\mathcal{I}$:
+
+\begin{equation}
+	I(x) = \frac{1}{|\mathcal{I}|} \sum_{i \in \mathcal{I}} V(x,i)
+	\label{eq:median_otsu_b0}
+\end{equation}
+
+To reduce noise, a median filter is applied iteratively. For a neighborhood $\mathcal{N}_r(x)$ with radius $r$, one filtering step is defined as:
+
+\begin{equation}
+	I^{(k+1)}(x) = \mathrm{median} \{ I^{(k)}(y) \mid y \in \mathcal{N}_r(x) \}
+	\label{eq:median_otsu_median}
+\end{equation}
+
+and repeated for $K$ passes, resulting in a smoothed image $I^{(K)}$.
+
+A global threshold $t^*$ is then computed using Otsu's method by maximizing the between-class variance:
+
+\begin{equation}
+	t^* = \arg\max_{t} \ \sigma_B^2(t)
+	\label{eq:median_otsu_otsu}
+\end{equation}
+
+The binary mask $M$ is obtained as
+\begin{equation}
+	M(x) =
+	\begin{cases}
+		1, & I^{(K)}(x) > t^* \\
+		0, & \text{otherwise}
+	\end{cases}
+	\label{eq:median_otsu_mask}
+\end{equation}
+
+Optional post-processing steps include binary dilation and removal of small holes or isolated regions. The final mask is applied to the input data:
+
+\begin{equation}
+	V_{\text{masked}}(x,i) = M(x) \cdot V(x,i)
+	\label{eq:median_otsu_apply}
+\end{equation}
+
+Median filtering improves robustness to noise, while Otsu thresholding separates brain tissue from background based on the intensity histogram~\cite{yang2012improved}.
 
 \subsection{Notes}
 \label{subsec:methods_preproc_notes}
