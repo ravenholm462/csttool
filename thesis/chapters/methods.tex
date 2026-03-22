@@ -118,7 +118,102 @@ The stage concludes by writing an organised output directory containing the NIfT
 \section{Preprocessing}
 \label{sec:methods_preprocessing}
 
-TODO: Explain all parameters and their CLI calls in a table. Explain how this package is underdeveloped to keep it Pythonic and leaner.
+The \texttt{preprocess} module of \texttt{csttool} prepares raw diffusion data for tractography by reducing noise and artifacts.
+
+%TODO: Add all parameters and their CLI calls in a table.
+%TODO: Add pipeline diagram
+
+\subsection{Denoising}
+\label{subsec:methods_denoising}
+
+The first step of the preprocessing pipeline is to attempt and remove noise from given MRI images. \texttt{csttool} offers two denoising techniques which are available in DIPY: non-local means (NLMEANS)~\cite{coupe2008nlmeans, coupe2012nlmeans} and Patch2Self~\cite{fadnavis2011patch2self, fadnavis2024patch2self2}.
+
+\paragraph{NLMEANS} A straightforward way to denoise an image is to take the mean value of a group of pixels surrounding the target pixel. This is local means filtering. A non-local means filter looks beyond the immediate neighborhood of the target, taking a mean of all the pixels in the image and weighting them by a similarity function.
+
+Given an image with an area $\Omega$ and two points $p$ and $q$, the algorithm for NLMEANS is~\cite{buades2011non}:
+
+\begin{equation}
+	\mathrm{NL}u(p) = \frac{1}{C(p)} \int_{\Omega} f(d(B(p), B(q)))u(q)dq
+\end{equation}
+\label{eq:nlmeans}
+
+where $d(B(p), B(q))$ is an Euclidean distance between image patches centered respectively at $p$ and $q$, $f$ is a decreasing function and $C(p)$ is the normalizing factor, given by:
+
+\begin{equation}
+	C(p) = \int_{\Omega} f(p,q)dq
+\end{equation}
+\label{eq:nlmeans_normalizingfactor}
+
+The weighting function $f(p,q)$ is used to determine how similar the image is at point $p$ to the image at point $q$. Commonly, the Gaussian weighting function is used:
+
+\begin{equation}
+	f(p,q) = e^{-\frac{|B(q)-B(p)|^2}{h^2}}
+\end{equation}
+\label{eq:gaussian_weight}
+
+where $h$ is the standard deviation, and $B(p), B(q)$ are the local mean values surrounding the image point values $p$ and $q$ respectively.
+
+\paragraph{Patch2Self} Classical denoising algorithms such as NLMEANS need to make assumptions on the input signal, which makes them prone to bias. Instead of this, Patch2Self only uses the fact that the noise across different 3D volumes of the diffusion signal originates from random fluctuations in the acquired signal. Patch2Self removes noise by predicting each diffusion volume $V_j$ from other volumes $V$, assuming noise is random and uncorrelated across them.
+
+\begin{figure}[htbp]
+	\centering
+	\includegraphics[width=0.8\linewidth]{figs/Patch2Self_Framework.png}
+	\caption{Working principle of the Patch2Self algorithm~\cite{fadnavis2011patch2self}}
+	\label{fig:patch2self}
+\end{figure}
+
+As shown in Fig.~\ref{fig:patch2self}, Patch2Self operates in two stages. In the first stage (A), one diffusion volume $V_j$ is held out as the target. Patches from the remaining $(n-1)$ volumes $V_{-j}$ are used to predict the center voxel of the corresponding patch in $V_j$. The target volume itself is not used as input, which prevents the model from learning noise.
+
+In the second stage (B), the trained regressor is applied to the same input volumes $V_{-j}$ to obtain a denoised estimate $\hat{V}_j$ of the held-out volume. This procedure is repeated for all volumes. Since noise is uncorrelated across volumes, it cannot be predicted and is therefore suppressed, while consistent structural information is preserved.
+
+A marked advantage of Patch2Self is the fact that it can be plugged into any position in the preprocessing pipeline. %TODO: Expand: why? One more sentence.
+
+\subsection{Gibbs Unringing}
+\label{subsec:methods_gibbs}
+%TODO: Check this subsection if it is clear enough.
+
+Gibbs artifacts occur as a consequence of using Fourier transforms to reconstruct MR signals into images. Because an image has to be recreated by sampling only a finite number of frequencies, the Fourier series has to be cut short during reconstruction. The error due to this truncation is evident in high-contrast interfaces of the image. The resulting artifact usually manifests as intensity oscillations adjacent to edges of different tissue types~\cite{veraart2016gibbs}.
+
+\begin{equation}
+	I_{\mathrm{recon}} = I_{\mathrm{true}} * \mathit{sinc}
+\end{equation}
+\label{eq:mri_reconstruction}
+
+\texttt{csttool} uses DIPY's Gibbs removal module. The algorithm is based on an adapted version of a sub-voxel Gibbs suppression procedure~\cite{kellner2016gibbs, neto2018advanced}. The technique takes advantage of the fact that the strength of these oscillations depends on how the underlying sinc pattern is sampled on the discrete voxel grid. If the sampling occurs near extrema of the sinc function, ringing is pronounced, whereas sampling near its zero-crossings minimizes the artifact. If sampling location is adjusted locally so that it occurs near zero-crossings, the ringing amplitude will be minimized.
+
+First, a set of sub-voxel shifted images is generated by applying phase ramps in Fourier space:
+
+\begin{equation}
+	I_s(x)~\mathrm{for~different}~s
+\end{equation}
+
+For each voxel \(x\), the optimal shift is determined by minimizing local intensity oscillations, measured using a total variation criterion:
+
+\begin{equation}
+	r(x) = \arg\min_s \sum_n \left| I_s(x+n) - I_s(x+n-1) \right|
+\end{equation}
+
+This selects the shift that yields the least oscillatory neighborhood.
+
+Finally, the corrected image is obtained by interpolating the optimally shifted signal back onto the original grid:
+
+\begin{equation}
+	I_{\text{unring}}(x) = I_{r(x)}\!\left(x - \frac{r(x)}{2M}\right)
+\end{equation}
+
+\subsection{Motion Correction}
+\label{subsec:methods_motioncorrection}
+
+\subsection{Reslicing}
+\label{subsec:methods_reslicing}
+
+\subsection{Brain Masking}
+\label{subsec:methods_brainmasking}
+
+\subsection{Notes}
+\label{subsec:methods_preproc_notes}
+
+%TODO: Explain how this package is underdeveloped to keep it Pythonic and leaner.
 
 \section{Diffusion Tensor Fitting}
 \label{sec:methods_diffusiontensorfitting}
