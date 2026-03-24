@@ -339,9 +339,41 @@ Median filtering improves robustness to noise, while Otsu thresholding separates
 \section{Diffusion Tensor Fitting}
 \label{sec:methods_diffusiontensorfitting}
 
-TODO: Tie in to \ref{subsec:background_dti}; describe the use of DIPY's TensorModel, the eigenvalue decomposition, derived scalar maps (FA, MD, AD, RD), white matter mask generation, NaN/Inf handling. 
+%TODO: Question: FA map as redundancy if anat T1 not found for future pipeline? Unsure if implemented in code. Check. Idea is: look for T1 anat first, use that if available, otherwise default to legacy FA method.
 
-Question: FA map as redundancy if anat T1 not found for future pipeline?
+Fitting the diffusion tensor model is handled by the \texttt{fit\_tensors} method within the \texttt{track} module. For each voxel of the preprocessed volumes, this method estimates the diffusion tensor $\mathcal{D}$. This section describes how \texttt{cstttool} accomplishes this. The theoretical foundations are explained in Section~\ref{subsec:background_diffusiontensor}. The derived scalar metrics are defined in Section~\ref{subsec:background_dti}.
+
+\paragraph{Tensor model and fitting.}
+
+Eq.~\ref{eq:signal} models the diffusion-weighted signal using a scalar diffusion coefficient $D$. In the case of anisotropic diffusion, this parameter is replaced by the full diffusion tensor $\mathcal{D}$, yielding the tensor signal model~\cite{basser1994mr}:
+
+\begin{equation}
+	S_i = S_0 \exp\!\bigl(-b\,\hat{\mathbf{g}}_i^\top \mathcal{D}\,\hat{\mathbf{g}}_i\bigr)
+	\label{eq:tensor_signal}
+\end{equation}
+
+where $S_i$ is the signal measured along the $i$-th gradient direction with unit vector $\hat{\mathbf{g}}_i$, $S_0$ is the initial, unweighted signal and $b$ is the diffusion weighting factor (Eq.~\ref{eq:stejskal-tanner}). Since $\mathcal{D}$ is symmetric, it has six unique elements. Each gradient direction contributes exactly one equation of the form defined by Eq.~\ref{eq:tensor_signal}. If more than 6 non-colinear gradient directions are given, the system is overdetermined. As such, it can be solved via the ordinary least squares technique, which is the method applied by DIPY's \texttt{TensorModel} and used by \texttt{csttool}. Fitting is restricted to voxels within the brain mask obtained during preprocessing (Section~\ref{subsec:methods_brainmasking}).
+
+\paragraph{Scalar map computation.} 
+
+Eigenvalue decomposition of the fitted tensor (Eq.~\ref{eq:diffusion_matrix_form}) yields the eigenvalues $\lambda_1 \geq \lambda_2 \geq \lambda_3$, from which the four scalar maps FA, MD, AD and RD are computed as defined in Eqs.~\ref{eq:FA},~\ref{eq:MD},~\ref{eq:AD} and~\ref{eq:RD}. The implementation uses DIPY's \texttt{tenfit.fa} attribute for FA and the helper functions \texttt{mean\_diffusivity}, \texttt{radial\_diffusivity} and \texttt{axial\_diffusivity} from \texttt{dipy.reconst.dti} for MD, RD and AD respectively.
+
+Noise can cause near-zero or negative eigenvalues to appear. This results in some voxels producing NaN or $\pm\infty$ values in derived scalar maps. These are replaced with zero, preventing numerical instability down the pipeline at the cost of underestimating diffusivity in affected voxels.
+
+\paragraph{White matter mask generation.} 
+
+The end goal of \texttt{csttool} is to classify tracts belonging to the CST. As such, the detected streamlines must be contained to white matter only. If a co-registered T1-weighted anatomical image is not provided, the FA map provides a suitable proxy for white matter mask generation. This makes the tool more self-contained. A binary white matter mask $W$ is defined as:
+
+\begin{equation}
+	W(x) =
+	\begin{cases}
+		1, & \mathrm{FA}(x) > \tau \;\wedge\; M(x) = 1 \\
+		0, & \text{otherwise}
+	\end{cases}
+	\label{eq:wm_mask}
+\end{equation}
+
+where $\tau$ is a configurable FA threshold (default $\tau = 0.2$) and $M$ is the brain mask from Section~\ref{subsec:methods_brainmasking}. The mask is subsequently dilated by one voxel using \texttt{binary\_dilation} from SciPy to ensure that streamlines can reach the cortical grey--white matter interface, which is relevant for both seeding and termination during tractography.
 
 \section{Whole Brain Tractography}
 \label{sec:methods_wholebraintractography}
