@@ -406,7 +406,7 @@ The ODF is sampled on a symmetric sphere with 362 vertices (\texttt{symmetric362
 
 Two constraints are defined: first, the peak must exceed $80\%$ of the maximum ODF value (\texttt{relative\_peak\_threshold} = 0.8), and second, peaks must be separated by at least $45^{\circ}$ (\texttt{min\_separation\_angle} = 45) in case of multiple peaks. These parameters ensure that peaks arising from noise are filtered out.
 
-Direction field estimation is implemented using DIPY's \texttt{CsaOdfModel} from \texttt{dipy.reconst.shm} and \texttt{peaks\_from\_model} from \texttt{dipy.direction}~\cite{garyfallidis_dipy_2014}. The sphere is loaded using \texttt{get\_sphere('symmetric362')} from \texttt{dipy.data}. Computation is restricted to voxels within the white matter mask $W$ from Eq.~\ref{eq:wm_mask} to reduce computational load and avoid estimating directions in non-white matter tissue.
+Direction field estimation is implemented using DIPY's \texttt{CsaOdfModel} from \texttt{dipy.reconst.shm} and \texttt{peaks\_from\_model} from \texttt{dipy.direction}~\cite{garyfallidis_dipy_2014}. The sphere is loaded using \\ \texttt{get\_sphere('symmetric362')} from \texttt{dipy.data}. Computation is restricted to voxels within the white matter mask $W$ from Eq.~\ref{eq:wm_mask} to reduce computational load and avoid estimating directions in non-white matter tissue.
 
 \subsection{Seeding Strategy}
 \label{subsec:methods_seeding}
@@ -457,7 +457,7 @@ To ensure the streamline trajectory is not biased by the initial seed location a
 
 %TODO: Find or generate a graphic representation of the bidirectional propagation approach.
 
-Tracking is implemented using DIPY's \texttt{LocalTracking} class from \texttt{dipy.tracking.local\_tracking}~\cite{garyfallidis_dipy_2014}, which uses an explicit Euler integration scheme. A fixed random seed (\texttt{random\_seed} = 42) is used by default to ensure bitwise-identical tractograms across multiple runs with the same input data. 
+Tracking is implemented using DIPY's \texttt{LocalTracking} class from \\ \texttt{dipy.tracking.local\_tracking}~\cite{garyfallidis_dipy_2014}, which uses an explicit Euler integration scheme. A fixed random seed (\texttt{random\_seed} = 42) is used by default to ensure bitwise-identical tractograms across multiple runs with the same input data. 
 
 \subsection{Stopping Criteria}
 \label{subsec:methods_stopping}
@@ -504,6 +504,8 @@ Typical whole-brain tractograms for clinical diffusion datasets contain $10^5$ t
 
 \section{Atlas-Based CST Extraction}
 \label{sec:methods_atlasbasedextraction}
+
+After the whole-brain tractogram is generated (Section~\ref{sec:methods_wholebraintractography}), the bilateral CST has to be isolated. \texttt{csttool}'s implementation follows the atlas-to-subject strategy described in Section-\ref{subsubsec:background_registration}: rather than warping streamlines into standard space, atlas-defined ROIs are brought into the subject native space, preserving the original streamline geometry. This stage proceeds in four steps: image registration, atlas warping, ROI definition, and streamline filtering. The theoretical foundations to this approach are described in Section~\ref{subsec:background_atlasbasedextraction}.
 
 TODO: Maps to \ref{subsec:background_atlasbasedextraction}
 
