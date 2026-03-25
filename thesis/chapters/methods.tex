@@ -507,43 +507,160 @@ Typical whole-brain tractograms for clinical diffusion datasets contain $10^5$ t
 
 After the whole-brain tractogram is generated (Section~\ref{sec:methods_wholebraintractography}), the bilateral CST has to be isolated. \texttt{csttool}'s implementation follows the atlas-to-subject strategy described in Section-\ref{subsubsec:background_registration}: rather than warping streamlines into standard space, atlas-defined ROIs are brought into the subject native space, preserving the original streamline geometry. This stage proceeds in four steps: image registration, atlas warping, ROI definition, and streamline filtering. The theoretical foundations to this approach are described in Section~\ref{subsec:background_atlasbasedextraction}.
 
-TODO: Maps to \ref{subsec:background_atlasbasedextraction}
-
 \subsection{Image Registration}
 \label{subsec:methods_imageregistration}
 
-TODO: How the atlas-to-subject approach described in \ref{subsubsec:background_registration} is implemented:
+To warp atlas labels into subject space, a spatial mapping between the MNI152 standard-space coordinate system and the subject's native diffusion space is necessary. This transformation is computed in two stages: first, an affine registration, and second, a diffeomorphic refinement. The subject's FA map is chosen as the fixed (target) image throughout.
 
-1. Affine registration: Centre-of-mass alignment → Translation → Rigid → Affine (Mutual Information metric)
-2. Diffeomorphic registration: SyN (Symmetric Normalization, Cross-Correlation metric)
-3. Moving image: FMRIB58 FA template (1\,mm, MNI space; preferred for mono-modal FA-to-FA registration) with fallback to the bundled MNI152 T1 template when the FA template is not installed
+\paragraph{Template selection.}
 
+The moving (source) image is preferentially the FMRIB58 FA template~\cite{smith2006tract}, a population-averaged fractional anisotropy map at 1\,mm isotropic resolution in MNI space. Because the subject's FA map is also an FA image, this yields a mono-modal registration in which both images share the same contrast, improving alignment quality. If the FMRIB58 template has not been installed (it requires a separate download under the FSL licence via \texttt{csttool fetch-data}), the pipeline falls back to the bundled MNI152 T1 1\,mm template~\cite{fonov2011unbiased}. In either case, the template is resampled to a common MNI grid before registration to ensure consistent voxel dimensions.
+
+\paragraph{Affine registration.}
+
+The affine stage estimates a global linear transformation from template space to subject space. As described in Section~\ref{subsubsec:background_registration}, the transformation takes the general form of Eq.~\ref{eq:affine_transform} and is optimized through a sequence of nested models of increasing complexity:
+
+\begin{enumerate}
+	\item \textbf{Centre-of-mass alignment} --- aligns the image centroids to provide a coarse initialisation.
+	\item \textbf{Translation} --- optimises three translational parameters (3 DOF).
+	\item \textbf{Rigid body} --- adds three rotational parameters (6 DOF).
+	\item \textbf{Full affine} --- adds scaling and shearing (12 DOF).
+\end{enumerate}
+
+Each stage uses the result of the previous stage as its initialization, analogous to the motion correction pipeline described in Section~\ref{subsec:methods_motioncorrection}. The similarity metric used for optimization at each stage is Eq.~\ref{eq:mi} i.e. mutual information, estimated with 32 histogram bins. A three-level Gaussian pyramid controls the multi-resolution schedule: the default iteration counts are $[10\,000,\; 1\,000,\; 100]$ at downsampling factors $[4,\; 2,\; 1]$ with Gaussian smoothing of $\sigma = [3.0,\; 1.0,\; 0.0]$\,mm respectively.
+
+The affine stage is implemented using DIPY's \texttt{AffineRegistration} class from \texttt{dipy.align.imaffine} with \texttt{MutualInformationMetric}~\cite{garyfallidis_dipy_2014}. The three transform models are provided by \texttt{TranslationTransform3D}, \texttt{RigidTransform3D} and \texttt{AffineTransform3D} from \texttt{dipy.align.transforms}.
+
+
+\paragraph{Diffeomorphic registration.}
+
+Affine registration is not sufficient to capture local anatomical differences between the subject and the template. A second, non-linear stage handles the registration of fine details using the Symmetric Normalization (SyN) algorithm~\cite{avants_symmetric_2008}. SyN computes a smooth, invertible displacement field $\mathbf{u}$ such that the composite transformation becomes:
+
+\begin{equation}
+	T_{\text{total}}(\mathbf{x}) = \bigl(\mathbf{x} + \mathbf{u}(\mathbf{x})\bigr) \circ T_{\text{affine}}(\mathbf{x})
+	\label{eq:composite_registration}
+\end{equation}
+
+where $T_{\text{affine}}$ is the affine pre-alignment from the previous stage and $\circ$ denotes composition. The displacement field is obtained by solving the variational problem defined in Eq.~\ref{eq:syn_energy}, using local cross-correlation (Eq.~\ref{eq:cc}) as the similarity metric with a neighbourhood radius of 4 voxels. Default iteration counts are $[10,\; 10,\; 5]$ across three pyramid levels.
+
+The implementation uses DIPY's \texttt{SymmetricDiffeomorphicRegistration} from \texttt{dipy.align.imwarp} with a \texttt{CCMetric} from \texttt{dipy.align.metrics}~\cite{garyfallidis_dipy_2014}. The resulting \texttt{DiffeomorphicMap} object provides both forward (template-to-subject) and inverse (subject-to-template) mappings.
 
 \subsection{Atlas Warping}
 \label{subsec:methods_atlaswarping}
 
+With the spatial mapping computed, the Harvard-Oxford cortical and subcortical atlases~\cite{jenkinson2012fsl} are warped from MNI space into the subject's native diffusion space. The cortical atlas contains 48 regions per hemisphere (96 total), and the subcortical atlas contains 21 regions including the brainstem. Both atlases are maximum-probability maps thresholded at 25\,\%, distributed at 1\,mm resolution.
 
-- Harvard-Oxford atlases (FSL, via templateflow):
-	- Cortical: 96 regions
-	- Subcortical: 21 regions
-- Inverse deformation applied to warp labels MNI → subject native space
+\paragraph{Hemisphere label separation.}
 
+The Harvard-Oxford atlas assigns identical integer labels to corresponding regions in left and right hemispheres. To distinguish them, the hemispheres are separated \emph{before} the non-linear deformation is applied. In MNI space, the anatomical midline lies at $x=0$ and is geometrically straight, making the hemisphere assignment straightforward. Right-hemisphere labels receive a constant offset of 100:
+
+\begin{equation}
+	L'(\mathbf{x}) =
+	\begin{cases}
+		L(\mathbf{x}) + 100, & \text{if } x_{\text{world}} \geq 0 \\[2pt]
+		L(\mathbf{x}), & \text{otherwise}
+	\end{cases}
+	\label{eq:hemisphere_offset}
+\end{equation}
+
+where $x_{\text{world}}$ is computed from the atlas affine matrix. Performing this split in standard space is important: the SyN deformation field warps the anatomical midline, so splitting at $x = 0$ after warping would produce asymmetric and inaccurate hemisphere boundaries.
+
+\paragraph{Grid resampling and deformation.}
+
+The Harvard-Oxford atlases are distributed on a $182 \times 218 \times 182$ voxel grid, which is different to the registration template grid. Before applying the deformation, both the cortical and the subcortical atlases are resampled to the template grid using nearest-neighbor interpolation to preserve label integrity. The forward mapping $T_{\text{total}}$ (Eq.~\ref{eq:composite_registration}) is then applied:
+
+\begin{equation}
+	L_{\text{subject}}(\mathbf{x}) = L'_{\text{MNI}}\!\bigl(T_{\text{total}}^{-1}(\mathbf{x})\bigr)
+	\label{eq:atlas_warp}
+\end{equation}
+
+Nearest-neighbour interpolation is enforced during warping, as linear or spline interpolation would produce fractional label values at region boundaries. The warped labels are rounded to the nearest integer and cast to 16-bit signed integers. This operation is performed via DIPY's \texttt{DiffeomorphicMap.transform} method with \texttt{interpolation='nearest'}~\cite{garyfallidis_dipy_2014}.
 
 \subsection{ROI Definition}
 \label{subsec:methods_roidefinition}
 
-TODO: Which ROIs are defined, from which atlas, label number, purpose. Maybe tie in to \ref{sec:background_anatomicalbackground}
+Three regions of interest are extracted from the now-warped atlases to define the anatomical boundaries of the CST as described in Section~\ref{sec:background_anatomicalbackground}: a brainstem ROI marking the inferior endpoint, and bilateral precentral gyrus ROIs marking the superior (cortical) endpoints.
+
+Each ROI is obtained by selecting voxels carrying a specific label and applying morphological dilation to enlarge the region:
+
+\begin{equation}
+	M_{\text{brainstem}} = \delta^{2}(L_{\text{subcortical}} = 8)
+	\label{eq:brainstem_mask}
+\end{equation}
+
+\begin{equation}
+	\begin{aligned}
+		M_{\text{motor,L}} &= \delta^{1}(L_{\text{cortical}} = 7) \\[2pt]
+		M_{\text{motor,R}} &= \delta^{1}(L_{\text{cortical}} = 107)
+	\end{aligned}
+	\label{eq:motor_masks}
+\end{equation}
+
+where $\delta^{n}$ denotes $n$ iterations of binary dilation, label~7 is the left precentral gyrus in the Harvard-Oxford cortical atlas, and label~107 is its right-hemisphere counterpart after the offset applied in Eq.~\ref{eq:hemisphere_offset}. The brainstem label~8 comes from the subcortical atlas.
+
+The brainstem ROI receives two dilation iterations because the brainstem is a compact structure and streamlines frequently terminate just outside its boundary; greater spatial tolerance is needed to capture these endpoints. The motor cortex ROIs receive only one iteration to preserve lateral specificity near the interhemispheric fissure. Dilation uses SciPy's \texttt{binary\_dilation} from \texttt{scipy.ndimage}~\cite{virtanen2020scipy}.
+
+The label extraction and dilation are implemented in \texttt{csttool}'s \texttt{create\_cst\_roi\_masks} function, which calls \texttt{extract\_roi\_mask} to produce a binary mask for each label and \texttt{dilate\_mask} to expand it by the specified number of iterations.
 
 \subsection{Streamline Filtering}
 \label{subsec:methods_streamlinefiltering}
 
-TODO: Tie into \ref{subsubsec:background_filteringstrategies}. Explain this:
+The whole-brain tractogram from Section~\ref{sec:methods_wholebraintractography}, typically containing $10^5$ to $10^6$ streamlines, is filtered to retain only those connecting the brainstem to the motor cortex. Two filtering strategies are implemented, corresponding to the approaches described in Section~\ref{subsubsec:background_filteringstrategies}. Both strategies first apply a length constraint:
 
-  1. Endpoint filtering (strict): Requires one endpoint in brainstem, other in motor cortex. Bidirectional checking.
-  2. Passthrough filtering (default, permissive): Streamlines must traverse both ROIs; endpoints flexible.
+\begin{equation}
+	20\;\text{mm} \;\leq\; L(s) \;=\; \sum_{i=0}^{N-1} \|\mathbf{p}_{i+1} - \mathbf{p}_{i}\| \;\leq\; 200\;\text{mm}
+	\label{eq:length_bounds}
+\end{equation}
 
-Length filtering: 20–200\,mm for endpoint and passthrough methods; 30–200\,mm for ROI-seeded tracking (anatomically plausible CST range).
+where $\mathbf{p}_0, \ldots, \mathbf{p}_N$ are the ordered points of streamline $s$. The lower bound excludes short spurious fragments from noise, and the upper bound excludes anatomically implausible trajectories.
 
+\paragraph{Endpoint filtering.}
+
+The strict method requires that one endpoint of a streamline lies within the brainstem ROI and the other within a motor cortex ROI. Because streamlines generated by bidirectional tracking have arbitrary orientation, both orderings are checked:
+
+\begin{equation}
+	\begin{aligned}
+		\text{accept } s \;\text{ if: } \quad
+		& \bigl(M_{\text{brainstem}}(\mathbf{p}_0) \;\wedge\; M_{\text{motor}}(\mathbf{p}_N)\bigr) \\
+		\vee\; & \bigl(M_{\text{motor}}(\mathbf{p}_0) \;\wedge\; M_{\text{brainstem}}(\mathbf{p}_N)\bigr)
+	\end{aligned}
+	\label{eq:endpoint_condition}
+\end{equation}
+
+where $M_{\text{motor}} = M_{\text{motor,L}} \cup M_{\text{motor,R}}$. Streamline endpoints are converted from world coordinates to voxel indices via the inverse affine matrix, and the corresponding mask voxel is tested. This method yields high anatomical specificity but may discard streamlines that genuinely belong to the CST yet terminate slightly outside an ROI boundary.
+
+\paragraph{Passthrough filtering.}
+
+The default, more permissive method requires that a streamline passes through both the brainstem and a motor cortex ROI at any point along its trajectory, without constraining the endpoints:
+
+\begin{equation}
+	\text{accept } s \;\text{ if: } \quad
+	\bigl(\exists\, i : M_{\text{brainstem}}(\mathbf{p}_i)\bigr)
+	\;\wedge\;
+	\bigl(\exists\, j : M_{\text{motor}}(\mathbf{p}_j)\bigr)
+	\label{eq:passthrough_condition}
+\end{equation}
+
+Every point along the streamline is tested against the respective mask. This approach captures a larger proportion of CST streamlines, particularly those extending beyond the predefined ROI boundaries, making it more suitable for clinical datasets where cortical boundaries may be imprecise.
+
+Two additional exclusion criteria are applied to passthrough-filtered streamlines to remove false positives. First, streamlines that contact both the left and the right motor cortex ROIs are rejected, as they likely represent commissural fibres. Second, streamlines that extend substantially into both hemispheres are rejected:
+
+\begin{equation}
+	\text{reject if: } \quad \min_i(x_i) < -\tau_{\text{mid}} \;\wedge\; \max_i(x_i) > \tau_{\text{mid}}
+	\label{eq:midline_crossing}
+\end{equation}
+
+where $x_i$ is the left--right world coordinate of point $\mathbf{p}_i$ and $\tau_{\text{mid}} = 8$\,mm. A streamline is only excluded if it reaches at least $\tau_{\text{mid}}$ into \emph{both} hemispheres, indicating a gross midline crossing characteristic of commissural pathways such as the corpus callosum or anterior commissure. Minor medial excursions are tolerated to accommodate the natural convergence of the CST near the brainstem and small imprecisions in the registration.
+
+\paragraph{Hemisphere assignment.}
+
+Each accepted streamline is assigned to the left or right CST based on which motor cortex ROI it traverses or terminates in. This assignment directly produces two separate tractograms, one per hemisphere.
+
+\paragraph{Implementation.}
+
+Endpoint filtering is implemented in the function \texttt{extract\_bilateral\_cst}, which converts each streamline's first and last world-coordinate points to voxel indices and tests them against the brainstem and motor masks. Passthrough filtering is implemented in \texttt{extract\_cst\_passthrough}, which iterates over every point of each streamline to test mask intersection and applies the bilateral-contact and midline-crossing exclusions.
+
+The extracted CST bundles are written to disk as separate TrackVis \texttt{.trk} files (left, right, and combined) alongside a JSON report recording the filtering method, parameter values, and per-hemisphere streamline counts. The filtered tractograms serve as input to the metrics stage described in Section~\ref{sec:methods_metrics}. Typical clinical datasets yield $10^3$ to $10^4$ streamlines per hemisphere after filtering.
 
 \section{Tract-Level Metrics}
 \label{sec:methods_metrics}
