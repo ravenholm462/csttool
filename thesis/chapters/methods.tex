@@ -405,6 +405,130 @@ Justify deterministic over probabilistic: reproducibility, interpretability, suf
 
 TODO: Maps to \ref{subsec:background_atlasbasedextraction}
 
+Whole-brain tractography reconstructs the three-dimensional pathways of white matter fiber bundles from preprocessed diffusion data. The implementation follows a four-stage pipeline: direction field estimation using the CSA-ODF model, white matter seeding, deterministic streamline propagation, and threshold-based termination. The theoretical foundations of tractography are presented in Section~\ref{subsec:background_tractography}.
+
+\subsection{Direction Field Estimation}
+\label{subsec:methods_directionfield}
+
+The dominant streamline orientation within a given voxel is indicated by the primary eigenvector of the diffusion tensor. However, depending on the underlying tract architecture, the primary eigenvector may not actually align with any true fiber population. The Constant Solid Angle Orientation Distribution Function (CSA-ODF) is a more robust approach due to modeling the full orientiation distribution within each voxel~\cite{aganj2010reconstruction}.
+
+%TODO: Add DTI as fallback direction field estimation if SNR too low and/or not enough gradient directions, update code.
+
+As described in Section~\ref{subsec:background_tractography}, the CSA-ODF is computed from single-shell diffusion-weighted data using the closed-form expression given by Eq.~\ref{eq:csa_odf}. In practice, the ODF is represented using a spherical harmonic (SH) basis as defined in Eq.~\ref{eq:sh_expansion}. The number of SH coefficients $R$ required for order $l$ is:
+
+\begin{equation}
+	R = \frac{(l+1)(l+2)}{2}
+	\label{eq:sh_coeff_count}
+\end{equation}
+
+For a stable measurement, at least $R$ diffusion-weighted measurements are necessary. The default SH order is $l=6$ ($R=28$ coefficients). However, \texttt{csttool} will automatically reduce the order if the number of gradient directions is insufficient: order 8 requires $\geq 45$ directions, order 6 requires $\geq 28$, and order 4 requires $\geq 15$. This step ensures numerical stability across datasets that have varying angular resolutions.
+
+The ODF is sampled on a symmetric sphere with 362 vertices (\texttt{symmetric362}). This sphere model was chosen to strike a balance between angular resolution and computational efficiency. From the reconstructed ODF, dominant fiber directions are extracted by identifying local maxima. For deterministic tracking, a single peak per voxel is selected according to:
+
+\begin{equation}
+	\mathbf{d}_{\text{peak}}(x) = \arg\max_{\hat{u} \in S^2} \text{ODF}(x, \hat{u})
+	\label{eq:peak_detection}
+\end{equation}
+%TODO: Cite or source this equation. Where did it come from?
+
+Two constraints are defined: first, the peak must exceed $80\%$ of the maximum ODF value (\texttt{relative\_peak\_threshold} = 0.8), and second, peaks must be separated by at least $45^{\circ}$ (\texttt{min\_separation\_angle} = 45) in case of multiple peaks. These parameters ensure that peaks arising from noise are filtered out.
+
+Direction field estimation is implemented using DIPY's \texttt{CsaOdfModel} from \texttt{dipy.reconst.shm} and \texttt{peaks\_from\_model} from \texttt{dipy.direction}~\cite{garyfallidis_dipy_2014}. The sphere is loaded using \texttt{get\_sphere('symmetric362')} from \texttt{dipy.data}. Computation is restricted to voxels within the white matter mask $W$ from Eq.~\ref{eq:wm_mask} to reduce computational load and avoid estimating directions in non-white matter tissue.
+
+\subsection{Seeding Strategy}
+\label{subsec:methods_seeding}
+
+By default, \texttt{csttool} generates an initial set of streamlines that sample all white matter pathways, instead of seeding only from specific ROIs. There are two reasons for this approach: first, this allows flexible downstream filtering, ensuring that no anatomically relevant tracts are missed due to restrictive seeding, and second, this allows \texttt{csttool} to be outfitted to potentially look for different structures in the brain, ensuring modularity.
+
+Seeds are placed in all voxels where the FA exceeds a white matter threshold. The seed mask $M_{\text{seed}}$ is defined as:
+
+\begin{equation}
+	M_{\text{seed}}(x) =
+	\begin{cases}
+		1, & \mathrm{FA}(x) \geq \tau_{\text{seed}} \wedge W(x) = 1 \\
+		0, & \text{otherwise}
+	\end{cases}
+	\label{eq:seed_mask}
+\end{equation}
+
+where $\tau_{\text{seed}} = 0.2$ is the default FA threshold and $W$ is the white matter mask from Eq.~\ref{eq:wm_mask}. The threshold of 0.2 is widely accepted as a conservative lower bound for white matter in healthy adult brain tissue~\cite{garyfallidis_dipy_2014}. Using the same threshold for both the white matter mask and seeding ensures consistency across the pipeline.
+
+The total number of seeds is determined by the seed density $\rho$, which controls how many seeds are placed per qualifying voxel:
+
+\begin{equation}
+	N_{\text{seeds}} = \rho \cdot \sum_{x} M_{\text{seed}}(x)
+	\label{eq:seed_count}
+\end{equation}
+
+The default seed density is $\rho = 1$ seed per voxel. Higher densities increase tractogram completeness at the cost of computational time and memory.
+
+Seeds are generated in world coordinates (RASMM space) using DIPY's \texttt{seeds\_from\_mask} function from \texttt{dipy.tracking.utils}. World-space seeding ensures that streamline tracking is affine-invariant and that all spatial transformations are handled consistently via the affine matrix embedded in the NIfTI header.
+
+\subsection{Streamline Propagation}
+\label{subsec:methods_propagation}
+
+Streamlines are propagated deterministically from each seed point by iteratively following the local fiber direction. For each position $\mathbf{x}_t$ along a streamline trajectory, the next step is computed as:
+
+\begin{equation}
+	\mathbf{x}_{t+1} = \mathbf{x}_t + h \cdot \mathbf{d}_{\text{peak}}(\mathbf{x}_t)
+	\label{eq:propagation_step}
+\end{equation}
+
+where $h = 0.5$~mm is the step size and $\mathbf{d}_{\text{peak}}$ is the dominant ODF peak direction from Section~\ref{subsec:methods_directionfield}. This formulation is analogous to Eq.~\ref{eq:det_step}, but substitutes the CSA-ODF peak for the DTI principal eigenvector, yielding more accurate trajectories in regions with complex fiber architecture.
+
+A default sub-voxel step size of $0.5$mm is chosen as the default to ensure that the algorithm can capture intra-voxel curvature and smoothly traverse voxel boundaries without overshooting true fiber geometry.
+
+%TODO: Make step size dynamic instead of hard coded, just take 1 voxel dimension and divide by 2? Look into this.
+
+To ensure the streamline trajectory is not biased by the initial seed location along the tract, the propagation is performed bidirectionally: one streamline extends in the direction of the local peak, while another extends in the opposite direction. The two half-streamlines are concatenated to form a complete trajectory passing through the seed point.
+
+%TODO: Find or generate a graphic representation of the bidirectional propagation approach.
+
+Tracking is implemented using DIPY's \texttt{LocalTracking} class from \texttt{dipy.tracking.local\_tracking}~\cite{garyfallidis_dipy_2014}, which uses an explicit Euler integration scheme. A fixed random seed (\texttt{random\_seed} = 42) is used by default to ensure bitwise-identical tractograms across multiple runs with the same input data. 
+
+\subsection{Stopping Criteria}
+\label{subsec:methods_stopping}
+
+Streamline propagation terminates when the trajectory enters tissue with low anisotropy or exits the brain volume. The primary stopping criterion is based on the FA threshold:
+
+\begin{equation}
+	\text{terminate if: } \mathrm{FA}(\mathbf{x}_t) < \tau_{\text{stop}}
+	\label{eq:stopping_criterion}
+\end{equation}
+
+where $\tau_{\text{stop}} = 0.2$ by default, matching the seeding threshold $\tau_{\text{seed}}$. This symmetry ensures that streamlines begin and end in anatomically plausible white matter regions. Propagation into grey matter, cerebrospinal fluid, or other low-anisotropy tissue is prevented.
+
+Optionally, the brain mask $M_{\text{brain}}$ from Section~\ref{subsec:methods_brainmasking} can be incorporated as a hard boundary constraint:
+
+\begin{equation}
+	\text{terminate if: } \mathrm{FA}(\mathbf{x}_t) < \tau_{\text{stop}} \vee M_{\text{brain}}(\mathbf{x}_t) = 0
+	\label{eq:stopping_criterion_mask}
+\end{equation}
+
+This additional constraint prevents tracts from escaping the brain volume into background voxels.
+
+The stopping criterion is implemented using DIPY's \texttt{ThresholdStoppingCriterion} from \texttt{dipy.tracking.stopping\_criterion}. When brain mask stopping is enabled, a modified FA map with zero values outside the mask is passed to the stopping criterion, effectively combining both conditions.
+
+DIPY's \texttt{LocalTracking} also enforces an implicit angular constraint that terminates streamlines when the turning angle between consecutive steps exceeds a threshold (typically $60^{\circ}$). This constraint prevents anatomically implausible sharp turns and contributes to the overall quality of the tractogram by filtering trajectories that deviate abruptly from smooth fiber pathways.
+
+%TODO: Double check what the angular threshold for LocalTracking is.
+
+\subsection{Choice of Deterministic Tracking}
+\label{subsec:methods_deterministic_justification}
+
+The CST is well-suited to deterministic tracking because it exhibits relatively low crossing-fiber complexity along most of its trajectory. The tract follows a coherent path from motor cortex through the internal capsule and cerebral peduncle to the brainstem. Crossing fibers are present near the cortical endpoints (where association and commissural fibers intersect) and in the corona radiata (where corpus callosum fibers cross), but the core CST bundle maintains a dominant orientation that the CSA-ODF model reliably captures with a single peak per voxel.
+
+Additionally, deterministic tracking produces identical streamlines for identical input parameters and data, as discussed in Section~\ref{subsec:background_tractography}. This property is deemed as essential for processing of clinical datasets. 
+
+\texttt{csttool} prioritizes reproducibility and interpretability over sensitiviy to lateral branching of streamlines. 
+
+\subsection{Notes}
+\label{subsec:methods_tractography_notes}
+
+The whole-brain tractogram is written to disk in TrackVis \texttt{.trk} format, a widely supported binary format that stores streamline coordinates and the affine transformation matrix. The embedded affine ensures that streamlines can be correctly visualized and processed by third-party software without requiring separate metadata files.
+
+Typical whole-brain tractograms for clinical diffusion datasets contain $10^5$ to $10^6$ streamlines. This comprehensive representation of white matter pathways serves as input to the atlas-based extraction stage (Section~\ref{sec:methods_atlasbasedextraction}), where anatomical filtering isolates the bilateral CST bundles. After CST-specific filtering, the tractogram is reduced to approximately $10^3$ to $10^4$ streamlines per hemisphere, representing only the pathways connecting motor cortex to brainstem.
+
 \subsection{Image Registration}
 \label{subsec:methods_imageregistration}
 
