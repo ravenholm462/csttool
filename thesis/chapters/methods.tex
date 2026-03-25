@@ -378,33 +378,6 @@ where $\tau$ is a configurable FA threshold (default $\tau = 0.2$) and $M$ is th
 \section{Whole Brain Tractography}
 \label{sec:methods_wholebraintractography}
 
-TODO: Tie in to \ref{subsec:background_tractography}. Points to touch on:
-
-- Direction field estimation:
-- CSA-ODF model (Constant Solid Angle)
-- Spherical harmonic order (default 6, auto-reduced if insufficient gradients)
-
-Seeding:
-- Seed mask: voxels with FA $\geq$ 0.2
-- Seed density: configurable (default 1 per voxel)
-
-Propagation:
-- Deterministic local tracking (DIPY's LocalTracking)
-- Step size: 0.5 mm (Eq. 2.10 from your background)
-- Fixed random seed (default 42) for reproducibility
-
-Stopping criterion:
-- FA threshold-based (ThresholdStoppingCriterion)
-- Optional brain mask boundary
-
-Justify deterministic over probabilistic: reproducibility, interpretability, sufficient for CST (low crossing-fiber complexity).
-
-
-\section{Atlas-Based CST Extraction}
-\label{sec:methods_atlasbasedextraction}
-
-TODO: Maps to \ref{subsec:background_atlasbasedextraction}
-
 Whole-brain tractography reconstructs the three-dimensional pathways of white matter fiber bundles from preprocessed diffusion data. The implementation follows a four-stage pipeline: direction field estimation using the CSA-ODF model, white matter seeding, deterministic streamline propagation, and threshold-based termination. The theoretical foundations of tractography are presented in Section~\ref{subsec:background_tractography}.
 
 \subsection{Direction Field Estimation}
@@ -528,6 +501,11 @@ Additionally, deterministic tracking produces identical streamlines for identica
 The whole-brain tractogram is written to disk in TrackVis \texttt{.trk} format, a widely supported binary format that stores streamline coordinates and the affine transformation matrix. The embedded affine ensures that streamlines can be correctly visualized and processed by third-party software without requiring separate metadata files.
 
 Typical whole-brain tractograms for clinical diffusion datasets contain $10^5$ to $10^6$ streamlines. This comprehensive representation of white matter pathways serves as input to the atlas-based extraction stage (Section~\ref{sec:methods_atlasbasedextraction}), where anatomical filtering isolates the bilateral CST bundles. After CST-specific filtering, the tractogram is reduced to approximately $10^3$ to $10^4$ streamlines per hemisphere, representing only the pathways connecting motor cortex to brainstem.
+
+\section{Atlas-Based CST Extraction}
+\label{sec:methods_atlasbasedextraction}
+
+TODO: Maps to \ref{subsec:background_atlasbasedextraction}
 
 \subsection{Image Registration}
 \label{subsec:methods_imageregistration}
