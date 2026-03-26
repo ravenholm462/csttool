@@ -27,24 +27,75 @@ The six stages are:
 	
 \end{enumerate}
 
-Each stage reads from and writes to a structured output directory, producing intermediary NIfTI volumes, tractogram files (.trk), and JSON reports that record all processing parameters and information. This architecture ensures that any stage can be executed individually or inspected independently without the need to re-run the entire pipeline. For routine use, the command \texttt{csttool run} chains all stages together sequentially, as seen Fig.~\ref{fig:pipeline_diagram}. To chain multiple runs together, \texttt{csttool batch} can be used to process multiple subject in sequence, with per-subject timeout handling and consolidated reporting.
+Each stage reads from and writes to a structured output directory, producing intermediary NIfTI volumes, tractogram files (.trk), and JSON reports that record all processing parameters and information. This architecture ensures that any stage can be executed individually or inspected independently without the need to re-run the entire pipeline. For routine use, the command \texttt{csttool run} chains all stages together sequentially, as seen in Fig.~\ref{fig:pipeline_overview}. To chain multiple runs together, \texttt{csttool batch} can be used to process multiple subject in sequence, with per-subject timeout handling and consolidated reporting.
 
 The pipeline is implemented entirely in Python and depends on a small set of open-source libraries. Tractography, tensor fitting, and registration are provided by DIPY~\cite{garyfallidis_dipy_2014}. NIfTI handling uses nibabel~\cite{markiewicz_2026_18944560}, image resampling uses nilearn~\cite{Nilearn}, and morphological operations use SciPy~\cite{virtanen2020scipy}. Atlas data is managed through a two-tier system: the MNI152 T1 1\,mm template~\cite{fonov2011unbiased} is bundled directly with the package and is always available; the FMRIB58 FA template~\cite{smith2006tract} and the Harvard-Oxford cortical and subcortical parcellations~\cite{jenkinson2012fsl} are distributed separately under an FSL licence (non-commercial use) and must be downloaded once with \texttt{csttool fetch-data --accept-fsl-license}. Version information for all libraries and the tool itself is recorded in every output report to support reproducibility.
 
 The following sections describe each stage in detail, beginning with data import and concluding with metric computation.
 
-% TODO: Add pipeline flowchart figure. Use mermaids from csttool/diagrams
-% \begin{figure}[htbp]
-	%     \centering
-	%     \includegraphics[width=\textwidth]{figures/pipeline_overview.pdf}
-	%     \caption{Overview of the \texttt{csttool} processing pipeline. Raw diffusion-weighted MRI data enters as DICOM or NIfTI and is processed through six sequential stages to produce hemisphere-specific CST bundles and quantitative tract-level metrics. Each stage can be executed independently via its corresponding CLI command.}
-	%     \label{fig:pipeline_overview}
-	% \end{figure}
+\begin{figure}[htbp]
+	\centering
+	\resizebox{\textwidth}{!}{
+	\begin{tikzpicture}[
+		node distance=0.4cm,
+		io/.style={rounded rectangle, draw=blue!60, fill=blue!5, minimum height=0.8cm, minimum width=1.8cm, font=\small, align=center},
+		stage/.style={rectangle, rounded corners=3pt, draw=orange!70, fill=orange!8, minimum height=0.8cm, minimum width=1.8cm, font=\small, align=center},
+		arr/.style={-{Stealth[length=2mm]}, thick, gray!70}
+		]
+		\node[io] (in) {DICOM/NIfTI\\+ bval/bvec};
+		\node[stage, right=of in] (s1) {1. Data\\Import};
+		\node[stage, right=of s1] (s2) {2. Pre-\\processing};
+		\node[stage, right=of s2] (s3) {3. DTI\\Fitting};
+		\node[stage, right=of s3] (s4) {4. Tracto-\\graphy};
+		\node[stage, right=of s4] (s5) {5. CST\\Extraction};
+		\node[stage, right=of s5] (s6) {6. Tract\\Metrics};
+		\node[io, right=of s6] (result) {Metrics\\+ Report};
+		\draw[arr] (in) -- (s1);
+		\draw[arr] (s1) -- (s2);
+		\draw[arr] (s2) -- (s3);
+		\draw[arr] (s3) -- (s4);
+		\draw[arr] (s4) -- (s5);
+		\draw[arr] (s5) -- (s6);
+		\draw[arr] (s6) -- (result);
+	\end{tikzpicture}
+	}
+	\caption{Overview of the \texttt{csttool} processing pipeline. Raw diffusion-weighted MRI data enters as DICOM or NIfTI and is processed through six sequential stages to produce hemisphere-specific CST bundles with quantitative tract-level metrics.}
+	\label{fig:pipeline_overview}
+\end{figure}
 
 \section{Data Import}
 \label{sec:methods_dataimport}
 
-The data import stage accepts raw diffusion-weighted MRI data in two formats: DICOM and NIfTI. Format detection is automatic --- the pipeline inspects the input directory and routes processing accordingly, so no format flag is required from the user.
+The data import stage accepts raw diffusion-weighted MRI data in two formats: DICOM and NIfTI. Format detection is automatic --- the pipeline inspects the input directory and routes processing accordingly, so no format flag is required from the user. Figure~\ref{fig:import_flowchart} summarises the import stage.
+
+\begin{figure}[htbp]
+	\centering
+	\begin{tikzpicture}[
+		node distance=0.6cm and 1.2cm,
+		io/.style={rounded rectangle, draw=blue!60, fill=blue!5, minimum height=0.7cm, minimum width=2.4cm, font=\small, align=center},
+		proc/.style={rectangle, rounded corners=3pt, draw=orange!70, fill=orange!8, minimum height=0.7cm, minimum width=2.4cm, font=\small, align=center},
+		dec/.style={diamond, draw=purple!60, fill=purple!5, minimum height=0.6cm, inner sep=1pt, font=\small, align=center, aspect=2},
+		res/.style={rounded rectangle, draw=green!60!black, fill=green!5, minimum height=0.7cm, minimum width=2.4cm, font=\small, align=center},
+		arr/.style={-{Stealth[length=2mm]}, thick, gray!70}
+	]
+		\node[io] (in) {Raw MRI Data};
+		\node[dec, below=of in] (fmt) {DICOM or\\NIfTI?};
+		\node[proc, below left=0.8cm and 1.5cm of fmt] (dicom) {Series Selection\\\& Conversion};
+		\node[proc, below right=0.8cm and 1.5cm of fmt] (nifti) {Load NIfTI\\\& Gradients};
+		\node[proc, below=1.8cm of fmt] (gtab) {Build Gradient\\Table};
+		\node[proc, below=of gtab] (qa) {Quality\\Assessment};
+		\node[res, below=of qa] (result) {Validated Dataset\\+ Import Report};
+		\draw[arr] (in) -- (fmt);
+		\draw[arr] (fmt) -| node[above left, font=\scriptsize] {DICOM} (dicom);
+		\draw[arr] (fmt) -| node[above right, font=\scriptsize] {NIfTI} (nifti);
+		\draw[arr] (dicom) |- (gtab);
+		\draw[arr] (nifti) |- (gtab);
+		\draw[arr] (gtab) -- (qa);
+		\draw[arr] (qa) -- (result);
+	\end{tikzpicture}
+	\caption{Data import stage. The pipeline automatically detects the input format and routes through the appropriate conversion or loading path before constructing the gradient table and running acquisition quality checks.}
+	\label{fig:import_flowchart}
+\end{figure}
 
 \subsection{DICOM Input}
 \label{subsec:methods_dicom}
@@ -70,7 +121,7 @@ BIDS is shorthand for brain-imaging data structure and it attempts to provide a 
 \subsection{Acquisition Quality Assessment}
 \label{subsec:methods_qualityassessment}
 
-After the gradient table is constructed, a series of data-quality checks are applied and their outcomes are recorded in the import report. Table~\ref{tab:qa_checks} lists all checks grouped by severity. %TODO Find citations for the guidelines chosen for this scoring system.
+After the gradient table is constructed, a series of data-quality checks are applied and their outcomes are recorded in the import report. Table~\ref{tab:qa_checks} lists all checks grouped by severity. The threshold values are derived from established recommendations in the diffusion MRI literature~\cite{jones2013white, tournier2011diffusion}.
 
 \begin{table}[htbp]
 \centering
@@ -101,7 +152,7 @@ After the gradient table is constructed, a series of data-quality checks are app
   & Echo time $> 100\;\text{ms}$ (when BIDS JSON present) & Increased T2 signal loss \\
   & Missing \texttt{PhaseEncodingDirection} or \texttt{TotalReadoutTime} & Fields required for susceptibility distortion correction \\
 \midrule
-\multirow{4}{*}{Informational}
+\multirow{4}{*}{Info}
   & Multiple b-value shells detected & Pipeline is designed for single-shell acquisitions \\
   & Large $b = 0$ gap ($> 30$ volumes between reference frames) & May affect motion correction \\
   & Multiband factor $> 4$ & Reduced SNR from high acceleration \\
@@ -118,10 +169,33 @@ The stage concludes by writing an organised output directory containing the NIfT
 \section{Preprocessing}
 \label{sec:methods_preprocessing}
 
-The \texttt{preprocess} module of \texttt{csttool} prepares raw diffusion data for tractography by reducing noise and artifacts.
+The \texttt{preprocess} module of \texttt{csttool} prepares raw diffusion data for tractography by reducing noise and artifacts. Figure~\ref{fig:preprocess_flowchart} illustrates the preprocessing pipeline.
 
-%TODO: Add all parameters and their CLI calls in a table.
-%TODO: Add pipeline diagram
+\begin{figure}[htbp]
+	\centering
+	\begin{tikzpicture}[
+		node distance=0.55cm,
+		io/.style={rounded rectangle, draw=blue!60, fill=blue!5, minimum height=0.7cm, minimum width=3cm, font=\small, align=center},
+		proc/.style={rectangle, rounded corners=3pt, draw=orange!70, fill=orange!8, minimum height=0.7cm, minimum width=3cm, font=\small, align=center},
+		opt/.style={rectangle, rounded corners=3pt, draw=gray!60, fill=gray!5, minimum height=0.7cm, minimum width=3cm, font=\small, align=center, dashed},
+		res/.style={rounded rectangle, draw=green!60!black, fill=green!5, minimum height=0.7cm, minimum width=3cm, font=\small, align=center},
+		arr/.style={-{Stealth[length=2mm]}, thick, gray!70}
+	]
+		\node[io] (in) {DWI Volume + Gradients};
+		\node[proc, below=of in] (denoise) {Denoise\\(Patch2Self / NLMEANS)};
+		\node[proc, below=of denoise] (mask) {Brain Masking\\(Median Otsu)};
+		\node[opt, below=of mask] (gibbs) {Gibbs Unringing};
+		\node[opt, below=of gibbs] (motion) {Motion Correction};
+		\node[res, below=of motion] (result) {Preprocessed Volume\\+ Brain Mask};
+		\draw[arr] (in) -- (denoise);
+		\draw[arr] (denoise) -- (mask);
+		\draw[arr] (mask) -- (gibbs);
+		\draw[arr] (gibbs) -- (motion);
+		\draw[arr] (motion) -- (result);
+	\end{tikzpicture}
+	\caption{Preprocessing pipeline. Denoising and brain masking are always applied; Gibbs unringing and motion correction (dashed borders) are optional steps enabled via command-line flags.}
+	\label{fig:preprocess_flowchart}
+\end{figure}
 
 \subsection{Denoising}
 \label{subsec:methods_denoising}
@@ -166,12 +240,17 @@ As shown in Fig.~\ref{fig:patch2self}, Patch2Self operates in two stages. In the
 
 In the second stage (B), the trained regressor is applied to the same input volumes $V_{-j}$ to obtain a denoised estimate $\hat{V}_j$ of the held-out volume. This procedure is repeated for all volumes. Since noise is uncorrelated across volumes, it cannot be predicted and is therefore suppressed, while consistent structural information is preserved.
 
-A marked advantage of Patch2Self is the fact that it can be plugged into any position in the preprocessing pipeline. %TODO: Expand: why? One more sentence.
+A marked advantage of Patch2Self is the fact that it can be plugged into any position in the preprocessing pipeline, because the only assumption it makes is that the noise is uncorrelated across volumes, which holds regardless of what other preprocessing steps have been applied.
+
+\begin{figure}[htbp]
+	\centering
+	\includegraphics[width=0.9\linewidth]{figs/methods/denoising_comparison.png}
+	\caption{Denoising comparison produced by \texttt{csttool}. Each row shows an orthogonal view (axial, coronal, sagittal); columns display the original volume, the Patch2Self-denoised volume, and the RMS residual map. Structured residuals would indicate signal loss; the uniform residual pattern confirms that only noise was removed.}
+	\label{fig:denoising_comparison}
+\end{figure}
 
 \subsection{Gibbs Unringing}
 \label{subsec:methods_gibbs}
-%TODO: Check this subsection if it is clear enough.
-
 Gibbs artifacts occur as a consequence of using Fourier transforms to reconstruct MR signals into images. Because an image has to be recreated by sampling only a finite number of frequencies, the Fourier series has to be cut short during reconstruction. The error due to this truncation is evident in high-contrast interfaces of the image. The resulting artifact usually manifests as intensity oscillations adjacent to edges of different tissue types~\cite{veraart2016gibbs}.
 
 \begin{equation}
@@ -200,8 +279,6 @@ Finally, the corrected image is obtained by interpolating the optimally shifted 
 \begin{equation}
 	I_{\text{unring}}(x) = I_{r(x)}\!\left(x - \frac{r(x)}{2M}\right)
 \end{equation}
-
-%TODO: Check if explanation aligns with DIPY's code.
 
 \subsection{Motion Correction}
 \label{subsec:methods_motioncorrection}
@@ -247,10 +324,12 @@ At each stage, the transformation $T$ mapping the moving image $I_{\text{mov}}$ 
 
 Here, $\circ$ denotes composition, i.e. resampling of $I_{\text{mov}}$ under the transformation $T$. The optimization is performed in a multi-resolution scheme, starting on coarse images and refining on finer scales to improve convergence.
 
+It should be noted that this motion correction procedure addresses only rigid-body and affine misalignment caused by subject motion. It does not correct for eddy-current-induced geometric distortions or susceptibility-related field inhomogeneities. Eddy current correction typically requires reversed phase-encode acquisitions or specialised tools such as FSL's \texttt{eddy}~\cite{andersson2016integrated}, which depend on metadata (e.g.\ \texttt{TotalReadoutTime}, \texttt{PhaseEncodingDirection}) that may be absent in routine clinical protocols. Since \texttt{csttool} is designed to operate on single-shell clinical data with minimal acquisition requirements, eddy current correction is not included but is flagged as a limitation in Section~\ref{ch:discussion}.
+
 \subsection{Reslicing}
 \label{subsec:methods_reslicing}
 
-At times, MR images need to be resliced in different resolutions. This is especially needed if datasets come with non-isotropic voxel sizes. \texttt{csttool} uses DIPY's \texttt{reslice} method. First, the function computes the scaling factor
+At times, MR images need to be resliced in different resolutions. This is especially needed if datasets come with non-isotropic voxel sizes, which introduce directional bias in tractography: the fixed step size $h$ traverses more voxels along the short axis than the long axis, causing inconsistent spatial sampling and potentially distorting streamline geometry. Reslicing to isotropic voxels ensures uniform step-size behaviour across all orientations. \texttt{csttool} uses DIPY's \texttt{reslice} method. First, the function computes the scaling factor
 
 \begin{equation}
 	R = \frac{\text{new\_zooms}}{\text{zooms}}
@@ -329,17 +408,17 @@ Optional post-processing steps include binary dilation and removal of small hole
 	\label{eq:median_otsu_apply}
 \end{equation}
 
-Median filtering improves robustness to noise, while Otsu thresholding separates brain tissue from background based on the intensity histogram~\cite{yang2012improved}.
+Median filtering improves robustness to noise, while Otsu thresholding separates brain tissue from background based on the intensity histogram~\cite{yang2012improved}. However, Otsu's method assumes a bimodal intensity distribution, which may not hold under severe pathology or low SNR conditions. In such cases the mask can under-segment cortical regions or include non-brain tissue, propagating errors into subsequent tractography and metric stages.
 
-\subsection{Notes}
-\label{subsec:methods_preproc_notes}
-
-%TODO: Explain how this package is underdeveloped to keep it Pythonic and leaner.
+\begin{figure}[htbp]
+	\centering
+	\includegraphics[width=0.9\linewidth]{figs/methods/brain_mask.png}
+	\caption{Brain mask overlay on the $b=0$ reference image. The mask contour is shown in three orthogonal views (axial, coronal, sagittal), demonstrating accurate separation of brain tissue from background.}
+	\label{fig:brain_mask}
+\end{figure}
 
 \section{Diffusion Tensor Fitting}
 \label{sec:methods_diffusiontensorfitting}
-
-%TODO: Question: FA map as redundancy if anat T1 not found for future pipeline? Unsure if implemented in code. Check. Idea is: look for T1 anat first, use that if available, otherwise default to legacy FA method.
 
 Fitting the diffusion tensor model is handled by the \texttt{fit\_tensors} method within the \texttt{track} module. For each voxel of the preprocessed volumes, this method estimates the diffusion tensor $\mathcal{D}$. This section describes how \texttt{cstttool} accomplishes this. The theoretical foundations are explained in Section~\ref{subsec:background_diffusiontensor}. The derived scalar metrics are defined in Section~\ref{subsec:background_dti}.
 
@@ -348,7 +427,7 @@ Fitting the diffusion tensor model is handled by the \texttt{fit\_tensors} metho
 Eq.~\ref{eq:signal} models the diffusion-weighted signal using a scalar diffusion coefficient $D$. In the case of anisotropic diffusion, this parameter is replaced by the full diffusion tensor $\mathcal{D}$, yielding the tensor signal model~\cite{basser1994mr}:
 
 \begin{equation}
-	S_i = S_0 \exp\!\bigl(-b\,\hat{\mathbf{g}}_i^\top \mathcal{D}\,\hat{\mathbf{g}}_i\bigr)
+	S_i = S_0 \exp~\!\bigl(-b\,\hat{\mathbf{g}}_i^\top \mathcal{D}\,\hat{\mathbf{g}}_i\bigr)
 	\label{eq:tensor_signal}
 \end{equation}
 
@@ -359,6 +438,13 @@ where $S_i$ is the signal measured along the $i$-th gradient direction with unit
 Eigenvalue decomposition of the fitted tensor (Eq.~\ref{eq:diffusion_matrix_form}) yields the eigenvalues $\lambda_1 \geq \lambda_2 \geq \lambda_3$, from which the four scalar maps FA, MD, AD and RD are computed as defined in Eqs.~\ref{eq:FA},~\ref{eq:MD},~\ref{eq:AD} and~\ref{eq:RD}. The implementation uses DIPY's \texttt{tenfit.fa} attribute for FA and the helper functions \texttt{mean\_diffusivity}, \texttt{radial\_diffusivity} and \texttt{axial\_diffusivity} from \texttt{dipy.reconst.dti} for MD, RD and AD respectively.
 
 Noise can cause near-zero or negative eigenvalues to appear. This results in some voxels producing NaN or $\pm\infty$ values in derived scalar maps. These are replaced with zero, preventing numerical instability down the pipeline at the cost of underestimating diffusivity in affected voxels.
+
+\begin{figure}[htbp]
+	\centering
+	\includegraphics[width=0.9\linewidth]{figs/methods/tensor_maps.png}
+	\caption{Scalar maps derived from the fitted diffusion tensor. Rows show axial, coronal, and sagittal views; columns display FA, MD, and the colour-coded principal eigenvector direction map (RGB). White matter structures exhibit high FA (bright in FA map) and directional coherence (consistent colours in the RGB map).}
+	\label{fig:tensor_maps}
+\end{figure}
 
 \paragraph{White matter mask generation.} 
 
@@ -373,19 +459,44 @@ The end goal of \texttt{csttool} is to classify tracts belonging to the CST. As 
 	\label{eq:wm_mask}
 \end{equation}
 
-where $\tau$ is a configurable FA threshold (default $\tau = 0.2$) and $M$ is the brain mask from Section~\ref{subsec:methods_brainmasking}. The mask is subsequently dilated by one voxel using \texttt{binary\_dilation} from SciPy to ensure that streamlines can reach the cortical grey--white matter interface, which is relevant for both seeding and termination during tractography.
+where $\tau$ is a configurable FA threshold (default $\tau = 0.2$) and $M$ is the brain mask from Section~\ref{subsec:methods_brainmasking}. In severely degenerated white matter, as may occur in advanced ALS, FA can drop below $\tau = 0.2$, potentially excluding pathologically relevant tissue from the mask and truncating streamlines prematurely. This limitation is inherent to FA-based masking and could be mitigated in future work by incorporating T1-weighted tissue segmentation when available. The mask is subsequently dilated by one voxel using \texttt{binary\_dilation} from SciPy to ensure that streamlines can reach the cortical grey--white matter interface, which is relevant for both seeding and termination during tractography.
 
 \section{Whole Brain Tractography}
 \label{sec:methods_wholebraintractography}
 
-Whole-brain tractography reconstructs the three-dimensional pathways of white matter fiber bundles from preprocessed diffusion data. The implementation follows a four-stage pipeline: direction field estimation using the CSA-ODF model, white matter seeding, deterministic streamline propagation, and threshold-based termination. The theoretical foundations of tractography are presented in Section~\ref{subsec:background_tractography}.
+Whole-brain tractography reconstructs the three-dimensional pathways of white matter fiber bundles from preprocessed diffusion data. The implementation follows a four-stage pipeline: direction field estimation using the CSA-ODF model, white matter seeding, deterministic streamline propagation, and threshold-based termination. The theoretical foundations of tractography are presented in Section~\ref{subsec:background_tractography}. Figure~\ref{fig:tracking_flowchart} summarises this stage.
+
+\begin{figure}[htbp]
+	\centering
+	\begin{tikzpicture}[
+		node distance=0.55cm,
+		io/.style={rounded rectangle, draw=blue!60, fill=blue!5, minimum height=0.7cm, minimum width=3.2cm, font=\small, align=center},
+		proc/.style={rectangle, rounded corners=3pt, draw=orange!70, fill=orange!8, minimum height=0.7cm, minimum width=3.2cm, font=\small, align=center},
+		res/.style={rounded rectangle, draw=green!60!black, fill=green!5, minimum height=0.7cm, minimum width=3.2cm, font=\small, align=center},
+		arr/.style={-{Stealth[length=2mm]}, thick, gray!70}
+	]
+		\node[io] (in) {Preprocessed DWI\\+ Gradients};
+		\node[proc, below=of in] (tensor) {Tensor Fit\\$\rightarrow$ FA, MD, RD, AD};
+		\node[proc, below=of tensor] (odf) {CSA-ODF Peak\\Estimation};
+		\node[proc, below=of odf] (seed) {White Matter\\Seed Generation};
+		\node[proc, below=of seed] (track) {Deterministic\\Streamline Tracking};
+		\node[res, below=of track] (result) {Whole-Brain\\Tractogram (.trk)};
+		\draw[arr] (in) -- (tensor);
+		\draw[arr] (tensor) -- (odf);
+		\draw[arr] (odf) -- (seed);
+		\draw[arr] (seed) -- (track);
+		\draw[arr] (track) -- (result);
+	\end{tikzpicture}
+	\caption{Tractography pipeline. The diffusion tensor is fitted first to derive scalar maps and a white matter mask. The CSA-ODF model then estimates fibre directions, from which deterministic streamlines are propagated to produce the whole-brain tractogram.}
+	\label{fig:tracking_flowchart}
+\end{figure}
 
 \subsection{Direction Field Estimation}
 \label{subsec:methods_directionfield}
 
-The dominant streamline orientation within a given voxel is indicated by the primary eigenvector of the diffusion tensor. However, depending on the underlying tract architecture, the primary eigenvector may not actually align with any true fiber population. The Constant Solid Angle Orientation Distribution Function (CSA-ODF) is a more robust approach due to modeling the full orientiation distribution within each voxel~\cite{aganj2010reconstruction}.
+The dominant streamline orientation within a given voxel is indicated by the primary eigenvector of the diffusion tensor. However, depending on the underlying tract architecture, the primary eigenvector may not actually align with any true fiber population. The Constant Solid Angle Orientation Distribution Function (CSA-ODF) is a more robust approach due to modeling the full orientation distribution within each voxel~\cite{aganj2010reconstruction}.
 
-%TODO: Add DTI as fallback direction field estimation if SNR too low and/or not enough gradient directions, update code.
+The choice of CSA-ODF over alternative models is driven by the single-shell constraint of routine clinical acquisitions. Constrained Spherical Deconvolution (CSD), while offering sharper angular resolution, requires multi-shell data to reliably estimate the fiber response function and separate tissue compartments~\cite{tournier2007robust}. Since \texttt{csttool} targets datasets acquired with a single non-zero b-value, CSD is not applicable. Compared to tracking directly on the DTI principal eigenvector $\mathbf{v}_1$, the CSA-ODF provides improved angular resolution in voxels where multiple fiber populations are present, particularly in the corona radiata where CST fibers cross with corpus callosum projections. The DTI eigenvector in such voxels points toward the average of all fiber populations rather than any individual tract, which can misdirect streamlines. The CSA-ODF resolves this ambiguity by reconstructing the full angular profile and selecting its dominant peak.
 
 As described in Section~\ref{subsec:background_tractography}, the CSA-ODF is computed from single-shell diffusion-weighted data using the closed-form expression given by Eq.~\ref{eq:csa_odf}. In practice, the ODF is represented using a spherical harmonic (SH) basis as defined in Eq.~\ref{eq:sh_expansion}. The number of SH coefficients $R$ required for order $l$ is:
 
@@ -402,11 +513,10 @@ The ODF is sampled on a symmetric sphere with 362 vertices (\texttt{symmetric362
 	\mathbf{d}_{\text{peak}}(x) = \arg\max_{\hat{u} \in S^2} \text{ODF}(x, \hat{u})
 	\label{eq:peak_detection}
 \end{equation}
-%TODO: Cite or source this equation. Where did it come from?
 
 Two constraints are defined: first, the peak must exceed $80\%$ of the maximum ODF value (\texttt{relative\_peak\_threshold} = 0.8), and second, peaks must be separated by at least $45^{\circ}$ (\texttt{min\_separation\_angle} = 45) in case of multiple peaks. These parameters ensure that peaks arising from noise are filtered out.
 
-Direction field estimation is implemented using DIPY's \texttt{CsaOdfModel} from \texttt{dipy.reconst.shm} and \texttt{peaks\_from\_model} from \texttt{dipy.direction}~\cite{garyfallidis_dipy_2014}. The sphere is loaded using \\ \texttt{get\_sphere('symmetric362')} from \texttt{dipy.data}. Computation is restricted to voxels within the white matter mask $W$ from Eq.~\ref{eq:wm_mask} to reduce computational load and avoid estimating directions in non-white matter tissue.
+Direction field estimation is implemented using DIPY's \texttt{CsaOdfModel} from \texttt{dipy.reconst.\-shm} and \texttt{peaks\_from\_model} from \texttt{dipy.direction}~\cite{garyfallidis_dipy_2014}. The sphere is loaded using \texttt{get\_sphere('symmetric362')} from \texttt{dipy.data}. Computation is restricted to voxels within the white matter mask $W$ from Eq.~\ref{eq:wm_mask} to reduce computational load and avoid estimating directions in non-white matter tissue.
 
 \subsection{Seeding Strategy}
 \label{subsec:methods_seeding}
@@ -451,13 +561,9 @@ where $h = 0.5$~mm is the step size and $\mathbf{d}_{\text{peak}}$ is the domina
 
 A default sub-voxel step size of $0.5$mm is chosen as the default to ensure that the algorithm can capture intra-voxel curvature and smoothly traverse voxel boundaries without overshooting true fiber geometry.
 
-%TODO: Make step size dynamic instead of hard coded, just take 1 voxel dimension and divide by 2? Look into this.
-
 To ensure the streamline trajectory is not biased by the initial seed location along the tract, the propagation is performed bidirectionally: one streamline extends in the direction of the local peak, while another extends in the opposite direction. The two half-streamlines are concatenated to form a complete trajectory passing through the seed point.
 
-%TODO: Find or generate a graphic representation of the bidirectional propagation approach.
-
-Tracking is implemented using DIPY's \texttt{LocalTracking} class from \\ \texttt{dipy.tracking.local\_tracking}~\cite{garyfallidis_dipy_2014}, which uses an explicit Euler integration scheme. A fixed random seed (\texttt{random\_seed} = 42) is used by default to ensure bitwise-identical tractograms across multiple runs with the same input data. 
+Tracking is implemented using DIPY's \texttt{LocalTracking} class from \texttt{dipy.tracking.local\_tracking}~\cite{garyfallidis_dipy_2014}, which uses an explicit Euler integration scheme. A fixed random seed (\texttt{random\_seed} = 42) is used by default to ensure bitwise-identical tractograms across multiple runs with the same input data. 
 
 \subsection{Stopping Criteria}
 \label{subsec:methods_stopping}
@@ -484,28 +590,61 @@ The stopping criterion is implemented using DIPY's \texttt{ThresholdStoppingCrit
 
 DIPY's \texttt{LocalTracking} also enforces an implicit angular constraint that terminates streamlines when the turning angle between consecutive steps exceeds a threshold (typically $60^{\circ}$). This constraint prevents anatomically implausible sharp turns and contributes to the overall quality of the tractogram by filtering trajectories that deviate abruptly from smooth fiber pathways.
 
-%TODO: Double check what the angular threshold for LocalTracking is.
-
 \subsection{Choice of Deterministic Tracking}
 \label{subsec:methods_deterministic_justification}
 
-The CST is well-suited to deterministic tracking because it exhibits relatively low crossing-fiber complexity along most of its trajectory. The tract follows a coherent path from motor cortex through the internal capsule and cerebral peduncle to the brainstem. Crossing fibers are present near the cortical endpoints (where association and commissural fibers intersect) and in the corona radiata (where corpus callosum fibers cross), but the core CST bundle maintains a dominant orientation that the CSA-ODF model reliably captures with a single peak per voxel.
+The CST is well-suited to deterministic tracking because it exhibits relatively low crossing-fiber complexity along most of its trajectory. The tract follows a coherent path from motor cortex through the internal capsule and cerebral peduncle to the brainstem. Crossing fibers are present near the cortical endpoints (where association and commissural fibers intersect) and in the corona radiata (where corpus callosum and superior longitudinal fasciculus fibers cross). In these regions, deterministic tracking may fail to resolve the CST contribution when it is not the dominant fiber population, potentially under-representing lateral cortical projections. Nevertheless, the core CST bundle maintains a dominant orientation that the CSA-ODF model reliably captures with a single peak per voxel, and the atlas-based filtering in Section~\ref{sec:methods_atlasbasedextraction} mitigates spurious streamlines from competing fiber populations.
 
-Additionally, deterministic tracking produces identical streamlines for identical input parameters and data, as discussed in Section~\ref{subsec:background_tractography}. This property is deemed as essential for processing of clinical datasets. 
+Deterministic tracking sacrifices sensitivity to minor fiber populations but avoids the variance introduced by stochastic sampling inherent in probabilistic methods. This trade-off is deliberate: for clinical pipelines where between-run reproducibility is essential, the elimination of sampling noise outweighs the loss of sensitivity to lateral branching. Deterministic tracking produces identical streamlines for identical input parameters and data, as discussed in Section~\ref{subsec:background_tractography}.
 
-\texttt{csttool} prioritizes reproducibility and interpretability over sensitiviy to lateral branching of streamlines. 
+\texttt{csttool} therefore prioritizes reproducibility and interpretability over sensitivity to lateral branching of streamlines. 
 
 \subsection{Notes}
 \label{subsec:methods_tractography_notes}
 
 The whole-brain tractogram is written to disk in TrackVis \texttt{.trk} format, a widely supported binary format that stores streamline coordinates and the affine transformation matrix. The embedded affine ensures that streamlines can be correctly visualized and processed by third-party software without requiring separate metadata files.
 
+\begin{figure}[htbp]
+	\centering
+	\includegraphics[width=0.9\linewidth]{figs/methods/streamlines_2d.png}
+	\caption{Whole-brain tractogram shown together with axial, coronal, and sagittal FA maps. Streamline density reflects white matter connectivity; only $5000$ streamlines are visualized.}
+	\label{fig:streamlines_2d}
+\end{figure}
+
 Typical whole-brain tractograms for clinical diffusion datasets contain $10^5$ to $10^6$ streamlines. This comprehensive representation of white matter pathways serves as input to the atlas-based extraction stage (Section~\ref{sec:methods_atlasbasedextraction}), where anatomical filtering isolates the bilateral CST bundles. After CST-specific filtering, the tractogram is reduced to approximately $10^3$ to $10^4$ streamlines per hemisphere, representing only the pathways connecting motor cortex to brainstem.
 
 \section{Atlas-Based CST Extraction}
 \label{sec:methods_atlasbasedextraction}
 
-After the whole-brain tractogram is generated (Section~\ref{sec:methods_wholebraintractography}), the bilateral CST has to be isolated. \texttt{csttool}'s implementation follows the atlas-to-subject strategy described in Section-\ref{subsubsec:background_registration}: rather than warping streamlines into standard space, atlas-defined ROIs are brought into the subject native space, preserving the original streamline geometry. This stage proceeds in four steps: image registration, atlas warping, ROI definition, and streamline filtering. The theoretical foundations to this approach are described in Section~\ref{subsec:background_atlasbasedextraction}.
+After the whole-brain tractogram is generated (Section~\ref{sec:methods_wholebraintractography}), the bilateral CST has to be isolated. \texttt{csttool}'s implementation follows the atlas-to-subject strategy described in Section-\ref{subsubsec:background_registration}: rather than warping streamlines into standard space, atlas-defined ROIs are brought into the subject native space, preserving the original streamline geometry. This stage proceeds in four steps: image registration, atlas warping, ROI definition, and streamline filtering. The theoretical foundations to this approach are described in Section~\ref{subsec:background_atlasbasedextraction}. Figure~\ref{fig:extraction_flowchart} outlines the extraction pipeline.
+
+\begin{figure}[htbp]
+	\centering
+	\begin{tikzpicture}[
+		node distance=0.55cm,
+		io/.style={rounded rectangle, draw=blue!60, fill=blue!5, minimum height=0.7cm, minimum width=3.4cm, font=\small, align=center},
+		proc/.style={rectangle, rounded corners=3pt, draw=orange!70, fill=orange!8, minimum height=0.7cm, minimum width=3.4cm, font=\small, align=center},
+		dec/.style={diamond, draw=purple!60, fill=purple!5, minimum height=0.5cm, inner sep=1pt, font=\small, align=center, aspect=2.5},
+		res/.style={rounded rectangle, draw=green!60!black, fill=green!5, minimum height=0.7cm, minimum width=3.4cm, font=\small, align=center},
+		arr/.style={-{Stealth[length=2mm]}, thick, gray!70}
+	]
+		\node[io] (in) {Whole-Brain\\Tractogram + FA};
+		\node[proc, below=of in] (reg) {Register\\MNI $\rightarrow$ Subject};
+		\node[proc, below=of reg] (warp) {Warp Harvard-Oxford\\Atlases};
+		\node[proc, below=of warp] (roi) {Define ROIs\\(Brainstem + Motor Cortex)};
+		\node[dec, below=0.7cm of roi] (method) {Endpoint or\\Passthrough?};
+		\node[proc, below=0.7cm of method] (filter) {Filter Tractogram\\+ Length Constraints};
+		\node[res, below=of filter] (result) {Bilateral CST\\(Left + Right .trk)};
+		\draw[arr] (in) -- (reg);
+		\draw[arr] (reg) -- (warp);
+		\draw[arr] (warp) -- (roi);
+		\draw[arr] (roi) -- (method);
+		\draw[arr] (method) -- (filter);
+		\draw[arr] (filter) -- (result);
+	\end{tikzpicture}
+	\caption{Atlas-based CST extraction pipeline. The MNI template is registered to the subject's native space and the resulting deformation is used to warp atlas labels, from which brainstem and motor cortex ROIs are defined. The whole-brain tractogram is then filtered using either endpoint or passthrough criteria to isolate the bilateral CST.}
+	\label{fig:extraction_flowchart}
+\end{figure}
 
 \subsection{Image Registration}
 \label{subsec:methods_imageregistration}
@@ -529,7 +668,7 @@ The affine stage estimates a global linear transformation from template space to
 
 Each stage uses the result of the previous stage as its initialization, analogous to the motion correction pipeline described in Section~\ref{subsec:methods_motioncorrection}. The similarity metric used for optimization at each stage is Eq.~\ref{eq:mi} i.e. mutual information, estimated with 32 histogram bins. A three-level Gaussian pyramid controls the multi-resolution schedule: the default iteration counts are $[10\,000,\; 1\,000,\; 100]$ at downsampling factors $[4,\; 2,\; 1]$ with Gaussian smoothing of $\sigma = [3.0,\; 1.0,\; 0.0]$\,mm respectively.
 
-The affine stage is implemented using DIPY's \texttt{AffineRegistration} class from \texttt{dipy.align.imaffine} with \texttt{MutualInformationMetric}~\cite{garyfallidis_dipy_2014}. The three transform models are provided by \texttt{TranslationTransform3D}, \texttt{RigidTransform3D} and \texttt{AffineTransform3D} from \texttt{dipy.align.transforms}.
+The affine stage is implemented using DIPY's \texttt{AffineRegistration} class from \texttt{dipy.align.\-imaffine} with \texttt{MutualInformationMetric}~\cite{garyfallidis_dipy_2014}. The three transform models are provided by \texttt{TranslationTransform3D}, \texttt{RigidTransform3D} and \texttt{AffineTransform3D} from \texttt{dipy.align.\-transforms}.
 
 
 \paragraph{Diffeomorphic registration.}
@@ -544,6 +683,15 @@ Affine registration is not sufficient to capture local anatomical differences be
 where $T_{\text{affine}}$ is the affine pre-alignment from the previous stage and $\circ$ denotes composition. The displacement field is obtained by solving the variational problem defined in Eq.~\ref{eq:syn_energy}, using local cross-correlation (Eq.~\ref{eq:cc}) as the similarity metric with a neighbourhood radius of 4 voxels. Default iteration counts are $[10,\; 10,\; 5]$ across three pyramid levels.
 
 The implementation uses DIPY's \texttt{SymmetricDiffeomorphicRegistration} from \texttt{dipy.align.imwarp} with a \texttt{CCMetric} from \texttt{dipy.align.metrics}~\cite{garyfallidis_dipy_2014}. The resulting \texttt{DiffeomorphicMap} object provides both forward (template-to-subject) and inverse (subject-to-template) mappings.
+
+Registration accuracy is a principal source of uncertainty in atlas-based tract extraction. Misregistration at cortical boundaries can shift motor cortex ROIs by several millimetres, altering which streamlines are accepted or rejected during filtering. FA maps lack cortical grey-matter contrast, which limits registration precision near the cortical surface compared to T1-weighted images. Visual quality control (Fig.~\ref{fig:registration_qc}) is therefore recommended for every subject, and the morphological dilation applied to ROIs in Section~\ref{subsec:methods_roidefinition} provides a spatial tolerance that partially absorbs small registration errors.
+
+\begin{figure}[htbp]
+	\centering
+	\includegraphics[width=0.9\linewidth]{figs/methods/registration_qc.png}
+	\caption{Registration quality control. Rows show axial, coronal, and sagittal views; columns display the subject FA map, the warped MNI template, and an overlay of both. Accurate alignment of anatomical landmarks confirms successful registration.}
+	\label{fig:registration_qc}
+\end{figure}
 
 \subsection{Atlas Warping}
 \label{subsec:methods_atlaswarping}
@@ -602,6 +750,13 @@ The brainstem ROI receives two dilation iterations because the brainstem is a co
 
 The label extraction and dilation are implemented in \texttt{csttool}'s \texttt{create\_cst\_roi\_masks} function, which calls \texttt{extract\_roi\_mask} to produce a binary mask for each label and \texttt{dilate\_mask} to expand it by the specified number of iterations.
 
+\begin{figure}[htbp]
+	\centering
+	\includegraphics[width=0.9\linewidth]{figs/methods/roi_masks.png}
+	\caption{ROI masks overlaid on the subject's FA map. The brainstem ROI (inferior) and left/right motor cortex ROIs (superior) are displayed in three orthogonal views. These regions define the anatomical boundaries for CST streamline filtering.}
+	\label{fig:roi_masks}
+\end{figure}
+
 \subsection{Streamline Filtering}
 \label{subsec:methods_streamlinefiltering}
 
@@ -641,7 +796,14 @@ The default, more permissive method requires that a streamline passes through bo
 	\label{eq:passthrough_condition}
 \end{equation}
 
-Every point along the streamline is tested against the respective mask. This approach captures a larger proportion of CST streamlines, particularly those extending beyond the predefined ROI boundaries, making it more suitable for clinical datasets where cortical boundaries may be imprecise.
+Every point along the streamline is tested against the respective mask. This approach captures a larger proportion of CST streamlines, particularly those extending beyond the predefined ROI boundaries, making it more suitable for clinical datasets where cortical boundaries may be imprecise. Figure~\ref{fig:filtering_strategies} illustrates the difference between the two filtering strategies.
+
+\begin{figure}[htbp]
+	\centering
+	\includegraphics[width=0.85\linewidth]{figs/roi_operations.png}
+	\caption{Conceptual comparison of endpoint filtering (D, F) and passthrough filtering (B, E). Endpoint filtering requires streamline terminals to lie within the ROIs, while passthrough filtering accepts any streamline that traverses both regions regardless of where it terminates~\cite{wakana2007reproducibility}.}
+	\label{fig:filtering_strategies}
+\end{figure}
 
 Two additional exclusion criteria are applied to passthrough-filtered streamlines to remove false positives. First, streamlines that contact both the left and the right motor cortex ROIs are rejected, as they likely represent commissural fibres. Second, streamlines that extend substantially into both hemispheres are rejected:
 
@@ -665,7 +827,28 @@ The extracted CST bundles are written to disk as separate TrackVis \texttt{.trk}
 \section{Tract-Level Metrics}
 \label{sec:methods_metrics}
 
-The final stage of \texttt{csttool}'s pipeline computes quantitative metrics of the subject's CST. First, each hemisphere is analyzed independently during unilateral analysis, followed by a bilateral analysis that compares the hemispheres to assess asymmetry. The DTI metrics used throughout this stage --- fractional anisotropy (FA), mean diffusivity (MD), radial diffusivity (RD) and axial diffusivity (AD) --- are defined in Section~\ref{subsec:background_dti}.
+The final stage of \texttt{csttool}'s pipeline computes quantitative metrics of the subject's CST. First, each hemisphere is analyzed independently during unilateral analysis, followed by a bilateral analysis that compares the hemispheres to assess asymmetry. The DTI metrics used throughout this stage --- fractional anisotropy (FA), mean diffusivity (MD), radial diffusivity (RD) and axial diffusivity (AD) --- are defined in Section~\ref{subsec:background_dti}. Figure~\ref{fig:metrics_flowchart} summarises this stage.
+
+\begin{figure}[htbp]
+	\centering
+	\begin{tikzpicture}[
+		node distance=0.55cm,
+		io/.style={rounded rectangle, draw=blue!60, fill=blue!5, minimum height=0.7cm, minimum width=3.4cm, font=\small, align=center},
+		proc/.style={rectangle, rounded corners=3pt, draw=orange!70, fill=orange!8, minimum height=0.7cm, minimum width=3.4cm, font=\small, align=center},
+		res/.style={rounded rectangle, draw=green!60!black, fill=green!5, minimum height=0.7cm, minimum width=3.4cm, font=\small, align=center},
+		arr/.style={-{Stealth[length=2mm]}, thick, gray!70}
+	]
+		\node[io] (in) {CST Left/Right\\+ Scalar Maps};
+		\node[proc, below=of in] (uni) {Per-Hemisphere\\Analysis};
+		\node[proc, below=of uni] (bi) {Bilateral\\Comparison};
+		\node[res, below=of bi] (result) {Reports\\(JSON / CSV / PDF)};
+		\draw[arr] (in) -- (uni);
+		\draw[arr] (uni) -- (bi);
+		\draw[arr] (bi) -- (result);
+	\end{tikzpicture}
+	\caption{Metrics analysis pipeline. Each hemisphere is analysed independently for morphological and microstructural properties, followed by a bilateral comparison that computes laterality indices and asymmetry classifications. Results are exported as structured reports.}
+	\label{fig:metrics_flowchart}
+\end{figure}
 
 \subsection{Unilateral Analysis}
 \label{subsec:methods_unilateral}
@@ -696,6 +879,13 @@ To capture how microstructural properties vary along the course of the tract, th
 
 where $\mathcal{F}$ is the set of streamlines with at least five valid samples and $S_s(k)$ is the resampled scalar value of streamline $s$ at position $k$. The resulting 20-point vector summarises the spatial distribution of each metric from the inferior (brainstem) to the superior (cortical) end of the tract, following the along-tract profiling methodology described by Sarica et al.~\cite{sarica_corticospinal_2017}.
 
+\begin{figure}[htbp]
+	\centering
+	\includegraphics[width=0.9\linewidth]{figs/methods/stacked_profiles.png}
+	\caption{Along-tract profiles for FA, MD, RD, and AD, comparing left and right CST hemispheres. Each profile shows the metric value at 20 equidistant positions from brainstem (left) to motor cortex (right), with shaded regions indicating the standard deviation across streamlines.}
+	\label{fig:stacked_profiles}
+\end{figure}
+
 \paragraph{Localized metrics.}
 
 The 20-point tract profile is further subdivided into three anatomical regions to enable region-specific analysis:
@@ -720,7 +910,7 @@ The primary asymmetry measure is the laterality index:
 	\label{eq:laterality_index}
 \end{equation}
 
-where $L$ and $R$ are the metric values for the left and right hemisphere, respectively. The index is bounded between $-1$ and $+1$: positive values indicate left-hemisphere dominance, negative values indicate right-hemisphere dominance, and values near zero indicate symmetry. A laterality index is computed for every morphological metric (tract volume, streamline count, mean length), every global microstructural metric (mean FA, MD, RD, AD), and every localized microstructural metric (e.g.\ pontine FA, PLIC MD), yielding a comprehensive asymmetry profile.
+where $L$ and $R$ are the metric values for the left and right hemisphere, respectively. The index is bounded between $-1$ and $+1$: positive values indicate left-hemisphere dominance, negative values indicate right-hemisphere dominance, and values near zero indicate symmetry. The laterality index is clinically relevant for ALS because upper motor neuron degeneration frequently presents with asymmetric onset, and the degree of inter-hemispheric asymmetry in CST metrics has been shown to correlate with lateralised clinical signs and disease progression~\cite{sarica_corticospinal_2017}. A laterality index is computed for every morphological metric (tract volume, streamline count, mean length), every global microstructural metric (mean FA, MD, RD, AD), and every localized microstructural metric (e.g.\ pontine FA, PLIC MD), yielding a comprehensive asymmetry profile.
 
 \paragraph{Interpretation thresholds.}
 
@@ -743,17 +933,20 @@ These thresholds provide a standardised descriptive framework, and are not inten
 
 Two additional measures complement the laterality index. The absolute difference $|L - R|$ provides the raw magnitude of asymmetry in the original units of the metric (e.g.\ mm$^3$ for volume, unitless for FA). The percent difference, defined as $100 \times |L - R| \,/\, \overline{M}$ where $\overline{M} = (L + R) / 2$, expresses asymmetry as a proportion of the mean bilateral value, offering a more clinically intuitive scale.
 
+\begin{figure}[htbp]
+	\centering
+	\includegraphics[width=0.9\linewidth]{figs/methods/bilateral_comparison.png}
+	\caption{Bilateral comparison of CST metrics. Bar charts display left versus right hemisphere values for streamline count, tract volume, mean length, FA, and MD. Laterality index annotations indicate the direction and magnitude of asymmetry for each metric.}
+	\label{fig:bilateral_comparison}
+\end{figure}
+
 \paragraph{Output.}
 
-The complete set of unilateral metrics, bilateral comparisons, laterality indices, and interpretation labels is written to a structured JSON report for programmatic access and to a flattened CSV summary suitable for statistical analysis in external tools.
+The complete set of unilateral metrics, bilateral comparisons, laterality indices, and interpretation labels is written to a structured JSON report for programmatic access and to a flattened CSV summary suitable for statistical analysis in external tools. When the \texttt{--generate-pdf} flag is provided, an additional single-page clinical report is produced that consolidates the key visualisations and metrics into a print-ready format, as shown in Fig.~\ref{fig:example_report}.
 
-\section{Implementation Details}
-\label{sec:methods_details}
-
-
-- Language: Python $\geq$ 3.10
-- Core libraries: DIPY (tractography, tensor fitting), nibabel (NIfTI I/O), nilearn (atlas handling), scipy (morphology). MAKE SURE TO CITE THEM ALL.
-- CLI architecture: Modular commands, each stage independent
-- Reproducibility: Provenance tracking, optional deterministic seeding
-- More?
-
+\begin{figure}[htbp]
+	\centering
+	\includegraphics[width=0.9\linewidth]{figs/methods/example_report.pdf}
+	\caption{Example single-page PDF report generated by \texttt{csttool metrics --generate-pdf}. The report summarises bilateral CST metrics including streamline counts, tract volumes, along-tract profiles, and laterality indices.}
+	\label{fig:example_report}
+\end{figure}
