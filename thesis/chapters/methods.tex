@@ -665,33 +665,87 @@ The extracted CST bundles are written to disk as separate TrackVis \texttt{.trk}
 \section{Tract-Level Metrics}
 \label{sec:methods_metrics}
 
+The final stage of \texttt{csttool}'s pipeline computes quantitative metrics of the subject's CST. First, each hemisphere is analyzed independently during unilateral analysis, followed by a bilateral analysis that compares the hemispheres to assess asymmetry. The DTI metrics used throughout this stage --- fractional anisotropy (FA), mean diffusivity (MD), radial diffusivity (RD) and axial diffusivity (AD) --- are defined in Section~\ref{subsec:background_dti}.
+
 \subsection{Unilateral Analysis}
 \label{subsec:methods_unilateral}
 
-Morphological:
-- Streamline count
-- Length statistics (mean, std, min, max)
-- Tract volume (unique voxels x voxel size, mm3)
+\paragraph{Morphological metrics.}
 
-Microstructural:
-- FA, MD, RD, AD sampled along streamlines
-- Statistics: mean, std, median, min, max
-- 20-point along-tract profiles
+Three properties are used to describe the macroscopic geometry of the extracted bundle. The \emph{streamline count} is simply the number of streamlines retained after filtering. \emph{Length statistics} (mean, standard deviation, minimum, maximum) are computed from the Euclidean arc length of each streamline using DIPY's \texttt{length} function from \texttt{dipy.tracking.streamline}~\cite{garyfallidis_dipy_2014}. The \emph{tract volume} estimates the physical extent of the bundle by converting all streamline points from world coordinates to voxel indices via the inverse affine matrix, counting the number of unique occupied voxels, and multiplying by the voxel volume:
 
+\begin{equation}
+	V_{\text{tract}} = N_{\text{unique}} \times \prod_{d=1}^{3} \Delta_d
+	\label{eq:tract_volume}
+\end{equation}
+
+where $N_{\text{unique}}$ is the number of distinct voxels traversed by at least one streamline point, and $\Delta_d$ are the voxel dimensions in millimetres extracted from the columns of the affine matrix. The result is reported in mm$^3$.
+
+\paragraph{Microstructural metrics.}
+
+For each DTI scalar map $S \in \{\text{FA},\, \text{MD},\, \text{RD},\, \text{AD}\}$, values are sampled at every point along every streamline. Each world-coordinate point $\mathbf{p}$ is converted to a voxel index by applying the inverse affine and rounding to the nearest integer, equivalent to nearest-neighbour lookup. Points that fall outside the volume boundaries are discarded. The resulting set of samples is aggregated into global summary statistics: mean, standard deviation, median, minimum and maximum.
+
+\paragraph{Along-tract profiles.}
+
+To capture how microstructural properties vary along the course of the tract, the per-streamline scalar samples are normalised to a fixed number of equidistant positions. Each streamline's sampled values are resampled to $n = 20$ points: streamlines with more than $n$ samples are downsampled by uniform index selection, while those with fewer are upsampled via linear interpolation. Streamlines yielding fewer than five valid samples are excluded to avoid poorly resolved profiles. The tract profile is then obtained as the pointwise mean across all retained streamlines:
+
+\begin{equation}
+	\bar{S}(k) = \frac{1}{|\mathcal{F}|} \sum_{s \in \mathcal{F}} S_s(k), \qquad k = 1, \ldots, n
+	\label{eq:tract_profile}
+\end{equation}
+
+where $\mathcal{F}$ is the set of streamlines with at least five valid samples and $S_s(k)$ is the resampled scalar value of streamline $s$ at position $k$. The resulting 20-point vector summarises the spatial distribution of each metric from the inferior (brainstem) to the superior (cortical) end of the tract, following the along-tract profiling methodology described by Sarica et al.~\cite{sarica_corticospinal_2017}.
+
+\paragraph{Localized metrics.}
+
+The 20-point tract profile is further subdivided into three anatomical regions to enable region-specific analysis:
+
+\begin{itemize}
+	\item \textbf{Pontine} (points 1--7, approximately 0--35\,\% of tract length)
+	\item \textbf{Posterior limb of the internal capsule} (PLIC; points 8--14, approximately 35--70\,\%)
+	\item \textbf{Precentral} (points 15--20, approximately 70--100\,\%)
+\end{itemize}
+
+For each region and each scalar map, the mean value across the corresponding profile points is computed. These localized statistics allow the bilateral comparison to detect focal asymmetries --- for example, a reduction in pontine FA that would be masked in a whole-tract average.
 
 \subsection{Bilateral Analysis}
 \label{subsec:methods_bilateral}
 
-Laterality Index:
+\paragraph{Laterality index.}
+
+The primary asymmetry measure is the laterality index:
 
 \begin{equation}
 	LI = \frac{L-R}{L+R}
+	\label{eq:laterality_index}
 \end{equation}
 
-Interpretation thresholds: What makes the result symmetric, mildly asymmetric, moderately asymmetric or strongly asymmetric. Find sources maybe?
+where $L$ and $R$ are the metric values for the left and right hemisphere, respectively. The index is bounded between $-1$ and $+1$: positive values indicate left-hemisphere dominance, negative values indicate right-hemisphere dominance, and values near zero indicate symmetry. A laterality index is computed for every morphological metric (tract volume, streamline count, mean length), every global microstructural metric (mean FA, MD, RD, AD), and every localized microstructural metric (e.g.\ pontine FA, PLIC MD), yielding a comprehensive asymmetry profile.
 
-Computed for: volume, streamline count, length, FA, MD, RD, AD
+\paragraph{Interpretation thresholds.}
 
+Each laterality index is classified into one of four descriptive categories based on its absolute value:
+
+\begin{equation}
+	\text{asymmetry} =
+	\begin{cases}
+		\text{symmetric},            & |\mathrm{LI}| < 0.05 \\[2pt]
+		\text{mild asymmetry},       & 0.05 \leq |\mathrm{LI}| < 0.10 \\[2pt]
+		\text{moderate asymmetry},   & 0.10 \leq |\mathrm{LI}| < 0.20 \\[2pt]
+		\text{strong asymmetry},     & |\mathrm{LI}| \geq 0.20
+	\end{cases}
+	\label{eq:li_thresholds}
+\end{equation}
+
+These thresholds provide a standardised descriptive framework, and are not intended as clinical diagnostic criteria.
+
+\paragraph{Supplementary measures.}
+
+Two additional measures complement the laterality index. The absolute difference $|L - R|$ provides the raw magnitude of asymmetry in the original units of the metric (e.g.\ mm$^3$ for volume, unitless for FA). The percent difference, defined as $100 \times |L - R| \,/\, \overline{M}$ where $\overline{M} = (L + R) / 2$, expresses asymmetry as a proportion of the mean bilateral value, offering a more clinically intuitive scale.
+
+\paragraph{Output.}
+
+The complete set of unilateral metrics, bilateral comparisons, laterality indices, and interpretation labels is written to a structured JSON report for programmatic access and to a flattened CSV summary suitable for statistical analysis in external tools.
 
 \section{Implementation Details}
 \label{sec:methods_details}
