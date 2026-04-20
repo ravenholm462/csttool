@@ -19,12 +19,73 @@
 %       State that each subject was processed using a single csttool run command with
 %       fixed parameters (fa-thr 0.2, seed-density 2, seed 42).
 
+\paragraph{Objective.} 
+
+\textit{TractoInferno} is the world's largest open-source, multi-site tractography database aimed at machine learning tractography approaches and related ML algorithms. The entire dataset provides 284  samples acquired from 3T scanners across 6 different sites. The available data includes T1-weighted anatomical images, single-shell diffusion MRI (dMRI) acquisitions, and reference streamlines for 30 delineated bundles generated using 4 tractography algorithms~\cite{poulin2022tractoinferno}. From this dataset, 167 subject acquisitions from the training subset were used to validate the spatial agreement between pyramidal tract (PYT) reference bundles from \textit{TractoInferno} and the CST bundles extracted by \texttt{csttool}. This validation represents how well an automated, deterministic, atlas-based extraction pipeline recovers a known tract across a large, heterogeneous cohort.
+
+\paragraph{\texttt{csttool} parameters.}
+
+\begin{table}[h]
+	\centering
+	\caption{Parameters used by \texttt{csttool} for \textit{TractoInferno} spatial agreement validation.}
+	\begin{tabular}{lll}
+		\hline
+		Parameter & Value & Description \\
+		\hline
+		Denoising & NLMeans & Non-local means denoising \\
+		Preprocessing & Enabled & Denoising + brain masking \\
+		Direction model & CSA-ODF (SH order 6) & Constant solid angle ODF \\
+		Tracking & Deterministic & Single-peak (npeaks=1) \\
+		Step size & 0.5 mm & Streamline propagation step \\
+		FA threshold & 0.2 & Tracking termination \\
+		Seed density & 1 seed/voxel & In white matter mask \\
+		Peak threshold & 0.8 (relative) & Relative peak threshold \\
+		Min separation angle & 45$^\circ$ & Between ODF peaks \\
+		ROI approach & Atlas-to-subject & Harvard-Oxford via ANTs SyN \\
+		Field strength & 3.0 T & Assumed acquisition field strength \\
+		\hline
+	\end{tabular}
+\end{table}
+
+\paragraph{Validation Contract.}
+
+A formal validation contract governs the comparison process. Each subject-hemisphere pair is assigned exactly one outcome status. INVALID\_SPACE cases are excluded from quantitative analysis and reported separately. DEGRADED cases remain in the analysis but are flagged. This separation ensures that infrastructure failures do not contaminate algorithmic performance assessment.
+
+\begin{table}[h]
+	\centering
+	\caption{}
+	\begin{tabular}{lll}
+		\hline
+		Status & Condition & Metrics \\
+		\hline
+		OK & Spatial checks pass, candidate non-empty, no structural warnings & Computed \\
+		DEGRADED & Spatial checks pass, but candidate empty or below minimum streamline count & Computed (may be zero) \\
+		INVALID\_SPACE & Spatial compatibility violated (affine mismatch, grid incompatibility, or candidate missing) & Not computed \\
+		\hline
+	\end{tabular}
+\end{table}
+
+In total, 334 hemispheres were compared (167 subjects $\times$ 2). Out of these, 330 yielded valid metrics i.e. status OK. No DEGRADED cases were observed. Two subjects (numbers 1025 and 1074) had no PYT bundles, resulting in an INVALID\_SPACE tag for 4 hemisphere comparisons.
+
+% TODO: Add entire table to addendum? Think about it. Found under /mnt/neurodata/csttool_runs/2026-02-01_git-1433ac4/outputs/summary.tsv
+
+\paragraph{Spatial Compatibility.}
+
+The validator also verifies that candidate and reference bundles share a compatible coordinate system. Three requirements must be fulfilled for the check to pass. First, the candidate tractogram from \texttt{csttool} must be mappable into the reference \textit{TractoInferno} FA space. Second, affine matrices must agree within a tolerance of 0.5 mm (RMS). Third, voxel grid dimensions and orientation must match the reference anatomy. If any checks fail, the comparison is recorded as INVALID\_SPACE.
+
 \subsection{Spatial Overlap}
 \label{subsec:tractoinferno-dice}
 
 % TODO: Report Dice mean ± SD (0.283 ± 0.065), median 0.285, range [0.053, 0.471].
 %       Left hemisphere: 0.268 ± 0.066. Right hemisphere: 0.299 ± 0.060.
 %       Mention the two figures below.
+
+The spatial overlap between two binary volumes is measured using the Dice coefficient (Eq.\ref{eq:dice_coefficient}).
+
+\begin{equation}
+	\mathrm{Dice} = \frac{2 \times |\mathrm{A} \cap \mathrm{B}|}{|\mathrm{A}| + |\mathrm{B}|}
+	\label{eq:dice_coefficient}
+\end{equation}
 
 \begin{figure}[ht]
     \centering
@@ -45,10 +106,22 @@
 \subsection{Precision and Recall}
 \label{subsec:tractoinferno-precision-recall}
 
+which is defined as the harmonic mean of precision (Eq.~\ref{eq:precision}) and recall (Eq.~\ref{eq:recall}).
+
 % TODO: Precision mean ± SD: 0.854 ± 0.066. Recall mean ± SD: 0.172 ± 0.047.
 %       Note that the asymmetry (high precision, low recall) is expected given the
 %       streamline count difference (see below and Discussion). Do not interpret here
 %       beyond a brief quantitative note — leave interpretation for Discussion.
+
+\begin{equation}
+	\mathrm{Precision} = \frac{|\mathrm{A} \cap \mathrm{B}|}{|\mathrm{A}|}
+	\label{eq:precision}
+\end{equation}
+
+\begin{equation}
+	\mathrm{Recall} = \frac{|\mathrm{A} \cap \mathrm{B}|}{|\mathrm{B}|}
+	\label{eq:recall}
+\end{equation}
 
 \begin{figure}[ht]
     \centering
