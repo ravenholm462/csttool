@@ -1,12 +1,20 @@
 
 import argparse
 import json
+import shutil
+import sys
 from pathlib import Path
 from datetime import datetime
 from time import time
 
 from csttool import __version__
 from ..utils import extract_stem_from_filename, save_pipeline_report
+from csttool.bids.output import (
+    write_dataset_description,
+    update_participants_tsv,
+    bids_filename,
+    write_derivative_sidecar,
+)
 
 from .check import cmd_check
 from .import_cmd import cmd_import
@@ -435,10 +443,33 @@ def cmd_run(args: argparse.Namespace) -> None:
             print(f"    • Cleaned up empty intermediate directory")
     
     # =========================================================================
+    # BIDS DERIVATIVES OUTPUT (default: same root as --out)
+    # =========================================================================
+    bids_out = getattr(args, 'bids_out', None) or args.out
+    if not failed_steps:
+        _write_bids_derivatives(
+            args=args,
+            subject_id=subject_id,
+            session_id=getattr(args, 'session_id', None),
+            bids_out=Path(bids_out),
+            step_results=step_results,
+            tractogram_path=tractogram_path,
+            fa_path=fa_path,
+            md_path=md_path,
+            rd_path=rd_path,
+            ad_path=ad_path,
+            cst_left_path=cst_left_path,
+            cst_right_path=cst_right_path,
+            preproc_path=preproc_path,
+            pipeline_metadata=pipeline_metadata,
+            verbose=verbose,
+        )
+
+    # =========================================================================
     # FINAL SUMMARY
     # =========================================================================
     total_time = time() - pipeline_start
-    
+
     # Save pipeline report
     report_path = save_pipeline_report(args.out, subject_id, step_results, step_times, failed_steps, pipeline_start)
     
@@ -468,3 +499,277 @@ def cmd_run(args: argparse.Namespace) -> None:
     elif failed_steps:
         # Even in quiet mode, report failures
         print(f"Pipeline completed with failures: {', '.join(failed_steps)}")
+
+
+# ---------------------------------------------------------------------------
+# QC image naming map
+# ---------------------------------------------------------------------------
+
+# Maps the distinctive filename suffix of each QC PNG to (stage_label, qc_label).
+# stage_label groups by pipeline phase; qc_label names the specific artifact.
+_QC_NAMES = {
+    "_denoising_qc.png":           ("preproc",    "denoising"),
+    "_gibbs_unringing_qc.png":     ("preproc",    "gibbs"),
+    "_brain_mask_qc.png":          ("preproc",    "brainmask"),
+    "_motion_qc.png":              ("preproc",    "motion"),
+    "_preprocessing_summary.png":  ("preproc",    "summary"),
+    "_tensor_maps.png":            ("tracking",   "tensormaps"),
+    "_wm_mask_qc.png":             ("tracking",   "wmmask"),
+    "_streamlines_2d.png":         ("tracking",   "streamlines"),
+    "_streamline_stats.png":       ("tracking",   "stats"),
+    "_tracking_summary.png":       ("tracking",   "summary"),
+    "_registration_qc.png":        ("extraction", "registration"),
+    "_jacobian_map.png":           ("extraction", "jacobian"),
+    "_roi_masks.png":              ("extraction", "roimasks"),
+    "_cst_extraction.png":         ("extraction", "cst"),
+    "_hemisphere_separation.png":  ("extraction", "hemispheres"),
+    "_extraction_summary.png":     ("extraction", "summary"),
+    "_tract_profile_fa.png":       ("metrics",    "tractprofile"),
+    "_bilateral_comparison.png":   ("metrics",    "bilateral"),
+    "_stacked_profiles.png":       ("metrics",    "profiles"),
+    "_tractogram_qc_axial.png":    ("metrics",    "tractogram-axial"),
+    "_tractogram_qc_sagittal.png": ("metrics",    "tractogram-sagittal"),
+    "_tractogram_qc_coronal.png":  ("metrics",    "tractogram-coronal"),
+}
+
+
+def _resolve_qc_name(filename: str):
+    """Return (stage_label, qc_label) for a QC PNG, or ('misc', stem) if unknown."""
+    for suffix, labels in _QC_NAMES.items():
+        if filename.endswith(suffix):
+            return labels
+    return ("misc", filename.replace(".png", ""))
+
+
+# ---------------------------------------------------------------------------
+# BIDS derivatives writer
+# ---------------------------------------------------------------------------
+
+def _write_bids_derivatives(
+    args,
+    subject_id: str,
+    session_id,
+    bids_out: Path,
+    step_results: dict,
+    tractogram_path,
+    fa_path,
+    md_path,
+    rd_path,
+    ad_path,
+    cst_left_path,
+    cst_right_path,
+    preproc_path,
+    pipeline_metadata: dict,
+    verbose: bool,
+) -> None:
+    """
+    Move all pipeline outputs into a BIDS derivatives layout and remove stage dirs.
+
+    Final layout:
+        bids_out/
+        ├── dataset_description.json
+        ├── participants.tsv / participants.json
+        └── sub-{sub}/[ses-{ses}/]
+            ├── dwi/
+            │   ├── *_desc-preproc_dwi.nii.gz  (+ .bval .bvec .json)
+            │   ├── *_model-DTI_param-{FA,MD,RD,AD}_dwimap.nii.gz  (+ .json sidecars)
+            │   └── tractography/
+            │       ├── *_desc-wholebrain_tractogram.trk
+            │       ├── *_desc-CSTleft_tractogram.trk
+            │       ├── *_desc-CSTright_tractogram.trk
+            │       └── *_desc-CSTbilateral_tractogram.trk
+            ├── figures/   ← QC images only (PNG slice overlays, streamline views, etc.)
+            │   └── *_stage-{stage}_qc-{label}.png
+            └── reports/   ← user-facing reports + tabular outputs + pipeline logs
+                ├── *_report.html
+                ├── *_report.pdf
+                ├── *_metrics.json
+                ├── *_metrics.csv
+                └── *_log-{step}.json
+
+    Stage directories (tracking/, extraction/, metrics/, preprocessing/) are
+    removed unconditionally after all files are moved out.
+    """
+    bids_out = Path(bids_out)
+
+    sub_label = subject_id[4:] if subject_id.startswith("sub-") else subject_id
+    ses_label = None
+    if session_id:
+        ses_label = session_id[4:] if session_id.startswith("ses-") else session_id
+
+    sub_id = f"sub-{sub_label}"
+    ses_id = f"ses-{ses_label}" if ses_label else None
+
+    raw_bids_root = getattr(args, 'bids_in', None) or getattr(args, 'raw_bids', None)
+    write_dataset_description(bids_out, raw_bids_root=raw_bids_root)
+
+    # Subject/session output tree
+    subses_dir = bids_out / sub_id
+    if ses_id:
+        subses_dir = subses_dir / ses_id
+
+    dwi_dir   = subses_dir / "dwi"
+    tract_dir = dwi_dir / "tractography"
+    fig_dir   = subses_dir / "figures"    # QC images
+    rep_dir   = subses_dir / "reports"    # HTML, PDF, tabular, logs
+
+    for d in (dwi_dir, tract_dir, fig_dir, rep_dir):
+        d.mkdir(parents=True, exist_ok=True)
+
+    def _fname(suffix, ext, **entities):
+        return bids_filename(sub_label, suffix, ext, session=ses_label, **entities)
+
+    def _qc_name(stage, label):
+        parts = [f"sub-{sub_label}"]
+        if ses_label:
+            parts.append(f"ses-{ses_label}")
+        parts += [f"stage-{stage}", f"qc-{label}"]
+        return "_".join(parts) + ".png"
+
+    def _rep_name(stem, ext):
+        parts = [f"sub-{sub_label}"]
+        if ses_label:
+            parts.append(f"ses-{ses_label}")
+        parts.append(stem)
+        return "_".join(parts) + ext
+
+    cli_cmd = " ".join(sys.argv)
+
+    # ------------------------------------------------------------------
+    # Preprocessed DWI
+    # ------------------------------------------------------------------
+    if preproc_path and Path(preproc_path).exists():
+        src = Path(preproc_path)
+        dst_nii = dwi_dir / _fname("dwi", ".nii.gz", space="orig", desc="preproc")
+        shutil.move(src, dst_nii)
+
+        stem_no_ext = src.name.replace(".nii.gz", "").replace(".nii", "")
+        for ext in (".bval", ".bvec"):
+            candidate = src.parent / (stem_no_ext + ext)
+            if not candidate.exists():
+                hits = list(src.parent.glob(f"*{ext}"))
+                candidate = hits[0] if hits else None
+            if candidate and Path(candidate).exists():
+                shutil.move(candidate, dwi_dir / _fname("dwi", ext, space="orig", desc="preproc"))
+
+        json_cand = src.parent / (stem_no_ext + ".json")
+        if json_cand.exists():
+            shutil.move(json_cand, dwi_dir / _fname("dwi", ".json", space="orig", desc="preproc"))
+        else:
+            write_derivative_sidecar(dst_nii, sources=[], description="Preprocessed DWI",
+                                     command_line=cli_cmd)
+
+        if verbose:
+            print(f"    BIDS: {dst_nii.relative_to(bids_out)}")
+
+    # ------------------------------------------------------------------
+    # Scalar maps (FA, MD, RD, AD)
+    # ------------------------------------------------------------------
+    for src_path, param, desc_str in [
+        (fa_path, "FA",  "FA map from DTI fit"),
+        (md_path, "MD",  "Mean diffusivity map from DTI fit"),
+        (rd_path, "RD",  "Radial diffusivity map from DTI fit"),
+        (ad_path, "AD",  "Axial diffusivity map from DTI fit"),
+    ]:
+        if src_path and Path(src_path).exists():
+            dst = dwi_dir / _fname("dwimap", ".nii.gz", space="orig", model="DTI", param=param)
+            shutil.move(src_path, dst)
+            write_derivative_sidecar(dst, sources=[], description=desc_str, command_line=cli_cmd)
+            if verbose:
+                print(f"    BIDS: {dst.relative_to(bids_out)}")
+
+    # ------------------------------------------------------------------
+    # Tractograms
+    # ------------------------------------------------------------------
+    for src_path, desc_val in [
+        (tractogram_path, "wholebrain"),
+        (cst_left_path,   "CSTleft"),
+        (cst_right_path,  "CSTright"),
+    ]:
+        if src_path and Path(src_path).exists():
+            dst = tract_dir / _fname("tractogram", ".trk", space="orig", desc=desc_val)
+            shutil.move(src_path, dst)
+            if verbose:
+                print(f"    BIDS: {dst.relative_to(bids_out)}")
+
+    # Combined CST (produced by extract step alongside the separated tractograms)
+    for combined in (args.out / "extraction").glob("*_cst_combined.trk"):
+        dst = tract_dir / _fname("tractogram", ".trk", space="orig", desc="CSTbilateral")
+        shutil.move(combined, dst)
+        if verbose:
+            print(f"    BIDS: {dst.relative_to(bids_out)}")
+
+    # ------------------------------------------------------------------
+    # QC images → figures/
+    # ------------------------------------------------------------------
+    for viz_dir in [
+        args.out / "preprocessing" / "visualizations",
+        args.out / "tracking"      / "visualizations",
+        args.out / "extraction"    / "visualizations",
+        args.out / "metrics"       / "visualizations",
+    ]:
+        if not viz_dir.is_dir():
+            continue
+        for png in viz_dir.glob("*.png"):
+            stage, label = _resolve_qc_name(png.name)
+            dst = fig_dir / _qc_name(stage, label)
+            shutil.move(png, dst)
+            if verbose:
+                print(f"    BIDS: {dst.relative_to(bids_out)}")
+
+    # ------------------------------------------------------------------
+    # Reports → reports/  (HTML and PDF)
+    # ------------------------------------------------------------------
+    metrics_out = args.out / "metrics"
+    for html in metrics_out.glob("*.html"):
+        shutil.move(html, rep_dir / _rep_name("report", ".html"))
+    for pdf in metrics_out.glob("*.pdf"):
+        shutil.move(pdf, rep_dir / _rep_name("report", ".pdf"))
+
+    # ------------------------------------------------------------------
+    # Tabular outputs → reports/  (metrics JSON + CSV)
+    # ------------------------------------------------------------------
+    for json_f in metrics_out.glob("*_bilateral_metrics.json"):
+        shutil.move(json_f, rep_dir / _rep_name("metrics", ".json"))
+    for csv_f in metrics_out.glob("*_metrics_summary.csv"):
+        shutil.move(csv_f, rep_dir / _rep_name("metrics", ".csv"))
+
+    # ------------------------------------------------------------------
+    # Pipeline logs → reports/  (provenance, not scientific payload)
+    # ------------------------------------------------------------------
+    log_sources = [
+        (args.out / "preprocessing" / "nifti",      "log-import"),
+        (args.out / "preprocessing" / "dicom_info", "log-series"),
+        (args.out / "preprocessing",                "log-preproc"),
+        (args.out / "tracking"      / "logs",       "log-tracking"),
+        (args.out / "extraction"    / "logs",       "log-extraction"),
+    ]
+    for log_dir, tag in log_sources:
+        if not log_dir.is_dir():
+            continue
+        for jf in log_dir.glob("*.json"):
+            shutil.move(jf, rep_dir / _rep_name(tag, ".json"))
+
+    if verbose:
+        print(f"    BIDS: {rep_dir.relative_to(bids_out)}/ (reports + logs)")
+
+    # ------------------------------------------------------------------
+    # participants.tsv
+    # ------------------------------------------------------------------
+    acq_meta = pipeline_metadata.get('acquisition', {})
+    update_participants_tsv(bids_out, sub_id, metadata={
+        "age": acq_meta.get("patient_age"),
+        "sex": acq_meta.get("patient_sex"),
+    })
+
+    # ------------------------------------------------------------------
+    # Remove stage directories unconditionally
+    # Each one should be empty after all moves above; rmtree handles any
+    # empty subdirectories (e.g. scalar_maps/, logs/) left behind.
+    # ------------------------------------------------------------------
+    for step in ("preprocessing", "tracking", "extraction", "metrics"):
+        d = args.out / step
+        if d.exists():
+            shutil.rmtree(d)
+
+    print(f"\n  BIDS derivatives written → {bids_out}")

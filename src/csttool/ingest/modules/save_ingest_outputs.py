@@ -88,8 +88,11 @@ def save_ingest_outputs(
         'nifti_path': None,
         'bval_path': None,
         'bvec_path': None,
+        'json_path': None,
         'report_path': None,
-        'output_dir': output_dir
+        'output_dir': output_dir,
+        'converter': conversion_result.get('converter'),
+        'fallback_used': conversion_result.get('fallback_used', False),
     }
     
     # Copy/move files to structured location
@@ -119,9 +122,19 @@ def save_ingest_outputs(
             dst_bvec = nifti_dir / f"{subject_id}.bvec"
             shutil.copy2(src_bvec, dst_bvec)
             outputs['bvec_path'] = dst_bvec
-            
+
             if verbose:
                 print(f"    ✓ bvec:  {dst_bvec}")
+
+        # BIDS JSON sidecar (produced by dcm2niix)
+        if conversion_result.get('json_path'):
+            src_json = conversion_result['json_path']
+            dst_json = nifti_dir / f"{subject_id}.json"
+            shutil.copy2(src_json, dst_json)
+            outputs['json_path'] = dst_json
+
+            if verbose:
+                print(f"    ✓ BIDS sidecar: {dst_json}")
     else:
         # Use original locations
         outputs['nifti_path'] = conversion_result['nifti_path']
@@ -194,6 +207,7 @@ def _save_series_info(series_analysis, output_path: Path) -> None:
         'b_values': series_analysis.b_values,
         'n_directions': series_analysis.n_directions,
         'phase_encoding_direction': series_analysis.phase_encoding_direction,
+        'manufacturer': series_analysis.manufacturer or None,
         'series_type': series_analysis.series_type.value,
         'is_derived': series_analysis.is_derived,
         'is_original': series_analysis.is_original,
@@ -226,10 +240,13 @@ def _save_import_report(
             'dicom_directory': str(series_analysis.path),
             'series_name': series_analysis.name,
             'series_description': series_analysis.series_description,
-            'n_dicom_files': series_analysis.n_files
+            'n_dicom_files': series_analysis.n_files,
+            'manufacturer': series_analysis.manufacturer or None,
         },
         'conversion': {
             'success': conversion_result['success'],
+            'converter': conversion_result.get('converter'),
+            'fallback_used': conversion_result.get('fallback_used', False),
             'warnings': conversion_result['warnings']
         },
         'output_files': {

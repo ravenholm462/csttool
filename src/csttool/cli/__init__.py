@@ -137,6 +137,32 @@ def main() -> None:
         default=None,
         help="Echo time in milliseconds (e.g. 89.0). Overrides BIDS JSON if provided."
     )
+    p_import.add_argument(
+        "--raw-bids",
+        type=Path,
+        default=None,
+        metavar="BIDS_DIR",
+        help=(
+            "Organise output as a raw BIDS dataset at BIDS_DIR. "
+            "Subject and session labels are derived from DICOM PatientID and StudyDate "
+            "(anonymised by default). Requires --dicom."
+        )
+    )
+    p_import.add_argument(
+        "--keep-phi",
+        action="store_true",
+        default=False,
+        help=(
+            "Disable anonymisation: use PatientID directly as the subject label. "
+            "WARNING: the output dataset will contain protected health information (PHI)."
+        )
+    )
+    p_import.add_argument(
+        "--session-id",
+        type=str,
+        default=None,
+        help="Session label (without 'ses-' prefix) for --raw-bids. Overrides StudyDate."
+    )
     p_import.set_defaults(func=cmd_import)
 
     # -------------------------------------------------------------------------
@@ -628,6 +654,24 @@ def main() -> None:
         action="store_true",
         help="Suppress progress messages (errors still shown)"
     )
+    p_run.add_argument(
+        "--bids-out",
+        type=Path,
+        default=None,
+        metavar="DERIVATIVES_DIR",
+        help=(
+            "Write outputs as a BIDS derivatives dataset at DERIVATIVES_DIR. "
+            "Creates dataset_description.json, participants.tsv, and renames output "
+            "files to BIDS entity conventions. Backward-compatible: omit to use "
+            "the existing flat layout."
+        )
+    )
+    p_run.add_argument(
+        "--session-id",
+        type=str,
+        default=None,
+        help="Session label (without 'ses-' prefix) for BIDS output organisation."
+    )
 
     p_run.set_defaults(func=cmd_run)
 
@@ -737,6 +781,17 @@ def main() -> None:
         "--quiet",
         action="store_true",
         help="Suppress progress messages (errors still shown)"
+    )
+    p_batch.add_argument(
+        "--bids-out",
+        type=Path,
+        default=None,
+        metavar="DERIVATIVES_DIR",
+        help=(
+            "Write BIDS dataset_description.json and participants.tsv at DERIVATIVES_DIR "
+            "and rename output files to BIDS entity conventions. "
+            "Recommended path: <raw_bids>/derivatives/csttool."
+        )
     )
 
     p_batch.set_defaults(func=cmd_batch)

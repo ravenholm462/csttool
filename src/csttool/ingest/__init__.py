@@ -209,7 +209,8 @@ def run_ingest_pipeline(
     conversion_result = convert_dicom_to_nifti(
         selected.path,
         convert_dir,
-        verbose=verbose
+        verbose=verbose,
+        vendor=selected.manufacturer or None,
     )
     
     if not conversion_result['success']:

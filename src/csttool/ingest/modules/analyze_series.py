@@ -60,6 +60,9 @@ class SeriesAnalysis:
     is_derived: bool = False
     is_original: bool = False
     
+    # Scanner metadata
+    manufacturer: str = ""
+
     # Suitability assessment
     suitable_for_tractography: bool = False
     suitability_score: float = 0.0
@@ -165,6 +168,7 @@ def _analyze_with_pydicom(analysis: SeriesAnalysis, series_path: Path, pydicom) 
     analysis.modality = str(getattr(ds, 'Modality', ''))
     analysis.rows = int(getattr(ds, 'Rows', 0))
     analysis.columns = int(getattr(ds, 'Columns', 0))
+    analysis.manufacturer = str(getattr(ds, 'Manufacturer', ''))
     
     # Check derived status
     analysis.is_derived = ('DERIVED' in analysis.image_type or 

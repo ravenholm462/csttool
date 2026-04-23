@@ -21,6 +21,23 @@ cd csttool
 pip install -e .
 ```
 
+### External dependency: dcm2niix
+
+`csttool import` uses [dcm2niix](https://github.com/rordenlab/dcm2niix) as its primary DICOM converter. It handles all major scanner vendors (Siemens, GE, Philips, Hitachi) and generates BIDS JSON sidecars automatically.
+
+```bash
+# macOS
+brew install dcm2niix
+
+# Debian / Ubuntu
+sudo apt install dcm2niix
+
+# conda
+conda install -c conda-forge dcm2niix
+```
+
+If `dcm2niix` is not on `PATH`, csttool falls back to `dicom2nifti` (installed automatically as a Python dependency). The fallback is less reliable for non-Siemens data and does not generate BIDS JSON sidecars.
+
 ## Structure
 
 v0.1.0

@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import List
 
 from ...batch.batch import BatchConfig, run_batch, SubjectSpec
+from csttool.bids.output import write_dataset_description, update_participants_tsv
 from ...batch.modules.manifest import load_manifest, StudyInfo
 from ...batch.modules.validation import validate_batch_preflight, PreflightError
 from ...batch.modules.report import generate_batch_reports
@@ -182,7 +183,19 @@ def cmd_batch(args: argparse.Namespace) -> None:
     print(f"\n  → Generating batch reports...")
     generate_batch_reports(results, config.out)
     
-    # 7. Summary
+    # 7. BIDS derivatives dataset-level files
+    bids_out = getattr(args, 'bids_out', None)
+    if bids_out:
+        bids_out = Path(bids_out)
+        write_dataset_description(bids_out)
+        for r in results:
+            if r.status == "success":
+                sub_label = r.subject_id[4:] if r.subject_id.startswith("sub-") else r.subject_id
+                update_participants_tsv(bids_out, f"sub-{sub_label}")
+        if not quiet:
+            print(f"\n  BIDS derivatives dataset → {bids_out}")
+
+    # 8. Summary
     success = sum(1 for r in results if r.status == "success")
     failed = sum(1 for r in results if r.status == "failed")
     skipped = sum(1 for r in results if r.status == "skipped")

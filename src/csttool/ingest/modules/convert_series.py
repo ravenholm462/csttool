@@ -3,22 +3,25 @@ convert_series.py
 
 Convert DICOM series to NIfTI format with gradient files.
 
-This module provides:
-- DICOM to NIfTI conversion using dicom2nifti
-- Gradient file (bval/bvec) handling
-- Validation of conversion outputs
-- Fallback conversion strategies
+Converter priority:
+  1. dcm2niix  (primary — vendor-agnostic, auto-generates BIDS JSON sidecars)
+  2. dicom2nifti (fallback — used when dcm2niix is not on PATH or fails)
 """
 
-from pathlib import Path
-from typing import Tuple, Optional, Dict
-import os
 import shutil
+import subprocess
+from pathlib import Path
+from typing import Dict, List, Optional
+
 
 try:
-    from dicom2nifti import convert_dicom
+    from dicom2nifti import convert_dicom as _d2n
 except ImportError:
-    convert_dicom = None
+    _d2n = None
+
+
+# Vendors where dicom2nifti fallback is known to be unreliable
+_UNRELIABLE_FALLBACK_VENDORS = {"philips", "ge", "ge medical systems", "hitachi"}
 
 
 def convert_dicom_to_nifti(
@@ -26,340 +29,342 @@ def convert_dicom_to_nifti(
     output_dir: Path,
     output_name: Optional[str] = None,
     reorient: bool = True,
-    verbose: bool = True
+    verbose: bool = True,
+    vendor: Optional[str] = None,
 ) -> Dict:
     """
     Convert a DICOM series to NIfTI format.
-    
-    Uses dicom2nifti for conversion, which handles:
-    - Multi-frame DICOM
-    - Siemens mosaic format
-    - Gradient table extraction (bval/bvec)
-    
+
+    Tries dcm2niix first (handles all major scanner vendors and generates
+    BIDS JSON sidecars automatically). Falls back to dicom2nifti if dcm2niix
+    is not available or fails on this particular series.
+
     Parameters
     ----------
     dicom_dir : Path
-        Path to directory containing DICOM files
     output_dir : Path
-        Directory for output NIfTI and gradient files
     output_name : str, optional
-        Base name for output files (without extension).
-        If None, uses the DICOM directory name.
-    reorient : bool, optional
-        Reorient to standard orientation. Default is True.
-    verbose : bool, optional
-        Print progress information. Default is True.
-        
+        Base filename without extension. Defaults to directory name.
+    reorient : bool
+        Reorient to standard orientation (dicom2nifti fallback only).
+    verbose : bool
+    vendor : str, optional
+        Scanner manufacturer string for warning logic.
+
     Returns
     -------
-    result : Dict
-        Dictionary containing:
-        - nifti_path: Path to output .nii.gz file
-        - bval_path: Path to .bval file (or None)
-        - bvec_path: Path to .bvec file (or None)
-        - success: bool indicating conversion success
-        - warnings: List of any warnings
-        
-    Raises
-    ------
-    ImportError
-        If dicom2nifti is not installed
-    RuntimeError
-        If conversion fails
+    dict with keys:
+        nifti_path, bval_path, bvec_path, json_path,
+        success, warnings, converter, fallback_used
     """
-    if convert_dicom is None:
-        raise ImportError(
-            "dicom2nifti is required for DICOM conversion. "
-            "Install with: pip install dicom2nifti"
-        )
-    
     dicom_dir = Path(dicom_dir)
     output_dir = Path(output_dir)
-    
+
     if not dicom_dir.exists():
         raise FileNotFoundError(f"DICOM directory not found: {dicom_dir}")
-    
-    # Create output directory
+
     output_dir.mkdir(parents=True, exist_ok=True)
-    
-    # Determine output filename
+
     if output_name is None:
         output_name = _sanitize_filename(dicom_dir.name)
-    
-    output_nii = output_dir / f"{output_name}.nii.gz"
-    
-    if verbose:
-        print("    → Converting: DICOM to NIfTI...")
-        print(f"    • Input:  {dicom_dir}")
-        print(f"    • Output: {output_nii}")
-    
-    result = {
-        'nifti_path': None,
-        'bval_path': None,
-        'bvec_path': None,
-        'success': False,
-        'warnings': []
+
+    result: Dict = {
+        "nifti_path": None,
+        "bval_path": None,
+        "bvec_path": None,
+        "json_path": None,
+        "success": False,
+        "warnings": [],
+        "converter": None,
+        "fallback_used": False,
     }
-    
-    try:
-        # Run conversion
-        conversion_result = convert_dicom.dicom_series_to_nifti(
-            str(dicom_dir),
-            output_file=str(output_nii),
-            reorient_nifti=reorient
+
+    # ------------------------------------------------------------------
+    # Primary: dcm2niix
+    # ------------------------------------------------------------------
+    dcm2niix_bin = shutil.which("dcm2niix")
+    if dcm2niix_bin:
+        try:
+            _run_dcm2niix(dicom_dir, output_dir, output_name, result, verbose)
+            if result["success"]:
+                result["converter"] = "dcm2niix"
+                return result
+        except Exception as e:
+            warn = f"dcm2niix failed: {e}"
+            result["warnings"].append(warn)
+            if verbose:
+                print(f"    ⚠️  {warn}")
+                print("    → Falling back to dicom2nifti...")
+    else:
+        if verbose:
+            print("    ⚠️  dcm2niix not found on PATH — using dicom2nifti fallback")
+            print("    Install: brew install dcm2niix  /  apt install dcm2niix")
+        result["warnings"].append(
+            "dcm2niix not found on PATH; used dicom2nifti fallback. "
+            "Install dcm2niix for better multi-vendor support."
         )
-        
-        # Extract paths from result
-        nii_path = conversion_result.get("NII_FILE")
-        bval_path = conversion_result.get("BVAL_FILE")
-        bvec_path = conversion_result.get("BVEC_FILE")
-        
-        # Validate NIfTI was created
-        if nii_path and Path(nii_path).exists():
-            result['nifti_path'] = Path(nii_path)
-            result['success'] = True
-            
-            if verbose:
-                print(f"    ✓ NIfTI created: {nii_path}")
-        else:
-            result['warnings'].append("NIfTI file not created")
-            raise RuntimeError("Conversion produced no output file")
-        
-        # Validate gradient files
-        if bval_path and Path(bval_path).exists():
-            result['bval_path'] = Path(bval_path)
-            if verbose:
-                print(f"    ✓ bval file: {bval_path}")
-        else:
-            result['warnings'].append("No .bval file generated")
-            if verbose:
-                print("    ⚠️ No .bval file generated")
-        
-        if bvec_path and Path(bvec_path).exists():
-            result['bvec_path'] = Path(bvec_path)
-            if verbose:
-                print(f"    ✓ bvec file: {bvec_path}")
-        else:
-            result['warnings'].append("No .bvec file generated")
-            if verbose:
-                print("    ⚠️ No .bvec file generated")
-        
-        # Check if gradient files are needed
-        if result['nifti_path'] and (not result['bval_path'] or not result['bvec_path']):
-            _check_if_gradients_needed(result, verbose)
-        
+
+    # ------------------------------------------------------------------
+    # Fallback: dicom2nifti
+    # ------------------------------------------------------------------
+    if vendor and vendor.lower() in _UNRELIABLE_FALLBACK_VENDORS:
+        result["warnings"].append(
+            f"Vendor '{vendor}' detected. dicom2nifti fallback may produce "
+            "incorrect gradient files for this vendor. Install dcm2niix."
+        )
+        if verbose:
+            print(f"    ⚠️  Known problematic vendor for dicom2nifti: {vendor}")
+
+    if _d2n is None:
+        raise ImportError(
+            "Neither dcm2niix nor dicom2nifti is available. "
+            "Install dcm2niix (recommended) or: pip install dicom2nifti"
+        )
+
+    try:
+        _run_dicom2nifti(dicom_dir, output_dir, output_name, result, reorient, verbose)
+        if result["success"]:
+            result["converter"] = "dicom2nifti"
+            result["fallback_used"] = True
+            return result
     except Exception as e:
-        result['success'] = False
-        result['warnings'].append(f"Conversion error: {str(e)}")
-        print(f"  ✗ Conversion failed: {e}")
-        raise RuntimeError(f"DICOM to NIfTI conversion failed: {e}")
-    
+        result["warnings"].append(f"dicom2nifti also failed: {e}")
+        raise RuntimeError(
+            f"DICOM conversion failed with all available methods. "
+            f"Errors: {'; '.join(result['warnings'])}"
+        )
+
     return result
+
+
+def _run_dcm2niix(
+    dicom_dir: Path,
+    output_dir: Path,
+    output_name: str,
+    result: Dict,
+    verbose: bool,
+) -> None:
+    """Run dcm2niix and populate *result* in-place."""
+    if verbose:
+        print("    → Converting via dcm2niix...")
+        print(f"    • Input:  {dicom_dir}")
+
+    cmd: List[str] = [
+        "dcm2niix",
+        "-z", "y",
+        "-b", "y",          # write BIDS JSON sidecar
+        "-f", output_name,
+        "-o", str(output_dir),
+        str(dicom_dir),
+    ]
+
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    if proc.returncode != 0:
+        raise RuntimeError(proc.stderr.strip() or "dcm2niix returned non-zero exit code")
+
+    nii_files = sorted(output_dir.glob(f"{output_name}*.nii.gz"))
+    if not nii_files:
+        nii_files = sorted(output_dir.glob(f"{output_name}*.nii"))
+    if not nii_files:
+        raise RuntimeError("dcm2niix produced no NIfTI output")
+
+    result["nifti_path"] = nii_files[0]
+    result["success"] = True
+
+    bval_files = sorted(output_dir.glob(f"{output_name}*.bval"))
+    if bval_files:
+        result["bval_path"] = bval_files[0]
+    else:
+        result["warnings"].append("No .bval file generated by dcm2niix")
+
+    bvec_files = sorted(output_dir.glob(f"{output_name}*.bvec"))
+    if bvec_files:
+        result["bvec_path"] = bvec_files[0]
+    else:
+        result["warnings"].append("No .bvec file generated by dcm2niix")
+
+    json_files = sorted(output_dir.glob(f"{output_name}*.json"))
+    if json_files:
+        result["json_path"] = json_files[0]
+
+    if verbose:
+        print(f"    ✓ NIfTI: {result['nifti_path']}")
+        if result["bval_path"]:
+            print(f"    ✓ bval:  {result['bval_path']}")
+        if result["json_path"]:
+            print(f"    ✓ BIDS sidecar: {result['json_path']}")
+
+
+def _run_dicom2nifti(
+    dicom_dir: Path,
+    output_dir: Path,
+    output_name: str,
+    result: Dict,
+    reorient: bool,
+    verbose: bool,
+) -> None:
+    """Run dicom2nifti and populate *result* in-place."""
+    if verbose:
+        print("    → Converting via dicom2nifti...")
+
+    output_nii = output_dir / f"{output_name}.nii.gz"
+
+    conversion_result = _d2n.dicom_series_to_nifti(
+        str(dicom_dir),
+        output_file=str(output_nii),
+        reorient_nifti=reorient,
+    )
+
+    nii_path = conversion_result.get("NII_FILE")
+    if not nii_path or not Path(nii_path).exists():
+        raise RuntimeError("dicom2nifti produced no output file")
+
+    result["nifti_path"] = Path(nii_path)
+    result["success"] = True
+
+    bval_path = conversion_result.get("BVAL_FILE")
+    if bval_path and Path(bval_path).exists():
+        result["bval_path"] = Path(bval_path)
+    else:
+        result["warnings"].append("No .bval file generated")
+
+    bvec_path = conversion_result.get("BVEC_FILE")
+    if bvec_path and Path(bvec_path).exists():
+        result["bvec_path"] = Path(bvec_path)
+    else:
+        result["warnings"].append("No .bvec file generated")
+
+    _check_if_gradients_needed(result, verbose)
+
+    if verbose:
+        print(f"    ✓ NIfTI: {result['nifti_path']}")
 
 
 def _sanitize_filename(name: str) -> str:
-    """
-    Sanitize a string for use as a filename.
-    
-    Parameters
-    ----------
-    name : str
-        Original name
-        
-    Returns
-    -------
-    sanitized : str
-        Safe filename with problematic characters replaced
-    """
-    # Replace problematic characters
     replacements = {
-        ' ': '_',
-        '/': '_',
-        '\\': '_',
-        ':': '_',
-        '*': '_',
-        '?': '_',
-        '"': '_',
-        '<': '_',
-        '>': '_',
-        '|': '_',
+        " ": "_", "/": "_", "\\": "_", ":": "_",
+        "*": "_", "?": "_", '"': "_", "<": "_",
+        ">": "_", "|": "_",
     }
-    
     result = name
     for old, new in replacements.items():
         result = result.replace(old, new)
-    
-    # Remove leading/trailing underscores and dots
-    result = result.strip('_.')
-    
-    # Ensure not empty
-    if not result:
-        result = "converted"
-    
-    return result
+    result = result.strip("_.")
+    return result if result else "converted"
 
 
 def _check_if_gradients_needed(result: Dict, verbose: bool) -> None:
-    """
-    Check if gradient files are actually needed for this dataset.
-    
-    For structural images (T1, T2), gradient files are not expected.
-    For diffusion data, missing gradients is a problem.
-    """
     import nibabel as nib
-    
+
+    if not result.get("nifti_path"):
+        return
     try:
-        img = nib.load(str(result['nifti_path']))
+        img = nib.load(str(result["nifti_path"]))
         shape = img.shape
-        
-        # Check if 4D (diffusion) or 3D (structural)
         if len(shape) == 3:
-            # 3D image - likely structural, gradients not needed
-            result['warnings'] = [w for w in result['warnings']
-                                  if 'bval' not in w.lower() and 'bvec' not in w.lower()]
+            result["warnings"] = [
+                w for w in result["warnings"]
+                if "bval" not in w.lower() and "bvec" not in w.lower()
+            ]
             if verbose:
-                print("    • 3D volume detected - gradient files not required")
+                print("    • 3D volume — gradient files not required")
         elif len(shape) == 4 and shape[3] > 1:
-            # 4D image - definitely needs gradients
-            if not result['bval_path'] or not result['bvec_path']:
-                result['warnings'].append(
-                    "4D diffusion data detected but gradient files missing. "
-                    "Tractography will not be possible without bval/bvec files."
+            if not result["bval_path"] or not result["bvec_path"]:
+                result["warnings"].append(
+                    "4D diffusion data detected but gradient files are missing. "
+                    "Tractography requires bval/bvec files."
                 )
                 if verbose:
-                    print(f"    ⚠️ 4D data ({shape[3]} volumes) requires gradient files")
+                    print(f"    ⚠️  4D data ({shape[3]} volumes) requires gradient files")
     except Exception as e:
         if verbose:
-            print(f"    ⚠️ Could not verify image dimensions: {e}")
+            print(f"    ⚠️  Could not verify image dimensions: {e}")
 
 
 def validate_conversion(
     nifti_path: Path,
     bval_path: Optional[Path] = None,
     bvec_path: Optional[Path] = None,
-    verbose: bool = True
+    verbose: bool = True,
 ) -> Dict:
     """
-    Validate converted NIfTI file and gradient files.
-    
-    Parameters
-    ----------
-    nifti_path : Path
-        Path to NIfTI file
-    bval_path : Path, optional
-        Path to .bval file
-    bvec_path : Path, optional
-        Path to .bvec file
-    verbose : bool
-        Print validation results
-        
-    Returns
-    -------
-    validation : Dict
-        Dictionary containing:
-        - valid: bool - overall validity
-        - nifti_valid: bool
-        - gradients_valid: bool
-        - data_shape: tuple
-        - n_volumes: int
-        - n_gradients: int
-        - issues: list of any problems found
+    Validate converted NIfTI and gradient files.
+
+    Returns a dict with keys: valid, nifti_valid, gradients_valid,
+    data_shape, n_volumes, n_gradients, issues.
     """
     import nibabel as nib
     import numpy as np
-    
-    validation = {
-        'valid': False,
-        'nifti_valid': False,
-        'gradients_valid': False,
-        'data_shape': None,
-        'n_volumes': 0,
-        'n_gradients': 0,
-        'issues': []
+
+    validation: Dict = {
+        "valid": False,
+        "nifti_valid": False,
+        "gradients_valid": False,
+        "data_shape": None,
+        "n_volumes": 0,
+        "n_gradients": 0,
+        "issues": [],
     }
-    
-    # Validate NIfTI
+
     try:
         img = nib.load(str(nifti_path))
         data_shape = img.shape
-        validation['nifti_valid'] = True
-        validation['data_shape'] = data_shape
-        
-        if len(data_shape) == 4:
-            validation['n_volumes'] = data_shape[3]
-        elif len(data_shape) == 3:
-            validation['n_volumes'] = 1
-        
+        validation["nifti_valid"] = True
+        validation["data_shape"] = data_shape
+        validation["n_volumes"] = data_shape[3] if len(data_shape) == 4 else 1
+
         if verbose:
             print("    • NIfTI Validation:")
             print(f"    ├─ Shape: {data_shape}")
             print(f"    ├─ Voxel size: {img.header.get_zooms()[:3]}")
             print(f"    └─ Data type: {img.get_data_dtype()}")
     except Exception as e:
-        validation['issues'].append(f"Invalid NIfTI: {e}")
-        print(f"  ✗ Invalid NIfTI: {e}")
+        validation["issues"].append(f"Invalid NIfTI: {e}")
         return validation
-    
-    # Validate gradient files (if this is 4D diffusion data)
-    if validation['n_volumes'] > 1 and bval_path and bvec_path:
+
+    if validation["n_volumes"] > 1 and bval_path and bvec_path:
         try:
-            # Load bvals
-            bvals = np.loadtxt(str(bval_path))
-            if bvals.ndim == 0:
-                bvals = np.array([bvals])
-            bvals = bvals.flatten()
-            
-            # Load bvecs
+            bvals = np.loadtxt(str(bval_path)).flatten()
             bvecs = np.loadtxt(str(bvec_path))
             if bvecs.shape[0] == 3:
-                bvecs = bvecs.T  # Transpose if needed
-            
-            validation['n_gradients'] = len(bvals)
-            
-            # Check consistency
-            if len(bvals) != validation['n_volumes']:
-                validation['issues'].append(
+                bvecs = bvecs.T
+            validation["n_gradients"] = len(bvals)
+
+            if len(bvals) != validation["n_volumes"]:
+                validation["issues"].append(
                     f"Volume/gradient mismatch: {validation['n_volumes']} volumes "
                     f"but {len(bvals)} b-values"
                 )
             elif bvecs.shape[0] != len(bvals):
-                validation['issues'].append(
-                    f"bval/bvec mismatch: {len(bvals)} b-values but "
-                    f"{bvecs.shape[0]} gradient vectors"
+                validation["issues"].append(
+                    f"bval/bvec mismatch: {len(bvals)} b-values "
+                    f"but {bvecs.shape[0]} vectors"
                 )
             else:
-                validation['gradients_valid'] = True
-            
+                validation["gradients_valid"] = True
+
             if verbose:
                 print("    • Gradient Validation:")
                 print(f"    ├─ B-values: {len(bvals)}")
                 print(f"    ├─ Unique b-values: {sorted(set(bvals.astype(int)))}")
                 print(f"    └─ Gradient vectors: {bvecs.shape}")
-                
         except Exception as e:
-            validation['issues'].append(f"Error reading gradient files: {e}")
-            if verbose:
-                print(f"    ⚠️ Error reading gradient files: {e}")
-    
-    elif validation['n_volumes'] == 1:
-        # Single volume - gradients not required
-        validation['gradients_valid'] = True
-        if verbose:
-            print("    • Single volume - gradient files not required")
-    
-    # Overall validity
-    validation['valid'] = (validation['nifti_valid'] and 
-                           validation['gradients_valid'] and
-                           len(validation['issues']) == 0)
-    
+            validation["issues"].append(f"Error reading gradient files: {e}")
+    elif validation["n_volumes"] == 1:
+        validation["gradients_valid"] = True
+
+    validation["valid"] = (
+        validation["nifti_valid"]
+        and validation["gradients_valid"]
+        and not validation["issues"]
+    )
+
     if verbose:
-        if validation['valid']:
-            print("  ✓ Conversion validation passed")
-        else:
-            print("  ✗ Conversion validation failed")
-            for issue in validation['issues']:
-                print(f"    • {issue}")
-    
+        status = "✓" if validation["valid"] else "✗"
+        print(f"  {status} Conversion validation {'passed' if validation['valid'] else 'failed'}")
+        for issue in validation["issues"]:
+            print(f"    • {issue}")
+
     return validation
 
 
@@ -367,125 +372,9 @@ def convert_with_fallback(
     dicom_dir: Path,
     output_dir: Path,
     output_name: Optional[str] = None,
-    verbose: bool = True
+    verbose: bool = True,
 ) -> Dict:
     """
-    Convert DICOM to NIfTI with fallback strategies.
-    
-    Tries dicom2nifti first, then falls back to dcm2niix if available.
-    
-    Parameters
-    ----------
-    dicom_dir : Path
-        Path to DICOM directory
-    output_dir : Path
-        Output directory
-    output_name : str, optional
-        Base output filename
-    verbose : bool
-        Print progress
-        
-    Returns
-    -------
-    result : Dict
-        Conversion result dictionary
+    Thin wrapper kept for API compatibility. Delegates to convert_dicom_to_nifti().
     """
-    
-    # Try dicom2nifti first
-    try:
-        result = convert_dicom_to_nifti(
-            dicom_dir, output_dir, output_name, verbose=verbose
-        )
-        if result['success']:
-            return result
-    except Exception as e:
-        if verbose:
-            print(f"    ⚠️ dicom2nifti failed: {e}")
-            print("    → Attempting fallback...")
-    
-    # Try dcm2niix as fallback
-    try:
-        result = _convert_with_dcm2niix(
-            dicom_dir, output_dir, output_name, verbose
-        )
-        return result
-    except Exception as e:
-        if verbose:
-            print(f"    ⚠️ dcm2niix fallback also failed: {e}")
-    
-    # Both failed
-    raise RuntimeError(
-        "DICOM conversion failed with all available methods. "
-        "Ensure dicom2nifti or dcm2niix is properly installed."
-    )
-
-
-def _convert_with_dcm2niix(
-    dicom_dir: Path,
-    output_dir: Path,
-    output_name: Optional[str],
-    verbose: bool
-) -> Dict:
-    """
-    Fallback conversion using dcm2niix command-line tool.
-    """
-    import subprocess
-    
-    # Check if dcm2niix is available
-    try:
-        subprocess.run(['dcm2niix', '-h'], capture_output=True, check=True)
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        raise RuntimeError("dcm2niix not found in PATH")
-    
-    if output_name is None:
-        output_name = _sanitize_filename(dicom_dir.name)
-    
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    
-    if verbose:
-        print("    → Using dcm2niix for conversion...")
-    
-    # Run dcm2niix
-    cmd = [
-        'dcm2niix',
-        '-z', 'y',           # gzip output
-        '-f', output_name,   # output filename
-        '-o', str(output_dir),
-        str(dicom_dir)
-    ]
-    
-    result_proc = subprocess.run(cmd, capture_output=True, text=True)
-    
-    if result_proc.returncode != 0:
-        raise RuntimeError(f"dcm2niix failed: {result_proc.stderr}")
-    
-    # Find output files
-    result = {
-        'nifti_path': None,
-        'bval_path': None,
-        'bvec_path': None,
-        'success': False,
-        'warnings': []
-    }
-    
-    nii_files = list(output_dir.glob(f"{output_name}*.nii.gz"))
-    if nii_files:
-        result['nifti_path'] = nii_files[0]
-        result['success'] = True
-    
-    bval_files = list(output_dir.glob(f"{output_name}*.bval"))
-    if bval_files:
-        result['bval_path'] = bval_files[0]
-    
-    bvec_files = list(output_dir.glob(f"{output_name}*.bvec"))
-    if bvec_files:
-        result['bvec_path'] = bvec_files[0]
-    
-    if verbose:
-        if result['success']:
-            print("    ✓ dcm2niix conversion successful")
-        else:
-            print("    ✗ dcm2niix produced no output")
-    
-    return result
+    return convert_dicom_to_nifti(dicom_dir, output_dir, output_name, verbose=verbose)

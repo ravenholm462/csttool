@@ -18,6 +18,7 @@ dependencies = [
     "matplotlib",
     "nibabel",
     "dicom2nifti",
+    "pydicom",
     "nilearn",
     "platformdirs",
     "weasyprint",
