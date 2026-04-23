@@ -1,117 +1,135 @@
-# Batch Processing Walkthrough
+# `csttool batch`
 
-The `batch` module provides robust, parallel processing capabilities for large datasets, allowing `csttool` to handle hundreds of subjects efficiently.
+Process multiple subjects in batch mode. Runs the full pipeline for each subject in
+parallel, with fault isolation, resume support, and optional BIDS derivatives output.
 
-## Core Capability: `csttool batch`
+---
 
-This command orchestrates the execution of the full pipeline (or subsets of it) across multiple subjects, handling scheduling, logging, and error recovery.
+## Usage
 
-### Key Features
+=== "Manifest mode"
 
-- **Parallel Execution**: Processes subjects concurrently using `multiprocessing`.
-- **Fault Tolerance**: Each subject runs in an isolated process; crashes do not stop the entire batch.
-- **State Management**: Tracks completed subjects to allow resuming interrupted runs (`_done.json` markers).
-- **Auto-Discovery**: Can automatically find subjects in BIDS-like directory structures.
-- **Flexible Input**: Supports both structured manifests and directory scanning.
+    ```bash
+    csttool batch \
+        --manifest study_manifest.json \
+        --out /data/derivatives/csttool \
+        --bids-out /data/derivatives/csttool \
+        --preprocessing \
+        --denoise-method patch2self
+    ```
 
-### Usage
+=== "BIDS auto-discovery"
 
-#### 1. Manifest Mode (Recommended for reproducibility)
+    ```bash
+    csttool batch \
+        --bids-dir /data/bids \
+        --out /data/derivatives/csttool \
+        --bids-out /data/derivatives/csttool \
+        --include "sub-0*" \
+        --exclude "sub-099"
+    ```
 
-Use a JSON manifest to explicitly define subjects and their files.
+---
 
-```bash
-csttool batch \
-    --manifest study_manifest.json \
-    --out /path/to/output \
-    --preprocessing \
-    --denoise_method patch2self
-```
+## Input modes
 
-**Manifest Example (`study_manifest.json`):**
-```json
-{
-  "global_options": {
-    "preprocessing": true
-  },
-  "subjects": [
+### Manifest
+
+A JSON manifest explicitly defines subjects, their input files, and per-subject options.
+Recommended for reproducibility.
+
     {
-      "id": "sub-001",
-      "nifti": "/raw/sub-001/dwi.nii.gz"
-    },
-    {
-      "id": "sub-002",
-      "dicom": "/raw/sub-002/dicoms/"
+      "global_options": {
+        "preprocessing": true,
+        "denoise_method": "patch2self"
+      },
+      "subjects": [
+        {
+          "id": "sub-001",
+          "nifti": "/data/bids/sub-001/ses-01/dwi/sub-001_ses-01_dwi.nii.gz"
+        },
+        {
+          "id": "sub-002",
+          "dicom": "/raw/sub-002/dicoms/",
+          "session": "ses-01"
+        }
+      ]
     }
-  ]
-}
-```
 
-#### 2. Auto-Discovery Mode
+### BIDS auto-discovery
 
-Automatically find subjects in a directory.
+Scans a BIDS directory for `sub-*/[ses-*/]dwi/` directories and processes each one.
+Use `--include` and `--exclude` glob patterns to filter subjects.
 
-```bash
-csttool batch \
-    --bids-dir /path/to/raw_data \
-    --out /path/to/output \
-    --include "sub-0*" \
-    --exclude "sub-099"
-```
+---
 
-### Internal Architecture
+## BIDS derivatives output
 
-1.  **Orchestrator (`run_batch`)**:
-    -   Iterates through `SubjectSpec` objects.
-    -   Checks for completion (skips if done).
-    -   Acquires a file lock on the subject's output directory.
-    -   Spawns a worker process.
+Pass `--bids-out` to write a BIDS derivatives dataset at the specified path. After the
+batch completes, csttool writes:
 
-2.  **Worker (`_run_subject_worker`)**:
-    -   Sets up isolated file logging (`logs/sub-XXX.log`).
-    -   Constructs an argument namespace mimicking `csttool run` CLI arguments.
-    -   Executes the pipeline.
-    -   Reports success/failure back to the parent via a queue.
+- `dataset_description.json` (once, skipped if already present)
+- `participants.tsv` (one row per successful subject, file-locked for concurrent writes)
+- `participants.json` (column definitions, once)
 
-3.  **Output Promotion**:
-    -   Writes to a temporary `_work` directory.
-    -   On success, atomically moves `_work` content to the final subject folder and writes `_done.json`.
+The per-subject output tree under `--bids-out` follows the same layout as `csttool run`.
+See [Output formats](../output-formats.md) for details.
 
-### Output Structure
+!!! tip "Recommended path"
+    Place derivatives inside the raw BIDS dataset so that provenance resolves correctly:
 
-```
-output_dir/
-├── batch_metrics.csv       # Aggregate metrics for all subjects
-├── batch_report.html       # Visual summary
-├── sub-001/
-│   ├── _done.json          # Completion marker
-│   ├── logs/               # Execution logs
-│   ├── dti_FA.nii.gz       # Pipeline outputs...
-│   └── ...
-├── sub-002/
-└── ...
-```
+        --bids-out /data/bids/derivatives/csttool
 
-## Example Output
+---
 
-```text
-Starting batch processing for 50 subjects
-Output directory: /data/study_results
-Config hash: a1b2c3d4
+## Architecture
 
-1. sub-001: Success in 15.2m
-2. sub-002: Success in 14.8m
-3. sub-003: Failed (TIMEOUT) - exceeded 120m limit
-4. sub-004: Success in 15.5m
-...
+1. **Orchestrator** — iterates subjects, checks completion markers (`_done.json`),
+   acquires per-subject file locks, and spawns worker processes.
+2. **Worker** — runs the full pipeline in an isolated process; crashes do not affect
+   other subjects.
+3. **Finalization** — on success, moves `_work/` content to the final subject directory
+   and writes `_done.json`.
 
-BATCH PROCESSING COMPLETE
-========================================
-Total:      50
-Success:    48
-Failed:     1 (sub-003)
-Skipped:    0
+---
 
-Main metrics: /data/study_results/batch_metrics.csv
-Batch Report: /data/study_results/batch_report.html
-```
+## Options
+
+### Input
+
+| Flag | Description |
+| --- | --- |
+| `--manifest <file>` | Path to JSON manifest |
+| `--bids-dir <dir>` | BIDS directory for auto-discovery |
+| `--out <dir>` | Output root directory |
+| `--bids-out <dir>` | BIDS derivatives root (writes `dataset_description.json` and `participants.tsv`) |
+| `--include <patterns>` | Subject ID glob patterns to include (auto-discovery only) |
+| `--exclude <patterns>` | Subject ID glob patterns to exclude |
+
+### Processing
+
+| Flag | Description |
+| --- | --- |
+| `--preprocessing` / `--no-preprocessing` | Enable or skip preprocessing (default: enabled) |
+| `--denoise-method` | `patch2self` (default), `nlmeans`, or `none` |
+| `--generate-pdf` | Generate PDF report for each subject |
+
+### Pipeline control
+
+| Flag | Description |
+| --- | --- |
+| `--force` | Re-process all subjects, ignoring completion markers |
+| `--dry-run` | Show execution plan without processing |
+| `--validate-only` | Run pre-flight validation and exit |
+| `--keep-work` | Retain `_work/` directories after success |
+| `--timeout-minutes <n>` | Per-subject timeout (default: 120) |
+| `--verbose` | Detailed output |
+| `--quiet` | Suppress progress messages |
+
+---
+
+## Related
+
+- [Output formats](../output-formats.md) — per-subject output layout
+- [`csttool run`](run.md) — single-subject pipeline
+- [`csttool import`](import.md) — DICOM to raw BIDS conversion

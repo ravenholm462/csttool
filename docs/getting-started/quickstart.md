@@ -51,7 +51,7 @@ A successful run looks like this:
 ======================================================================
 PIPELINE COMPLETE
 ======================================================================
-Subject ID:     sub_sca201_ses01
+Subject ID:     sub-01
 Total time:     3.3 minutes (201 seconds)
 
 Step timing:
@@ -63,11 +63,6 @@ Step timing:
   ✓ metrics     : 10.1s
 
 ✓ All steps completed successfully!
-
-Outputs:
-  Pipeline report: output/sub_sca201_ses01_pipeline_report.json
-  Metrics:         output/metrics
-  CST tractograms: output/extraction
 ======================================================================
 ```
 
@@ -75,22 +70,39 @@ Outputs:
 
 ## Output Structure
 
-```
-output/
-├── sub-01_pipeline_report.json    # Full pipeline log
-├── nifti/                         # Converted NIfTI (if DICOM input)
-├── preprocessing/                 # Denoised, corrected data
-│   └── visualizations/            # QC images (if --save-visualizations)
-├── tracking/                      # Whole-brain tractogram
-│   └── scalar_maps/               # FA, MD, RD, AD maps
-├── extraction/                    # CST tractograms
-│   └── trk/                       # Left/right CST .trk files
-└── metrics/
-    ├── report.pdf                 # Visual summary report
-    ├── report.html                # Interactive HTML report
-    ├── metrics_summary.csv        # Tabular metrics
-    └── visualizations/            # Tract profiles, QC images
-```
+csttool writes a **BIDS derivatives dataset** at `--out`. No extra flags required.
+
+    output/
+    ├── dataset_description.json
+    ├── participants.tsv
+    ├── participants.json
+    ├── sub-01/
+    │   ├── dwi/
+    │   │   ├── sub-01_space-orig_desc-preproc_dwi.nii.gz
+    │   │   ├── sub-01_space-orig_desc-preproc_dwi.bval
+    │   │   ├── sub-01_space-orig_desc-preproc_dwi.bvec
+    │   │   ├── sub-01_space-orig_model-DTI_param-FA_dwimap.nii.gz
+    │   │   ├── sub-01_space-orig_model-DTI_param-MD_dwimap.nii.gz
+    │   │   ├── sub-01_space-orig_model-DTI_param-RD_dwimap.nii.gz
+    │   │   ├── sub-01_space-orig_model-DTI_param-AD_dwimap.nii.gz
+    │   │   └── tractography/
+    │   │       ├── sub-01_space-orig_desc-wholebrain_tractogram.trk
+    │   │       ├── sub-01_space-orig_desc-CSTleft_tractogram.trk
+    │   │       ├── sub-01_space-orig_desc-CSTright_tractogram.trk
+    │   │       └── sub-01_space-orig_desc-CSTbilateral_tractogram.trk
+    │   ├── figures/                        (if --save-visualizations)
+    │   │   ├── sub-01_stage-preproc_qc-brainmask.png
+    │   │   ├── sub-01_stage-tracking_qc-tensormaps.png
+    │   │   ├── sub-01_stage-extraction_qc-registration.png
+    │   │   └── ...
+    │   └── reports/
+    │       ├── sub-01_report.html
+    │       ├── sub-01_report.pdf           (if --generate-pdf)
+    │       ├── sub-01_metrics.json
+    │       └── sub-01_metrics.csv
+    └── sub-01_pipeline_report.json
+
+See [Output formats](../reference/output-formats.md) for a full description of every file.
 
 ---
 

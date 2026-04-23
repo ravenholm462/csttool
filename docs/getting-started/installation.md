@@ -17,6 +17,33 @@ pip install git+https://github.com/ravenholm462/csttool.git
 
 ## System Dependencies
 
+### dcm2niix (recommended)
+
+`dcm2niix` is the primary DICOM converter used by `csttool import` and `csttool run`. It handles
+Siemens, GE, Philips, and Hitachi scanners and generates BIDS-compliant JSON sidecars automatically.
+csttool falls back to `dicom2nifti` when `dcm2niix` is absent, but the fallback is less reliable
+for non-Siemens vendors.
+
+=== "Ubuntu/Debian"
+
+    ```bash
+    sudo apt install dcm2niix
+    ```
+
+=== "macOS"
+
+    ```bash
+    brew install dcm2niix
+    ```
+
+=== "conda"
+
+    ```bash
+    conda install -c conda-forge dcm2niix
+    ```
+
+### WeasyPrint
+
 csttool uses [WeasyPrint](https://weasyprint.org/) for PDF report generation, which requires system-level libraries.
 
 === "Ubuntu/Debian"
@@ -78,8 +105,9 @@ csttool check
 ```
 
 Expected output:
-```
-csttool version 0.3.1
+
+```text
+csttool version 0.5.0
 ```
 
 ---
@@ -117,11 +145,12 @@ See the [fetch-data reference](../reference/cli/fetch-data.md) for detailed info
 csttool installs the following packages automatically:
 
 | Package | Purpose |
-|---------|---------|
+| --- | --- |
 | `dipy` | Diffusion MRI processing, tractography |
 | `nibabel` | NIfTI file I/O |
 | `nilearn` | Neuroimaging utilities, atlas handling |
-| `dicom2nifti` | DICOM to NIfTI conversion |
+| `pydicom` | Read DICOM metadata (PatientID, age, scanner info) |
+| `dicom2nifti` | DICOM to NIfTI conversion (fallback) |
 | `numpy`, `scipy` | Numerical computing |
 | `matplotlib` | Visualizations |
 | `weasyprint`, `jinja2` | HTML/PDF report generation |
