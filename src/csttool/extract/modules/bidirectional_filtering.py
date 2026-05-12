@@ -288,6 +288,7 @@ def extract_cst_bidirectional(
         'cst_left_count': len(cst_left),
         'cst_right_count': len(cst_right),
         'cst_total_count': len(cst_combined),
+        'total_input': len(left_fwd) + len(right_fwd),
         'left_intersection_rate': len(cst_left) / max(len(left_fwd), 1) * 100,
         'right_intersection_rate': len(cst_right) / max(len(right_fwd), 1) * 100,
         'left_yield': len(cst_left) / max(len(left_seeds), 1) * 100,
