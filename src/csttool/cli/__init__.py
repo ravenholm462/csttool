@@ -605,9 +605,10 @@ def main() -> None:
     p_run.add_argument(
         "--extraction-method",
         type=str,
-        choices=["endpoint", "passthrough", "roi-seeded"],
+        choices=["endpoint", "passthrough", "roi-seeded", "bidirectional"],
         default="passthrough",
-        help="CST extraction method: endpoint, passthrough, or roi-seeded. Default: passthrough"
+        help="CST extraction method: endpoint, passthrough, roi-seeded, or bidirectional "
+             "(two-pass seeding with intersection — most symmetric). Default: passthrough"
     )
     p_run.add_argument(
         "--seed-fa-threshold",

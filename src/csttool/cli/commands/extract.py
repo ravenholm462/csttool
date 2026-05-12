@@ -29,10 +29,10 @@ def cmd_extract(args: argparse.Namespace) -> dict | None:
     # Check extraction method
     extraction_method = getattr(args, 'extraction_method', 'passthrough')
     
-    if extraction_method == "roi-seeded":
-        print("  ✗ Error: roi-seeded method requires raw DWI data")
-        print("    Use 'csttool run' for roi-seeded extraction, or")
-        print("    use --extraction-method endpoint|passthrough with cmd_extract")
+    if extraction_method in ("roi-seeded", "bidirectional"):
+        print(f"  ✗ Error: {extraction_method} method requires raw DWI data")
+        print(f"    Use 'csttool run --extraction-method {extraction_method}'")
+        print("    or use --extraction-method endpoint|passthrough with csttool extract")
         return None
 
     # Validate inputs
@@ -401,10 +401,163 @@ def run_roi_seeded_extraction(
         print(f"  Left CST:  {cst_result['stats']['cst_left_count']:,} streamlines")
         print(f"  Right CST: {cst_result['stats']['cst_right_count']:,} streamlines")
         print(f"  Total:     {cst_result['stats']['cst_total_count']:,} streamlines")
-    
+
     return {
         'cst_left_path': output_paths.get('cst_left'),
         'cst_right_path': output_paths.get('cst_right'),
         'cst_combined_path': output_paths.get('cst_combined'),
         'stats': cst_result['stats']
+    }
+
+
+def run_bidirectional_extraction(
+    preproc_path: Path,
+    fa_path: Path,
+    output_dir: Path,
+    subject_id: str,
+    args: argparse.Namespace,
+    verbose: bool = True
+) -> dict | None:
+    """
+    Run bidirectional CST extraction.
+
+    Seeds from motor cortex and brainstem independently, then retains only
+    streamlines confirmed by both directions via spatial intersection.
+    Requires raw DWI data.
+    """
+    from csttool.extract.modules.registration import register_mni_to_subject
+    from csttool.extract.modules.warp_atlas_to_subject import (
+        warp_harvard_oxford_to_subject,
+        CST_ROI_CONFIG,
+    )
+    from csttool.extract.modules.create_roi_masks import create_cst_roi_masks
+    from csttool.extract.modules.bidirectional_filtering import extract_cst_bidirectional
+    from csttool.extract.modules.endpoint_filtering import (
+        save_cst_tractograms,
+        save_extraction_report,
+    )
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    if verbose:
+        print(f"    • Input: {preproc_path}")
+
+    dwi_img = nib.load(str(preproc_path))
+    data = dwi_img.get_fdata()
+    affine = dwi_img.affine
+
+    bval_path = preproc_path.with_suffix('').with_suffix('.bval')
+    bvec_path = preproc_path.with_suffix('').with_suffix('.bvec')
+    if not bval_path.exists():
+        stem = preproc_path.name.replace('.nii.gz', '').replace('.nii', '')
+        bval_path = preproc_path.parent / f"{stem}.bval"
+        bvec_path = preproc_path.parent / f"{stem}.bvec"
+
+    bvals, bvecs = read_bvals_bvecs(str(bval_path), str(bvec_path))
+    gtab = gradient_table(bvals, bvecs)
+
+    fa_img = nib.load(str(fa_path))
+    fa_data = fa_img.get_fdata()
+    fa_affine = fa_img.affine
+    brain_mask = fa_data > 0
+
+    if verbose:
+        print(f"\n[Step 1/5] Registering MNI template to subject space...")
+
+    level_iters_affine = [1000, 100, 10] if getattr(args, 'fast_registration', False) else [10000, 1000, 100]
+    level_iters_syn = [5, 5, 3] if getattr(args, 'fast_registration', False) else [10, 10, 5]
+
+    reg_result = register_mni_to_subject(
+        subject_fa_path=fa_path,
+        output_dir=output_dir,
+        level_iters_affine=level_iters_affine,
+        level_iters_syn=level_iters_syn,
+        verbose=verbose,
+    )
+
+    if verbose:
+        print(f"\n[Step 2/5] Warping Harvard-Oxford atlases to subject space...")
+
+    warped = warp_harvard_oxford_to_subject(
+        registration_result=reg_result,
+        output_dir=output_dir,
+        subject_id=subject_id,
+        verbose=verbose,
+    )
+
+    if verbose:
+        print(f"\n[Step 3/5] Creating CST ROI masks...")
+
+    masks = create_cst_roi_masks(
+        warped_cortical=warped['cortical_warped'],
+        warped_subcortical=warped['subcortical_warped'],
+        subject_affine=fa_affine,
+        roi_config=CST_ROI_CONFIG,
+        dilate_brainstem=getattr(args, 'dilate_brainstem', 2),
+        dilate_motor=getattr(args, 'dilate_motor', 1),
+        output_dir=output_dir,
+        subject_id=subject_id,
+        verbose=verbose,
+        original_subject_affine=warped.get('original_subject_affine'),
+        reorientation_transform=warped.get('reorientation_transform'),
+    )
+
+    if verbose:
+        print(f"\n[Step 4/5] Bidirectional CST extraction (forward + reverse + intersection)...")
+
+    cst_result = extract_cst_bidirectional(
+        data=data,
+        gtab=gtab,
+        affine=affine,
+        brain_mask=brain_mask,
+        motor_left_mask=masks['motor_left'],
+        motor_right_mask=masks['motor_right'],
+        brainstem_mask=masks['brainstem'],
+        fa_map=fa_data,
+        fa_threshold=getattr(args, 'seed_fa_threshold', 0.15),
+        seed_density=getattr(args, 'seed_density', 2),
+        step_size=0.5,
+        min_length=getattr(args, 'min_length', 30.0),
+        max_length=getattr(args, 'max_length', 200.0),
+        verbose=verbose,
+    )
+
+    if verbose:
+        print(f"\n[Step 5/5] Saving extracted tractograms...")
+
+    output_paths = save_cst_tractograms(
+        cst_result=cst_result,
+        reference_img=fa_img,
+        output_dir=output_dir,
+        subject_id=subject_id,
+        verbose=verbose,
+    )
+
+    save_extraction_report(cst_result, output_paths, output_dir, subject_id)
+
+    if getattr(args, 'save_visualizations', False):
+        from csttool.extract.modules import save_all_extraction_visualizations
+        save_all_extraction_visualizations(
+            cst_result=cst_result,
+            fa=fa_data,
+            masks=masks,
+            affine=fa_affine,
+            output_dir=output_dir,
+            subject_id=subject_id,
+            jacobian_det=reg_result.get('jacobian_det'),
+            verbose=verbose,
+        )
+
+    if verbose:
+        print(f"\n✓ Bidirectional extraction complete")
+        print(f"  Subject:   {subject_id}")
+        print(f"  Left CST:  {cst_result['stats']['cst_left_count']:,} streamlines")
+        print(f"  Right CST: {cst_result['stats']['cst_right_count']:,} streamlines")
+        print(f"  Total:     {cst_result['stats']['cst_total_count']:,} streamlines")
+
+    return {
+        'cst_left_path': output_paths.get('cst_left'),
+        'cst_right_path': output_paths.get('cst_right'),
+        'cst_combined_path': output_paths.get('cst_combined'),
+        'stats': cst_result['stats'],
     }

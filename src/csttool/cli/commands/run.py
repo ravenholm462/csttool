@@ -20,7 +20,7 @@ from .check import cmd_check
 from .import_cmd import cmd_import
 from .preprocess import cmd_preprocess
 from .track import cmd_track
-from .extract import cmd_extract, run_roi_seeded_extraction
+from .extract import cmd_extract, run_roi_seeded_extraction, run_bidirectional_extraction
 from .metrics import cmd_metrics
 
 def cmd_run(args: argparse.Namespace) -> None:
@@ -344,14 +344,22 @@ def cmd_run(args: argparse.Namespace) -> None:
         extract_out = args.out / "extraction"
         
         if extraction_method == "roi-seeded":
-            # ROI-seeded requires raw DWI data - use dedicated function
             extract_result = run_roi_seeded_extraction(
                 preproc_path=preproc_path,
                 fa_path=fa_path,
                 output_dir=extract_out,
                 subject_id=subject_id,
                 args=args,
-                verbose=verbose
+                verbose=verbose,
+            )
+        elif extraction_method == "bidirectional":
+            extract_result = run_bidirectional_extraction(
+                preproc_path=preproc_path,
+                fa_path=fa_path,
+                output_dir=extract_out,
+                subject_id=subject_id,
+                args=args,
+                verbose=verbose,
             )
         else:
             # endpoint or passthrough - use cmd_extract with tractogram

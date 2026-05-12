@@ -5,6 +5,46 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`--extraction-method bidirectional`** on `csttool run` — two-pass seeding with
+  bilateral-symmetric count-bounded intersection.
+
+  **Motivation:** Atlas-based motor cortex ROIs land at slightly different positions
+  relative to the GM/WM boundary on each side, causing the forward-seeded (motor→brainstem)
+  pass to produce asymmetric streamline counts. Brainstem-seeded reverse tracking is
+  inherently symmetric (confirmed on in-vivo data: R/L = 0.987). Bidirectional seeding
+  eliminates the cortical placement artifact by using both passes together.
+
+  **Algorithm (three steps):**
+  1. *Forward pass* — seed from left and right motor cortex ROIs separately; keep
+     streamlines that reach the brainstem.
+  2. *Reverse pass* — seed from brainstem ROI; keep streamlines that reach each
+     motor cortex ROI, yielding `bs_to_left` and `bs_to_right` bundles.
+  3. *Count-bounded intersection* — voxelise the reverse bundles into density maps;
+     compute per-side caps as `min(N_forward, N_reverse)`; enforce bilateral symmetry
+     as `n_target = min(left_cap, right_cap)`; from each forward bundle take the top
+     `n_target` streamlines ranked by spatial overlap score with the corresponding
+     reverse density map.
+
+  **Result on personal in-vivo data:** streamline count LI = +0.002 (271 L / 270 R),
+  vs −0.128 for passthrough. Matches the brainstem-seeded ground-truth (LI = +0.007).
+
+  **New files:**
+  - `src/csttool/extract/modules/bidirectional_filtering.py`
+  - `docs/fixes/bidirectional_seeding.md`
+  - `docs/explanation/design-decisions.md` — new section on bidirectional seeding
+
+  **Modified files:**
+  - `src/csttool/extract/__init__.py` — export `extract_cst_bidirectional`
+  - `src/csttool/cli/__init__.py` — `run` choices extended
+  - `src/csttool/cli/commands/extract.py` — guard + `run_bidirectional_extraction`
+  - `src/csttool/cli/commands/run.py` — routing branch added
+
+---
+
 ## [0.5.0] - 2026-04-23
 
 ### Added

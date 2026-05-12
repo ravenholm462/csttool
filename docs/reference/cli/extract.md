@@ -81,7 +81,7 @@ csttool extract --tractogram whole_brain.trk --fa fa.nii.gz --out results --extr
 #### 3. ROI-Seeded
 
 ```bash
-csttool run --dwi dwi.nii.gz --bval dwi.bval --bvec dwi.bvec --out results --extraction-method roi-seeded
+csttool run --nifti dwi.nii.gz --out results --extraction-method roi-seeded
 ```
 
 - **Input**: Preprocessed DWI + FA map (requires `csttool run`, not `csttool extract`)
@@ -90,7 +90,27 @@ csttool run --dwi dwi.nii.gz --bval dwi.bval --bvec dwi.bvec --out results --ext
   - `--seed-fa-threshold`: FA threshold for valid seed points (default: `0.15`)
   - `--seed-density`: Seeds per voxel (default: `2`)
 - **Use Case**: Dense CST reconstruction without whole-brain tracking overhead
-- **Note**: This method is NOT available in `csttool extract` - use `csttool run` instead
+- **Note**: NOT available in `csttool extract` — requires raw DWI; use `csttool run`
+
+#### 4. Bidirectional
+
+```bash
+csttool run --nifti dwi.nii.gz --out results --extraction-method bidirectional
+```
+
+- **Input**: Preprocessed DWI + FA map (requires `csttool run`, not `csttool extract`)
+- **Logic**: Two-pass seeding with bilateral-symmetric count-bounded intersection:
+  1. **Forward pass** — seed from each motor cortex ROI; keep streamlines reaching brainstem
+  2. **Reverse pass** — seed from brainstem; keep streamlines reaching each motor cortex ROI
+  3. **Intersection** — from the forward bundle, select the top `n_target` streamlines ranked
+     by spatial overlap with the reverse-pass density map, where
+     `n_target = min(min(N_fwd_L, N_rev_L), min(N_fwd_R, N_rev_R))`
+- **Use Case**: Maximally symmetric bilateral CST extraction. Eliminates direction-dependent
+  streamline count asymmetry caused by atlas ROI placement relative to the GM/WM boundary.
+- **When to use**: When passthrough yields a laterality index |LI| > 0.15, or when bilateral
+  symmetry is important for interpretation (e.g. single-subject clinical studies).
+- **Note**: NOT available in `csttool extract` — requires raw DWI; use `csttool run`
+- **Further reading**: [Bidirectional seeding — motivation and validation](../../fixes/bidirectional_seeding.md)
 
 ### Algorithm Pipeline
 

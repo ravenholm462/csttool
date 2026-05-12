@@ -108,6 +108,51 @@ Incomplete field of view will cause extraction to fail or produce incomplete res
 
 ---
 
+## CST Streamline Count Asymmetry
+
+Atlas-based motor cortex ROIs (Harvard-Oxford, label 7/107: precentral gyrus) are defined
+in MNI space and warped to subject space. The warped ROI centres do not land at identical
+positions relative to the GM/WM boundary on each hemisphere. This causes the passthrough
+and roi-seeded methods to yield different streamline counts for left vs right CST, even in
+neurologically healthy subjects.
+
+**Observed on in-vivo 3T data:**
+
+| Method | R/L ratio | LI (streamlines) |
+|--------|-----------|-----------------|
+| Passthrough (NLMeans) | 1.29 | −0.128 |
+| ROI-seeded (forward only) | 0.48 | +0.347 |
+| Bidirectional | 1.00 | +0.002 |
+
+A systematic audit confirmed the underlying tract is bilaterally symmetric (brainstem-seeded
+reverse tracking: R/L = 0.987). The streamline count asymmetry in passthrough and roi-seeded
+is a direction-dependent seeding artifact, not a structural finding.
+
+**Mitigation:** Use `--extraction-method bidirectional` when bilateral symmetry matters.
+All diffusion metrics (FA, MD, RD, AD) are unaffected and remain symmetric regardless of
+extraction method.
+
+See [Bidirectional seeding — motivation and validation](../fixes/bidirectional_seeding.md)
+for the full technical analysis.
+
+---
+
+## Bidirectional Seeding — Known Limitation
+
+The bilateral symmetry normalization in the bidirectional method enforces identical
+streamline counts per side (`n_target = min` of all four pass counts). This means the
+final count is bounded by the smallest of the four passes — typically the forward pass
+from the more constrained hemisphere. In practice this produces substantially fewer
+streamlines than passthrough, which is expected: only streamlines confirmed by both
+directions are retained.
+
+The method assumes the true CST is bilaterally symmetric. If a genuine structural
+asymmetry exists (e.g. lesion, atrophy, surgical resection), bidirectional seeding will
+undercount the more connected side. In clinical populations with known motor system
+pathology, passthrough with manual laterality assessment is more appropriate.
+
+---
+
 ## Software Dependencies
 
 csttool relies on:

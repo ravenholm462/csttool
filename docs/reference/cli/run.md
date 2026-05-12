@@ -141,7 +141,7 @@ dataset (so that `SourceDatasets: bids::` resolves correctly):
 
 | Flag | Description |
 | --- | --- |
-| `--extraction-method` | `passthrough` (default), `endpoint`, or `roi-seeded` |
+| `--extraction-method` | `passthrough` (default), `endpoint`, `roi-seeded`, or `bidirectional` |
 | `--dilate-brainstem <n>` | Brainstem ROI dilation iterations (default: 2) |
 | `--dilate-motor <n>` | Motor cortex ROI dilation iterations (default: 1) |
 | `--min-length <mm>` | Minimum streamline length (default: 20) |
