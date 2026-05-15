@@ -19,6 +19,22 @@ csttool metrics \
     --subject-id sub-001
 ```
 
+### Parameters
+
+| Flag | Type | Default | Description |
+|---|---|---|---|
+| `--cst-left` | path | — | Left-hemisphere CST tractogram (`.trk`). **Required**. |
+| `--cst-right` | path | — | Right-hemisphere CST tractogram (`.trk`). **Required**. |
+| `--out` | path | — | Output directory (created on demand). **Required**. |
+| `--fa` | path | — | Fractional anisotropy map (`.nii.gz`). Required for tract profiles. |
+| `--md` | path | — | Mean diffusivity map. Optional. |
+| `--rd` | path | — | Radial diffusivity map. Optional. |
+| `--ad` | path | — | Axial diffusivity map. Optional. |
+| `--subject-id` | string | `subject` | Subject label used in report headers and filenames. |
+| `--space` | string | — | Coordinate space label (`native`, `MNI152`, etc.) recorded in metadata. |
+| `--generate-pdf` | flag | off | Render the HTML report to PDF via WeasyPrint. |
+| `--verbose` | flag | off | Print per-step diagnostics. |
+
 ### Analysis Pipeline
 
 1.  **Hemispheric Analysis** (`analyze_cst_hemisphere`):

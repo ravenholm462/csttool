@@ -44,6 +44,18 @@ theme:
   icon:
     repo: fontawesome/brands/github
 
+# Exclude internal/draft pages from the build
+exclude_docs: |
+  DOCUMENTATION_CHECKLIST.md
+  fixes/
+  seminar/
+  reference/v0.4.0-updates.md
+  contributing/contributing.md
+  explanation/explanation.md
+  how-to/how-to.md
+  javascripts/
+  stylesheets/
+
 # Extensions
 markdown_extensions:
   - admonition                  # Callout boxes (note, warning, etc.)
@@ -109,6 +121,7 @@ nav:
           - validate: reference/cli/validate.md
           - run: reference/cli/run.md
           - batch: reference/cli/batch.md
+          - fetch-data: reference/cli/fetch-data.md
       - API:
           - Preprocessing: reference/api/preprocess.md
           - Tracking: reference/api/tracking.md
@@ -122,6 +135,7 @@ nav:
       - CST Anatomy: explanation/cst-anatomy.md
       - Design Decisions: explanation/design-decisions.md
       - Known Limitations: explanation/limitations.md
+      - References: explanation/references.md
   - Contributing:
       - Development Setup: contributing/development-setup.md
       - Code Style: contributing/code-style.md

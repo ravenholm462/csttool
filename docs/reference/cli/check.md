@@ -63,5 +63,5 @@ If any required dependency is missing, the command will display:
 
 ## See Also
 
-- [Installation](../getting-started/installation.md) — How to install csttool and dependencies
-- [Troubleshooting](../how-to/troubleshooting.md) — Common issues and solutions
+- [Installation](../../getting-started/installation.md) — How to install csttool and dependencies
+- [Troubleshooting](../../how-to/troubleshooting.md) — Common issues and solutions

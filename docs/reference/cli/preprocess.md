@@ -18,6 +18,21 @@ csttool preprocess \
     --save-visualizations
 ```
 
+### Parameters
+
+| Flag | Type | Default | Description |
+|---|---|---|---|
+| `--nifti` | path | — | Input 4D NIfTI DWI file. Mutually exclusive with `--dicom`. |
+| `--dicom` | path | — | Input DICOM directory; converted internally. |
+| `--out` | path | — | Output directory (created on demand). **Required**. |
+| `--denoise-method` | `patch2self` \| `nlmeans` | `patch2self` | Denoising algorithm. Use `nlmeans` for low-volume acquisitions where Patch2Self produces over-smoothing. |
+| `--coil-count` | int | `4` | Number of receiver coils, used by NLMeans noise estimation. |
+| `--unring` | flag | off | Apply Kellner Gibbs-unringing to attenuate ringing near sharp tissue boundaries. |
+| `--perform-motion-correction` | flag | off | Affine-register all volumes to the first b=0 volume. |
+| `--target-voxel-size` | 3×float | — | Reslice to the given isotropic voxel size in mm (e.g. `2 2 2`). |
+| `--save-visualizations` | flag | off | Write QC plots (denoising residuals, motion parameters) to `visualizations/`. |
+| `--verbose` | flag | off | Print per-step diagnostics. |
+
 ### Pipeline Steps
 
 1.  **Denoising**:
