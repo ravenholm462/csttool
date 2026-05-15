@@ -85,13 +85,12 @@ Voxelise:
   dens_L = density_map(bs_to_left,  affine, shape)
   dens_R = density_map(bs_to_right, affine, shape)
 
-Count-bounded intersection:
+Per-side count cap (no bilateral cap):
   n_keep_L = min(len(left_fwd),  len(bs_to_left))
   n_keep_R = min(len(right_fwd), len(bs_to_right))
-  n_target = min(n_keep_L, n_keep_R)          ← bilateral symmetry cap
 
-  cst_left  = top n_target from left_fwd  ranked by overlap score with dens_L
-  cst_right = top n_target from right_fwd ranked by overlap score with dens_R
+  cst_left  = top n_keep_L from left_fwd  ranked by overlap score with dens_L
+  cst_right = top n_keep_R from right_fwd ranked by overlap score with dens_R
 ```
 
 **Overlap score** for a streamline `s`: sum of density values `dens[vox]` at each voxel
@@ -103,10 +102,13 @@ initiate valid CST trajectories, not *where* those trajectories go. Capping by t
 reverse count removes excess forward streamlines that arose from the ROI placement
 advantage.
 
-**Why bilateral symmetry cap (`n_target = min`):** The per-side caps `n_keep_L` and
-`n_keep_R` may differ if the reverse pass itself is not perfectly symmetric (e.g. due to
-ODF parameter sensitivity). Enforcing the same `n_target` on both sides guarantees
-bilateral symmetry, justified because Phase 4C confirmed the true tract is symmetric.
+**Why per-side only (no bilateral cap):** csttool is a clinical tool; a bilateral
+symmetry cap would erase genuine unilateral CST reduction (stroke, tumour, Wallerian
+degeneration). Each hemisphere is therefore bounded independently by its own reverse-pass
+count, which removes the cortical-interface inflation per side without imposing a
+symmetry prior. To help the user judge whether any residual L/R asymmetry is
+methodological or structural, the method reports a per-side forward/reverse inflation
+ratio and an `artifact_index` (see Section 6).
 
 ---
 
@@ -118,11 +120,16 @@ On the same in-vivo data:
 |--------|------|-------|-----|-----|
 | Passthrough (NLMeans) | 3,732 | 4,826 | 1.29 | −0.128 |
 | ROI-seeded forward | 562 | 271 | 0.48 | +0.347 |
-| Bidirectional | 271 | 270 | 1.00 | **+0.002** |
+| Bidirectional (per-side cap) | 441 | 271 | 0.61 | **+0.239** |
 | Brainstem-seeded reference | 1,045 | 1,031 | 0.99 | +0.007 |
 
-The bidirectional result matches the brainstem-seeded ground truth (LI ≈ 0) to within
-noise. All diffusion metrics (FA, MD, RD, AD) remain symmetric regardless of method.
+The per-side bidirectional method removes the cortical-interface inflation per side
+(left forward 562 → 441 capped by reverse; right forward 271 → 271, no excess to remove)
+without enforcing bilateral symmetry. The residual L/R asymmetry on this healthy subject
+is flagged by the diagnostic: inflation_L = 562/441 = 1.27, inflation_R = 271/346 = 0.78,
+artifact_index = 0.39 (> 0.20) — i.e. the method correctly reports that the residual
+asymmetry is likely methodological rather than structural. All diffusion metrics (FA, MD,
+RD, AD) remain symmetric regardless of method.
 
 ---
 
@@ -172,32 +179,50 @@ fields:
     "right_forward_count": 271,
     "bs_to_left_count": 441,
     "bs_to_right_count": 346,
-    "cst_left_count": 271,
-    "cst_right_count": 270,
-    "left_intersection_rate": 48.2,
-    "right_intersection_rate": 99.6,
+    "cst_left_count": 441,
+    "cst_right_count": 271,
+    "left_intersection_rate": 78.5,
+    "right_intersection_rate": 100.0,
+    "forward_reverse_ratio_left": 1.27,
+    "forward_reverse_ratio_right": 0.78,
+    "artifact_index": 0.39,
     "method": "bidirectional"
   }
 }
 ```
 
-`left_intersection_rate` and `right_intersection_rate` show what fraction of each forward
-bundle survived the intersection step, which is useful for diagnosing unusual cases.
+`left_intersection_rate` / `right_intersection_rate` give the fraction of each forward
+bundle retained after the per-side cap.
+
+`forward_reverse_ratio_left` / `forward_reverse_ratio_right` are per-side
+forward-pass / reverse-pass ratios (the cortical-interface inflation).
+
+`artifact_index = |inflation_L − inflation_R| / max(inflation_L, inflation_R)` indicates
+whether residual L/R count asymmetry is methodological or structural:
+
+- `artifact_index ≤ 0.20` → inflation symmetric on both sides; residual count asymmetry
+  is likely structural (genuine biology or pathology).
+- `artifact_index > 0.20` → one cortical ROI seeded more efficiently than the other;
+  residual count asymmetry may be a methodological artifact and should be interpreted
+  cautiously.
 
 ---
 
 ## 7. When to use bidirectional
 
 **Use bidirectional when:**
-- Single-subject analysis where symmetric bilateral CST counts are important
-- Passthrough laterality index |LI| > 0.15 and you want to confirm it is methodological
+- Single-subject analysis where you need to disentangle methodological from structural
+  L/R count differences
+- Passthrough laterality index |LI| > 0.15 and you want to confirm whether it is
+  methodological (check `artifact_index`)
 - You are comparing CST metrics between hemispheres
+- Clinical populations with possible unilateral motor pathology — the method no longer
+  enforces bilateral symmetry, so genuine asymmetry is preserved and the
+  `artifact_index` helps distinguish it from interface artifacts
 
 **Stick with passthrough when:**
 - Large cohort studies (bidirectional is slower: 4 tracking passes + intersection)
-- Clinical populations with known unilateral motor system pathology (stroke, tumour,
-  resection) — the bilateral symmetry assumption is invalid
-- You want to detect genuine structural asymmetry
+- You only need group-level summaries and do not care about per-subject L/R counts
 
 ---
 

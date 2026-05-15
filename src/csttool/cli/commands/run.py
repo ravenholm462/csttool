@@ -643,13 +643,29 @@ def _write_bids_derivatives(
 
     cli_cmd = " ".join(sys.argv)
 
+    # Files staged inside args.out may be moved (we own them); files outside
+    # args.out are user-provided inputs that must be copied, never moved.
+    out_root = Path(args.out).resolve()
+
+    def _relocate(src_path: Path, dst_path: Path) -> None:
+        src_path = Path(src_path)
+        try:
+            inside = src_path.resolve().is_relative_to(out_root)
+        except (ValueError, AttributeError):
+            # is_relative_to may raise on older Python or for non-overlapping paths
+            inside = str(src_path.resolve()).startswith(str(out_root) + "/")
+        if inside:
+            shutil.move(src_path, dst_path)
+        else:
+            shutil.copy2(src_path, dst_path)
+
     # ------------------------------------------------------------------
     # Preprocessed DWI
     # ------------------------------------------------------------------
     if preproc_path and Path(preproc_path).exists():
         src = Path(preproc_path)
         dst_nii = dwi_dir / _fname("dwi", ".nii.gz", space="orig", desc="preproc")
-        shutil.move(src, dst_nii)
+        _relocate(src, dst_nii)
 
         stem_no_ext = src.name.replace(".nii.gz", "").replace(".nii", "")
         for ext in (".bval", ".bvec"):
@@ -658,11 +674,11 @@ def _write_bids_derivatives(
                 hits = list(src.parent.glob(f"*{ext}"))
                 candidate = hits[0] if hits else None
             if candidate and Path(candidate).exists():
-                shutil.move(candidate, dwi_dir / _fname("dwi", ext, space="orig", desc="preproc"))
+                _relocate(candidate, dwi_dir / _fname("dwi", ext, space="orig", desc="preproc"))
 
         json_cand = src.parent / (stem_no_ext + ".json")
         if json_cand.exists():
-            shutil.move(json_cand, dwi_dir / _fname("dwi", ".json", space="orig", desc="preproc"))
+            _relocate(json_cand, dwi_dir / _fname("dwi", ".json", space="orig", desc="preproc"))
         else:
             write_derivative_sidecar(dst_nii, sources=[], description="Preprocessed DWI",
                                      command_line=cli_cmd)
@@ -745,17 +761,28 @@ def _write_bids_derivatives(
     # ------------------------------------------------------------------
     # Pipeline logs → reports/  (provenance, not scientific payload)
     # ------------------------------------------------------------------
+    # (source_dir, default_tag, filename_pattern → specific_tag overrides)
+    # The overrides keep distinct reports (e.g. registration vs CST extraction)
+    # from clobbering each other when multiple JSONs share a stage directory.
     log_sources = [
-        (args.out / "preprocessing" / "nifti",      "log-import"),
-        (args.out / "preprocessing" / "dicom_info", "log-series"),
-        (args.out / "preprocessing",                "log-preproc"),
-        (args.out / "tracking"      / "logs",       "log-tracking"),
-        (args.out / "extraction"    / "logs",       "log-extraction"),
+        (args.out / "preprocessing" / "nifti",      "log-import",     {}),
+        (args.out / "preprocessing" / "dicom_info", "log-series",     {}),
+        (args.out / "preprocessing",                "log-preproc",    {}),
+        (args.out / "tracking"      / "logs",       "log-tracking",   {}),
+        (args.out / "extraction"    / "logs",       "log-extraction", {
+            "registration_report":   "log-registration",
+            "cst_extraction_report": "log-extraction",
+        }),
     ]
-    for log_dir, tag in log_sources:
+    for log_dir, default_tag, overrides in log_sources:
         if not log_dir.is_dir():
             continue
         for jf in log_dir.glob("*.json"):
+            tag = default_tag
+            for needle, override_tag in overrides.items():
+                if needle in jf.name:
+                    tag = override_tag
+                    break
             shutil.move(jf, rep_dir / _rep_name(tag, ".json"))
 
     if verbose:

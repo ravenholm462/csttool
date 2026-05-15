@@ -250,23 +250,20 @@ def extract_cst_bidirectional(
         top_idx = np.argsort(scores)[-n_keep:]
         return Streamlines([forward_bundle[i] for i in sorted(top_idx)])
 
+    # Per-side cap only — bilateral symmetry is NOT enforced. Each hemisphere is
+    # bounded by its own reverse-pass count, which removes the cortical-interface
+    # inflation per side without assuming the two sides should match. This
+    # preserves genuine asymmetry (e.g. unilateral motor pathology) while still
+    # correcting the placement artifact.
     n_keep_L = min(len(left_fwd), len(bs_to_left))
     n_keep_R = min(len(right_fwd), len(bs_to_right))
-
-    # Enforce bilateral symmetry: both sides use the same count, chosen as the
-    # minimum across all four quantities.  This is justified because Phase 4C
-    # (brainstem-seeded analysis) confirmed the true CST is bilaterally
-    # symmetric; any asymmetry in the per-side caps is residual ODF-parameter
-    # noise in the reverse pass, not a genuine structural difference.
-    n_target = min(n_keep_L, n_keep_R)
 
     if verbose:
         print(f"    Per-side cap — left:  min({len(left_fwd)}, {len(bs_to_left)}) = {n_keep_L}")
         print(f"    Per-side cap — right: min({len(right_fwd)}, {len(bs_to_right)}) = {n_keep_R}")
-        print(f"    Bilateral target (min of caps): {n_target}")
 
-    cst_left  = _select_top_n(left_fwd,  dens_L, n_target)
-    cst_right = _select_top_n(right_fwd, dens_R, n_target)
+    cst_left  = _select_top_n(left_fwd,  dens_L, n_keep_L)
+    cst_right = _select_top_n(right_fwd, dens_R, n_keep_R)
 
     if verbose:
         print(f"    After intersection — left:  {len(left_fwd):,} → {len(cst_left):,}")
@@ -277,6 +274,19 @@ def extract_cst_bidirectional(
     # ------------------------------------------------------------------
     # Stats
     # ------------------------------------------------------------------
+    # Forward/reverse inflation per side. Comparing the two ratios indicates
+    # whether residual L/R count asymmetry is methodological (interface artifact)
+    # or structural (pathology / genuine biology).
+    #   inflation_L ≈ inflation_R → both sides over-produced equally; residual
+    #     asymmetry is structural.
+    #   inflation_L ≠ inflation_R → one cortical ROI seeded more efficiently
+    #     than the other; residual asymmetry is suspect.
+    inflation_L = len(left_fwd) / max(len(bs_to_left), 1)
+    inflation_R = len(right_fwd) / max(len(bs_to_right), 1)
+    artifact_index = (
+        abs(inflation_L - inflation_R) / max(inflation_L, inflation_R, 1.0)
+    )
+
     stats = {
         'left_seeds': len(left_seeds),
         'right_seeds': len(right_seeds),
@@ -294,6 +304,9 @@ def extract_cst_bidirectional(
         'left_yield': len(cst_left) / max(len(left_seeds), 1) * 100,
         'right_yield': len(cst_right) / max(len(right_seeds), 1) * 100,
         'extraction_rate': len(cst_combined) / max(len(left_seeds) + len(right_seeds), 1) * 100,
+        'forward_reverse_ratio_left': inflation_L,
+        'forward_reverse_ratio_right': inflation_R,
+        'artifact_index': artifact_index,
         'method': 'bidirectional',
     }
 
@@ -323,6 +336,13 @@ def extract_cst_bidirectional(
         print(f"\n  Left CST:  {stats['cst_left_count']:,} streamlines ({stats['left_yield']:.2f}% yield)")
         print(f"  Right CST: {stats['cst_right_count']:,} streamlines ({stats['right_yield']:.2f}% yield)")
         print(f"  Total:     {stats['cst_total_count']:,} streamlines  R/L = {lr:.3f}")
+        print(f"  Forward/reverse inflation — left: {inflation_L:.2f}  right: {inflation_R:.2f}")
+        if artifact_index > 0.2:
+            print(f"  Artifact index: {artifact_index:.2f} (>0.20) — cortical interface "
+                  f"asymmetry suspected; residual L/R count difference may be methodological.")
+        else:
+            print(f"  Artifact index: {artifact_index:.2f} (≤0.20) — inflation symmetric; "
+                  f"residual L/R count difference is likely structural.")
         if 'length_mean' in stats:
             print(f"  Length: mean={stats['length_mean']:.1f}, "
                   f"range=[{stats['length_min']:.1f}, {stats['length_max']:.1f}] mm")
