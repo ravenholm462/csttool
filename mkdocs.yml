@@ -53,8 +53,8 @@ exclude_docs: |
   contributing/contributing.md
   explanation/explanation.md
   how-to/how-to.md
-  javascripts/
-  stylesheets/
+  /javascripts/
+  /stylesheets/
 
 # Extensions
 markdown_extensions:
